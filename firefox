@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# My (Scott Zeid) script to start Firefox
+
+# Distribution version
+FIREFOX_CMD=/usr/bin/firefox
+
+# Custom install
+#FIREFOX_CMD=/home/scottywz/opt/firefox/firefox
+
+$FIREFOX_CMD $@

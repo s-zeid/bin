@@ -1,0 +1,108 @@
+#!/bin/bash
+
+# CraftBukkit console client
+# Copyright (C) 2012 Scott Zeid.  X11 License.
+
+# With no arguments, attaches to the screen/tmux instance on which the
+# server is running.
+# 
+# With arguments:
+#  * If the first argument is one of:
+#     start, stop, restart, status, show
+#    systemctl is invoked with that command on the appropriate unit file
+#    if you have configured this script (and CraftBukkit) to use systemd.
+#    Otherwise, it is passed to the script specified below as $SCRIPT.
+#  * If the first argument is systemctl or sc:
+#    The second argument is treated as a systemctl command, the next
+#    argument to systemctl is the unit file, and subsequent arguments to
+#    this script are passed to systemctl.  If systemctl is disabled,
+#    prints an error and returns the exit code 2.
+#  * If the first argument is one of:
+#     backup, backup-worlds, backup-log, cmd, console
+#    it is passed to the script specified below as $SCRIPT.
+#  * Otherwise, it is passed to the CraftBukkit console as a command to
+# run, and output is printed to standard output 1/4 of a second after
+# the command is run.  Output is read from the log file and may be
+# slightly different from what you would see in the console.
+
+# Settings ################################################################
+
+# General #########################
+
+# Script to use to start, stop, and manage CraftBukkit
+SCRIPT=~/opt/craftbukkit/systemd/craftbukkit.sh
+# Log file to read command output from
+LOG_FILE=~/opt/craftbukkit/server.log
+
+# Systemd #########################
+
+# Is CraftBukkit running from systemd?  (true/1/false/0)
+USE_SYSTEMD=1
+# The name of the systemd unit file
+SYSTEMD_UNIT=craftbukkit.service
+# Are you using a user instance of systemd?  (true/1/false/0)
+SYSTEMD_USER=1
+
+###########################################################################
+
+# matches "yyyy-MM-dd HH:MM:SS [message type (if present)] "
+RE="^([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}( \[[^]]+\])? )"
+
+function bool() {
+ [ "$1" = "true" -o $1 -gt 0 ]
+}
+
+function systemctl_cmd() {
+ CMD="$1"
+ shift
+ if bool "$USE_SYSTEMD"; then
+  if bool "$SYSTEMD_USER"; then
+   systemctl --user "$CMD" "$SYSTEMD_UNIT" "$@"
+   return $?
+  else
+   systemctl "$CMD" "$SYSTEMD_UNIT" "$@"
+   return $?
+  fi
+ else
+  echo "error: not using systemd"
+  return 2
+ fi
+}
+
+if [ -z "$1" ]; then
+ exec "$SCRIPT" console
+else
+ CMD="$1"
+ shift
+ case "$CMD" in
+  start|stop|restart|status|show)
+   if bool "$USE_SYSTEMD"; then
+    systemctl_cmd "$CMD" "$@"
+    exit $?
+   else
+    "$SCRIPT" "$CMD" "$@"
+    exit $?
+   fi
+   ;;
+  systemctl|sc)
+   SYSTEMCTL_CMD="$1"
+   shift
+   systemctl_cmd "$SYSTEMCTL_CMD" "$@"
+   exit $?
+   ;;
+  backup|backup-worlds|backup-log|cmd|console)
+   "$SCRIPT" "$CMD" "$@"
+   exit $?
+   ;;
+  *)
+   ARGS=$@   # so we can quote the whole string without splitting on spaces
+   START=$((`wc -l "$LOG_FILE" | cut -d' ' -f1` + 1))   # output starts here
+   "$SCRIPT" cmd "$CMD" "$ARGS"
+   sleep 0.25
+   OUT="`tail -n +$START "$LOG_FILE" | sed -r -e "s/$RE//"`" # read and remove prefix
+   if [ "$CMD" = "sl" ]; then
+    which sl &>/dev/null && egrep -q "^Unknown command\." <<< "$OUT" && sl "$@"
+   fi
+   echo "$OUT"
+ esac
+fi

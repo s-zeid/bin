@@ -1,0 +1,3 @@
+#!/bin/sh
+umount /mnt/Disk\ Images
+umount /mnt/Multimedia

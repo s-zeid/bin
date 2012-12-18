@@ -1,0 +1,8 @@
+#!/bin/bash
+
+JAVA_HOME="`readlink -f \`which java\` | sed -e "s:/bin/java::"`"
+export LD_LIBRARY_PATH="$JAVA_HOME/lib/amd64"
+
+OPTS=$@
+[ -z "$OPTS" ] && java -jar ~/opt/spoutcraft.jar \
+               || java -jar ~/.spoutcraft/Spoutcraft-Launcher.jar "$@"

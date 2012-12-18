@@ -1,0 +1,3 @@
+#!/bin/sh
+
+scp -pr "$1" s.zeid.me:~/uploads/"$2"

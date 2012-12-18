@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+
+import gtk
+import sys
+import urlparse
+import webkit
+
+APP_NAME = "Mini Browser"
+APP_ICON_NAME = "emblem-web"
+
+def close_callback(window, data):
+ window.hide()
+ sys.exit()
+
+try:
+ if len(sys.argv) < 2 or sys.argv[1] == ".":
+  url = raw_input("Please enter a URL: ")
+ else:
+  url = sys.argv[1]
+ 
+ url = list(urlparse.urlsplit(url))
+ if not url[0]:
+  url[0] = "http"
+  url[1] = "/" + url[1]
+ url = urlparse.urlunsplit(url)
+ title = sys.argv[2] if len(sys.argv) > 2 else APP_NAME
+ icon = sys.argv[3] if len(sys.argv) > 3 else APP_ICON_NAME
+ 
+ w = gtk.Window()
+ w.set_title(title)
+ w.set_icon_name(icon)
+ w.set_size_request(1, 1)
+ w.resize(1024, 576)
+ w.connect("delete-event", close_callback)
+ 
+ s = gtk.ScrolledWindow()
+ wv = webkit.WebView()
+ wv.show()
+ s.add(wv)
+ s.show()
+ w.add(s)
+ w.show()
+ 
+ wv.open(url)
+ 
+ gtk.main()
+except KeyboardInterrupt:
+ sys.exit()

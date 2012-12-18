@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# XXX: Currently does not work
+
+if [ $# -eq 0 ]; then
+ echo "Usage: $0 [pandoc-options] input-file bibliography-file"
+ echo "Output will be to input-file but with the extension changed to pdf"
+ exit 2
+fi
+
+if [ "$1" = "-P" -o "$1" = "--preview" ]; then
+ shift
+ PREVIEW=1
+else
+ PREVIEW=0
+fi
+
+IN="${@:(-2):1}"
+BIB="${!#}"
+TEX="/tmp/`sed -r "s/(\.[^.]+)?$/.tex/" <<< "$(basename "$IN")"`"
+OUT="`sed -r "s/(\.[^.]+)?$/.pdf/" <<< "$IN"`"
+
+pandoc -t mla-paper --csl=mla-url "${@:1:$(($#-1))}" --bibliography="$BIB" -o "$TEX"
+#pandoc --template=mla-paper --csl=mla-url "${@:1:$(($#-1))}" -o "$OUT"
+pandoc "${@:1:$(($#-1))}" "$TEX" -o "$OUT"
+
+if [ $PREVIEW -eq 1 ]; then xdg-open "$OUT"; fi

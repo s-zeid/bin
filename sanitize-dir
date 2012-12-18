@@ -1,0 +1,40 @@
+#!/usr/bin/env python
+
+import os
+import stat
+import sys
+
+def sanitize_dir(directory, level=0):
+ success = True
+ try:
+  ls = os.listdir(directory)
+  ls.sort()
+ except Exception:
+  print "sanitize_dir(): could not access", directory
+  success = False
+  return False
+ else:
+  for i in ls:
+   path = os.path.realpath(os.path.join(directory, i))
+   if os.path.isfile(path):
+    try:
+     os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+    except Exception:
+     print "sanitize_dir(): could not set permissions on", path
+     success = False
+   elif os.path.isdir(path):
+    try:
+     os.chmod(path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+    except Exception:
+     print "sanitize_dir(): could not set permissions on", path
+     success = False
+    sanitize_dir(path, level=level + 1)
+ return success
+
+if len(sys.argv) < 2:
+ print "Usage: %s [directory] ..."
+ sys.exit(2)
+
+dirs = sys.argv[1:]
+for i in dirs:
+ sanitize_dir(i)

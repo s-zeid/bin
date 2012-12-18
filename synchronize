@@ -1,0 +1,367 @@
+#!/usr/bin/env python
+
+# Dependencies: PyYaml
+# Optional (but required for GTK+ progress dialog):  PyZenity, zenity
+
+import os
+import optparse
+import re
+import stat
+import string
+import subprocess
+import sys
+import tempfile
+import time
+
+from decimal import Decimal
+
+import yaml
+
+try:
+ import PyZenity as zenity
+except ImportError:
+ zenity = None
+
+DEFAULT_SCRIPT_LOCALS = dict(
+ os=os,
+ re=re,
+ stat=stat,
+ string=string,
+ subprocess=subprocess,
+ tempfile=tempfile,
+ time=time
+)
+PROFILE_PATH = os.path.expanduser("~/.synchronize")
+
+class Profile:
+ def __init__(self, name="", path=None, force_device=None, quiet=True,
+              use_gtk=False, verbose=False):
+  self.name    = name
+  self.quiet   = quiet
+  self.use_gtk = use_gtk and not quiet
+  self.verbose = verbose and not quiet
+  
+  # Dictionary containing some script-accessible variables; will be converted
+  # into the object self.Vars below
+  Vars_dict = dict(
+   delete=False,
+   pwd=os.path.dirname(sys.argv[0]), # FIXME: shouldn't rely on sys.argv
+   tmp=None
+  )
+  
+  script_file = path or os.path.join(os.path.realpath(PROFILE_PATH), name)
+  script_dict = load_yaml_file(script_file)
+  script = setattrs(script_dict)
+  
+  Vars_dict.update(script_dict.get("Vars", dict()))
+  if force_device != None:
+   Vars_dict["device"] = force_device
+  
+  self.steps = script.steps
+  self.Vars = setattrs(Vars_dict)
+  self.update_vars()
+ 
+ def do_step(self, index, number, message, num_steps=None, quiet=True,
+             progress_dialog=None):
+  if progress_dialog or not quiet:
+   if num_steps is None:
+    num_steps = len(self.steps)
+   if isinstance(number, (int, float, long)) and number < 0:
+    percent = 100 - number
+   elif number is None:
+    percent = 100
+   else:
+    percent = (Decimal(str(number)) / Decimal(str(num_steps))) * Decimal("100")
+   percent = int(round(percent))
+   message = gen_message(message)
+   if isinstance(number, (int, float, long)) and number >= 0:
+    message += " (step %s of %s)" % (number + 1, num_steps)
+   if progress_dialog:
+    progress_dialog(percent, message)
+   if not quiet:
+    print message
+  if isinstance(index, (int, long)):
+   rm_tmp = True if self.Vars.tmp is None else False
+   self.update_vars()
+   exec self.steps[index]["code"] in {}, ScriptLocals(self.Vars)()
+   if rm_tmp:
+    subprocess.call(["rm", "-r", self.Vars.tmp])
+ 
+ def run(self, steps=None):
+  if isinstance(steps, basestring):
+   steps = expand_steps_string(steps)
+  if steps:
+   manual = True
+  else:
+   manual = False
+   steps = [self.steps[i]["name"] for i in range(len(self.steps))
+            if self.steps[i].get("manual", False) != True]
+  
+  self.update_vars()
+  
+  # GTK+ Zenity progress dialog if --gtk and PyZenity is available and not quiet
+  progress_dialog = None
+  if self.use_gtk:
+   progress_dialog = zenity.Progress(text="Synchronizing...", auto_close=False)
+   time.sleep(5)
+  
+  # Synchronize
+  count = 0
+  num_steps = len(steps)
+  for i in range(len(self.steps)):
+   if (self.steps[i]["name"] in steps and
+       (manual or self.steps[i].get("manual", False) != True)):
+    if "message" in self.steps[i]:
+     message = self.steps[i]["message"]
+    else:
+     message = self.steps[i]["name"]
+    self.do_step(i, count, message, num_steps, self.quiet, progress_dialog)
+    count += 1
+  
+  # Clean up
+  self.do_step(None, -1, "Cleaning up...", num_steps, self.quiet,
+               progress_dialog)
+  subprocess.call(["rm", "-r", self.Vars.tmp])
+  self.Vars.tmp = None
+  
+  # Done
+  if progress_dialog:
+   self.do_step(None, None, "Done!", num_steps, self.quiet, progress_dialog)
+ 
+ def update_vars(self):
+  self.Vars.name    = self.name[:]
+  self.Vars.quiet   = self.quiet
+  self.Vars.use_gtk = self.use_gtk
+  self.Vars.verbose = self.verbose
+  if not self.Vars.tmp:
+   self.Vars.tmp = tempfile.mkdtemp()
+
+class ScriptLocals:
+ def __call__(self):
+  items = ("Vars", "call", "cp", "join", "mv", "process_playlists", "replace",
+           "resolve", "rm", "run_profile", "sanitize_dir", "sync", "sync_from",
+           "sync_to", "verbose", "warn")
+  ret = dict()
+  ret.update(DEFAULT_SCRIPT_LOCALS)
+  ret.update(dict([(i, getattr(self, i)) for i in items]))
+  return ret
+ def __init__(self, Vars=None):
+  self.Vars = Vars or setattrs(dict())
+ def call(self, *args, **kwargs):
+  subprocess.call(*args, **kwargs)
+ def cp(self, source, dest):
+  cmd = ["cp", "-r", self.resolve(source), self.resolve(dest)]
+  subprocess.call(cmd)
+ def join(self, *paths):
+  if isinstance(paths, basestring):
+   return paths
+  paths = list(paths)
+  for n in range(1, len(paths)):
+   if paths[n].startswith(os.path.sep):
+    paths[n] = paths[n].split(os.path.sep, 1)[1]
+    paths[n-1] += os.path.sep
+  return os.path.join(*paths)
+ def mv(self, source, dest):
+  cmd = ["mv", self.resolve(source), self.resolve(dest)]
+  subprocess.call(cmd)
+ def process_playlists(self, original_root, replace_with, in_dir, out_dir=None,
+                       name_callback=None):
+  in_dir = os.path.abspath(self.resolve(in_dir))
+  out_dir = os.path.abspath(self.resolve(out_dir)) if out_dir else in_dir
+  files = os.listdir(in_dir)
+  playlists = []
+  for root, dirs, files in os.walk(in_dir, followlinks=True):
+   dirs.sort()
+   for f in sorted(files):
+    relpath = os.path.relpath(os.path.join(root, f), in_dir)
+    if os.path.isfile(os.path.realpath(os.path.join(in_dir, relpath))):
+     playlists += [relpath]
+  for name in playlists:
+   new_name = name
+   if callable(name_callback):
+    new_name = name_callback(name)
+   path = os.path.join(in_dir, name)
+   new_path = os.path.join(out_dir, new_name)
+   with open(path) as fo:
+    text = fo.read()
+   text = text.replace("\r\n", "\n").replace("\r", "\n")
+   text = text.replace(original_root, replace_with)
+   lines = text.split("\n")
+   new_lines = []
+   with open(new_path, 'w') as fo:
+    fo.write(text)
+ def replace(self, filename, search, replace, encoding="utf8"):
+  filename = self.resolve(filename)
+  with open(filename, "rb") as f:
+   t = f.read().decode(encoding)
+  if callable(search):
+   t = search(replace, t)
+  else:
+   t = t.replace(search, replace)
+  with open(filename, "wb") as f:
+   f.write(t.encode(encoding))
+ def resolve(self, *paths):
+  path = self.join(*paths)
+  path = string.Template(path).substitute(self.Vars.__dict__)
+  return os.path.expanduser(path)
+ def rm(self, path):
+  cmd = ["rm", "-r", self.resolve(path)]
+  subprocess.call(cmd)
+ def run_profile(self, profile, steps, device=None):
+  Profile(profile, force_device=device).run(steps)
+ def sanitize_dir(self, directory, level=0):
+  success = True
+  try:
+   ls = os.listdir(directory)
+   ls.sort()
+  except EnvironmentError:
+   self.warn("sanitize_dir(): could not access", directory)
+   success = False
+   return False
+  else:
+   for i in ls:
+    path = os.path.realpath(os.path.join(directory, i))
+    if os.path.isfile(path):
+     try:
+      os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+     except EnvironmentError:
+      self.warn("sanitize_dir(): could not set permissions on", path)
+      success = False
+    elif os.path.isdir(path):
+     try:
+      os.chmod(path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+     except EnvironmentError:
+      self.warn("sanitize_dir(): could not set permissions on", path)
+      success = False
+     self.sanitize_dir(path, level=level + 1)
+ def sync(self, source, dest, delete=None, fat=None, opts=[]):
+  if delete == None:
+   delete = getattr(self.Vars, "delete", False)
+  if fat == None:
+   fat = getattr(self.Vars, "fat", False)
+  cmd = ["rsync", "-L", "-r", "-s", "-t"]
+  cmd += getattr(self.Vars, "default_rsync_opts", [])
+  cmd += opts
+  # XXX DOES NOT WORK
+  #for i in opts:
+  # if i.startswith("!-") and len(i) > 2:
+  #  if i[1:] in opts:
+  #   opts.remove(i)
+  #   opts.remove(i[1:])
+  # (Below does work)
+  if delete:
+   cmd += ["--del"]
+  if fat:
+   modify_window_set = False
+   for opt in cmd:
+    if opt.startswith("--modify-window="):
+     modify_window_set = True
+     break
+   if not modify_window_set:
+    cmd += ["--modify-window=1"]
+  source = self.resolve(source)
+  dest = self.resolve(dest)
+  cmd += [source, dest]
+  self.verbose(source, "->", dest)
+  subprocess.call(cmd)
+ def sync_from(self, source, dest, delete=None, fat=None, opts=[]):
+  if "--chmod" not in opts:
+   opts.append("--chmod=Du=rwX,Dgo=rX,Fu=rw,Fgo=r")
+  self.sync(self.resolve(self.Vars.device, source), dest, delete=delete,
+            fat=fat, opts=opts)
+  #sanitize_dir(dest)
+ def sync_to(self, source, dest, delete=None, fat=None, opts=[]):
+  self.sync(source, self.resolve(self.Vars.device, dest), delete=delete,
+            fat=fat, opts=opts)
+ def verbose(self, *text):
+  if self.Vars.verbose:
+   print u" ".join(text).encode("utf_8")
+ def warn(self, *text):
+  if not self.Vars.quiet:
+   print u" ".join(text).encode("utf_8")
+
+### Functions
+
+def expand_steps_string(s):
+ return re.split(r"[\s,]+", s)
+
+def gen_message(message):
+ if not message.endswith(".") and not message.endswith("!"):
+  message = "Synchronizing %s..." % message
+ return message
+
+def load_yaml_file(filename):
+ fo = open(filename)
+ data = fo.read()
+ out = yaml.load(data)
+ fo.close()
+ return out
+
+def setattrs(d, _cls = None):
+ setattrs_class = _cls
+ if _cls == None:
+  class setattrs_class: pass
+ for i in d:
+  if isinstance(d[i], dict):
+   setattr(setattrs_class, i, setattrs(d[i]))
+  else:
+   setattr(setattrs_class, i, d[i])
+ if _cls == None:
+  return setattrs_class
+
+### Main code
+
+def main(argv=None):
+ argv = argv or sys.argv
+ # Command line parsing
+ usage = "Usage: %s [options] [sync-profile]" % argv[0]
+ p = optparse.OptionParser(prog=argv[0], usage=usage)
+ p.add_option("--device", "-d", default=None, help="override the device variable in the sync profile")
+ p.add_option("--gtk", "-g", action="store_true", default=False, help="use a GTK+ window to display progress")
+ p.add_option("--quiet", "-q", action="store_true", default=False, help="only print error messages")
+ p.add_option("--prompt", "-p", action="store_true", default=False, help="prompts for which steps you want to perform")
+ p.add_option("--steps", "-s", default=None, help="perform only these steps, separated by a comma only")
+ p.add_option("--verbose", "-v", action="store_true", default=False, help="print extra information to stdout")
+ options, args = p.parse_args(argv[1:])
+ use_gtk = options.gtk and zenity is not None
+ steps_partial = options.steps.split(",") if options.steps else None
+ 
+ if len(args) < 1:
+  args.append("default")
+  #print usage % sys.argv[0]
+  #exit(2)
+ 
+ profile = Profile(args[0], force_device=options.device, quiet=options.quiet,
+                   use_gtk=use_gtk, verbose=options.verbose)
+ steps = profile.steps
+ 
+ if options.prompt:
+  if use_gtk:
+   rows = [("", "all")]
+   rows += [("", steps[i]["name"]) for i in range(len(steps))]
+   steps_partial = zenity.List(("", "Name"), boolstyle="checklist", select_col=2, data=rows)
+   if "all" in steps_partial:
+    rows.remove(("", "all"))
+    steps_partial = [rows[i][1] for i in range(len(rows))]
+  else:
+   steps_list = ["all"]
+   steps_list.extend([steps[i]["name"] for i in range(len(steps))])
+   print "Choose one or more of the steps below by typing their names, separated by"
+   print "commas or spaces:"
+   print " " + " ".join(steps_list)
+   steps_partial = expand_steps_string(raw_input("Step(s): "))
+   if "all" in steps_partial:
+    steps_list.remove("all")
+    steps_partial = steps_list
+ elif options.steps:
+  steps_partial = expand_steps_string(options.steps)
+ else:
+  steps_partial = []
+ 
+ profile.run([i for i in steps_partial if i])
+
+if __name__ == "__main__":
+ try:
+  main()
+ except KeyboardInterrupt:
+  pass

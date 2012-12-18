@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# My (Scott Zeid) script to start Chromium Web Browser
+
+CHROMIUM_CMD=/usr/bin/chromium-browser
+
+$CHROMIUM_CMD --enable-sync --purge-memory-button $@

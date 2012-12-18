@@ -1,0 +1,13 @@
+#!/usr/bin/env python
+
+import os, subprocess, sys, urllib
+if len(sys.argv) != 2:
+ print "Usage: %s file" % sys.argv[0]
+ sys.exit(2)
+
+archive = "file://" + os.path.abspath(sys.argv[1])
+archive_quoted = urllib.quote(archive, safe="")
+subprocess.call(["gvfs-mount", "archive://" + archive_quoted])
+
+# The hard way:
+# $ /usr/lib/gvfs/gvfsd-archive file=(file) &

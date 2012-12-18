@@ -1,0 +1,13 @@
+#!/bin/sh
+
+case "$HOSTNAME" in
+ lady-labyrinth)
+  xgamma -rgamma 0.670 -ggamma 0.648 -bgamma 0.704
+  ;;
+ tracce)
+  xgamma -rgamma 0.827 -ggamma 0.798 -bgamma 0.711
+  ;;
+ *)
+  echo "$0: error: hostname $HOSTNAME not recognized"
+  exit 1
+esac

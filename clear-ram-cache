@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# Based on:
+# http://www.scottklarr.com/topic/134/linux-how-to-clear-the-cache-from-memory/
+
+sudo sh -c "sync && echo 3 > /proc/sys/vm/drop_caches"

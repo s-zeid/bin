@@ -1,0 +1,19 @@
+#!/bin/bash
+
+PA_SOURCE=1
+
+###########################################################################
+
+if [ -z "$1" ]; then
+ echo "Usage: $0 output-name.mkv"
+ exit 2
+fi
+
+OUT_FILE="$1"
+PA_SOURCE_NAME=`pactl list short sources | grep "^1	" | cut -f2`
+
+parec -d $PA_SOURCE_NAME --format=s16le \
+ | ffmpeg -f s16le -ac 2 -ar 44100 -i - \
+    -f x11grab -s 1600x900 -r 30 -i :0.0 \
+    -acodec pcm_s16le -vcodec ffv1 -sameq \
+    "$OUT_FILE"

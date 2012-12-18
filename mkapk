@@ -1,0 +1,30 @@
+#!/bin/sh
+
+KEYSTORE=/home/scottywz/.android.keystore
+ALIAS=scottywzAndroid
+
+DEBUG=0
+if [ "$1" = "--debug" -o "$1" = "-d" ]; then
+ shift
+ DEBUG=1
+fi
+
+SRC="$1"
+APK="$2"
+
+if [ -z "$APK" -o -z "$SRC" ]; then
+ echo "Usage: $(basename "$0") [-d|--debug] source-directory output-file"
+ exit 2
+fi
+
+if [ $DEBUG -eq 0 ]; then
+ apkbuilder $APK.u -rf $SRC -u
+ jarsigner -keystore $KEYSTORE $APK.u $ALIAS
+else
+ apkbuilder $APK.u -rf $SRC
+fi
+if [ -e "$APK" ]; then
+ rm $1
+fi
+zipalign 4 $APK.u $APK
+rm $APK.u

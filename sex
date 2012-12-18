@@ -1,0 +1,34 @@
+#!/usr/bin/env python
+
+import re
+import sys
+
+class Fuck:
+ num_times = 0
+ def get_some(sex):
+  sex.num_times += 1
+ def how_good_was_it(sex):
+  return {
+   0: "I shat on their face",
+   1: "almost okay",
+   2: "acceptable",
+   3: "Better than peanut butter",
+   4: "Goooooooood",
+   5: "AAAAAAAAAAAAAAAAAAAAAAAAAAAHHHHHHHHHHH"
+  }.get(sex.num_times, "damn that was AAAAAAAAAAAAAAAAAHHHHHHHHHHHHHHH!")
+
+class SexParty:
+ @staticmethod
+ def __init__(num_times=6, parties=[]):
+  for party in range((len(parties) or 1) - 1 or 1):
+   sex = Fuck()
+   print
+   print sex.how_good_was_it()
+   if len(parties) > 1:
+    num_times = int(re.sub("[^0-9]", "", parties[party + 1]) or num_times)
+   for laid in range(num_times):
+    sex.get_some()
+    print sex.how_good_was_it()
+
+if __name__ == "__main__":
+ SexParty(parties=sys.argv)

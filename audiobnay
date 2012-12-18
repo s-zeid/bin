@@ -1,0 +1,127 @@
+#!/usr/bin/env python
+
+"""Converts several audio formats to MP3 while preserving metadata tags.
+
+Requires Python 2.6 or 2.7 and the Mutagen package.
+(http://code.google.com/p/mutagen/; `sudo apt-get install mutagen` on Ubuntu)
+
+Also requires FFmpeg and LAME to be installed.  You may need to pass the paths
+to their executable files on the command line if they're not in the path.  This
+may be more common on Windows.
+
+Embedded images or artwork are currently not copied.
+
+The following metadata tags are preserved:
+ albumartistsort, musicbrainz_albumstatus, lyricist, releasecountry, date,
+ performer, musicbrainz_albumartistid, composer, encodedby, tracknumber,
+ musicbrainz_albumid, album, asin, musicbrainz_artistid, mood, copyright,
+ author, media, length, version, artistsort, titlesort, discsubtitle,
+ website, musicip_fingerprint, conductor, compilation, barcode, performer:*,
+ composersort, musicbrainz_discid, musicbrainz_albumtype, genre, isrc,
+ discnumber, musicbrainz_trmid, replaygain_*_gain, musicip_puid, artist,
+ title, bpm, musicbrainz_trackid, arranger, albumsort, replaygain_*_peak,
+ organization
+
+If your version of Mutagen is newer than 1.19, then more tags might be
+supported.
+
+"""
+
+import collections
+import optparse
+import os
+import re
+import shlex
+import subprocess
+import sys
+
+import mutagen
+
+from mutagen.easyid3 import EasyID3
+
+Format = collections.namedtuple("Format", ["ffmpeg_codec"])
+
+EXTENSIONS = dict(
+ aac  = Format("libfaac"),
+ flac = Format("flac"),
+ m4a  = Format("libfaac"),
+ mp3  = Format("libmp3lame"),
+ ogg  = Format("libvorbis"),
+ wav  = Format("pcm_s16le"),
+ wma  = Format("wmav2")
+)
+MP3_VBR_QUALITIES = """\
+0: 220-260 kbps
+1: 190-250 kbps
+2: 170-210 kbps
+3: 150-195 kbps
+4: 140-185 kbps
+5: 120-150 kbps
+6: 100-130 kbps
+7: 80-120 kbps
+8: 70-105 kbps
+9: 45-85 kbps\
+"""
+
+def convert_to_mp3(in_file, out_file, ffmpeg_path, lame_path,
+                   constant_bitrate=None, vbr_quality=None):
+ ffmpeg_cmd = [ffmpeg_path, "-i", in_file, "-vn", "-acodec", "pcm_s16le",
+               "-f", "wav", "-"]
+ lame_cmd   = [lame_path, "-m", "s", "--noreplaygain"]
+ if vbr_quality != None: lame_cmd += ["-V", str(vbr_quality)]
+ elif constant_bitrate: lame_cmd += ["-b", str(constant_bitrate)]
+ lame_cmd += ["-", out_file]
+ ffmpeg_sp = subprocess.Popen(ffmpeg_cmd, shell=False, stdout=subprocess.PIPE)
+ lame_sp = subprocess.Popen(lame_cmd, shell=False, stdin=ffmpeg_sp.stdout)
+ finished = False
+ while not finished:
+  if ffmpeg_sp.poll() not in (0, None):
+   lame_sp.terminate()
+   raise Exception("FFmpeg exited with code " + str(ffmpeg_sp.returncode))
+  if lame_sp.poll() not in (0, None):
+   ffmpeg_sp.terminate()
+   raise Exception("LAME exited with code " + str(lame_sp.returncode))
+  if ffmpeg_sp.poll() == 0 and lame_sp.poll() == 0:
+   finished = True
+ in_file_ext = in_file.rsplit(".", 1)[1].lower()
+ if in_file_ext in EXTENSIONS:
+  in_tags  = mutagen.File(in_file, easy=True)
+  out_tags = mutagen.File(out_file, easy=True)
+  if None not in (in_tags, out_tags):
+   for i in in_tags:
+    if i in EasyID3.valid_keys:
+     out_tags[i] = in_tags[i]
+   out_tags.save()
+
+def main(argv):
+ p = optparse.OptionParser(prog=os.path.basename(sys.argv[0]),
+                           usage="%prog [OPTIONS] files [...]")
+ p.add_option("--bitrate", "-b", default="", help="encode to this bitrate")
+ p.add_option("--ffmpeg", "-f", default="ffmpeg", help="path to FFmpeg")
+ p.add_option("--lame", "-l", default="lame", help="path to LAME")
+ p.add_option("--list-lame-quality-settings", "-Q", action="store_true",
+              help="list LAME (MP3 encoder) VBR quality settings and exit")
+ p.add_option("--quality", "-q", default=None, help="codec-specific VBR quality"
+              " setting")
+ options, args = p.parse_args()
+ if options.list_lame_quality_settings:
+  print MP3_VBR_QUALITIES
+  return 0
+ if len(args) < 1:
+  p.print_help()
+  return 2
+ files = args
+ for i in files:
+  s = i.rsplit(".", 1)
+  if s[1].lower() != "mp3":
+   o = s[0] + ".mp3"
+   print >> sys.stderr, "Converting %s..." % i
+   convert_to_mp3(i, o, options.ffmpeg, options.lame,
+                  options.bitrate, options.quality)
+ return 0
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass

@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec java -noverify -jar ~/opt/AMIDST.jar "$@"

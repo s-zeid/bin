@@ -1,0 +1,4 @@
+#!/bin/bash
+
+EXPR=$@
+`which zsh &>/dev/null && echo zsh || echo bash` -c 'echo $(('"$EXPR"'))'

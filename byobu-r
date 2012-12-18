@@ -1,0 +1,4 @@
+#!/bin/bash
+
+screen -ls | grep "[0-9]\.byobu"
+[ $? -eq 0 ] && exec byobu -xr byobu || exec byobu

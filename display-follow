@@ -1,0 +1,167 @@
+#!/usr/bin/env python
+
+"""Causes an image to follow the cursor.
+   
+   Based on code from http://bit.ly/qfvule
+   
+"""
+
+import argparse
+import os
+import sys
+import time
+
+import cairo
+import gtk
+import pygtk
+
+pygtk.require("2.0")
+
+class Point(object):
+ __slots__ = ["x", "y"]
+ def __init__(self, x, y=None, width=None, height=None):
+  if not (y == None and isinstance(x, basestring) or
+          isinstance(x, (int, long, float))):
+   raise TypeError("x must be a number or string")
+  for arg, name in ((y, 'y'), (width, 'width'), (height, 'height')):
+   if not isinstance(arg, (int, long, float)) and arg != None:
+    raise TypeError(name + " must be a number or None")
+  
+  if isinstance(x, basestring):
+   parts = x.lower().split(",")
+   if parts[0] in ("top", "bottom"):
+    parts.reverse()
+   if parts[0] == "left":
+    self.x = 0
+   elif parts[0] == "right":
+    if width == None:
+     raise ValueError("width must be given when coordinates contain 'right'")
+    self.x = width
+   else:
+    self.x = int(parts[0])
+   if parts[1] == "top":
+    self.y = 0
+   elif parts[1] == "bottom":
+    if height == None:
+     raise ValueError("height must be given when coordinates contain 'bottom'")
+    self.y = height
+   else:
+    self.y = int(parts[1])
+
+def close_callback(window, data):
+ """Called when the window is closed."""
+ window.hide()
+ sys.exit(0)
+
+def expose(window, event):
+ """Makes a window transparent."""
+ cr = window.window.cairo_create()
+ # Sets the operator to clear which deletes everything below where an object is
+ # drawn
+ cr.set_operator(cairo.OPERATOR_CLEAR)
+ # Makes the mask fill the entire window
+ cr.rectangle(0.0, 0.0, *window.get_size())
+ # Deletes everything in the window (since the compositing operator is clear
+ # and mask fills the entire window
+ cr.fill()
+ # Set the compositing operator back to the default
+ cr.set_operator(cairo.OPERATOR_OVER)
+
+def main(argv):
+ # Check arguments
+ parser = argparse.ArgumentParser(prog=argv[0],
+           description="Causes an image follow your cursor.")
+ parser.add_argument("filename", help="The image to display")
+ parser.add_argument("-s", "--size", type=float, default=100.,
+                     help="Desired size of the image as a percentage")
+ parser.add_argument("-o", "--opacity", type=float, default=100.,
+                     help="Desired opacity of the image as a percentage")
+ parser.add_argument("-H", "--hotspot", default="top,left",
+                     help="Hotspot position ('x,y'; x and y can also be one of the"
+                          " keywords top, right, bottom, left)")
+ try:
+  args = parser.parse_args(argv[1:])
+ except SystemExit as exit:
+  return exit.code
+ image_filename = args.filename
+ size_p         = args.size * 0.01
+ opacity        = args.opacity * 0.01
+ hotspot        = args.hotspot
+ 
+ win = gtk.Window(type=gtk.WINDOW_POPUP)
+ win.set_title(os.path.basename(image_filename))
+ win.set_position(gtk.WIN_POS_MOUSE)
+ win.set_decorated(False)
+ win.set_resizable(False)
+ win.set_keep_above(True)
+ # Set opacity to 0 until the window is moved for the first time
+ #win.set_opacity(opacity)
+ 
+ win.set_role("display-follow-" + str(time.time()))
+ 
+ # Make sure that the process exits when the window is closed
+ win.connect("delete-event", close_callback)
+ 
+ # Makes the window paintable, so we can draw directly on it
+ win.set_app_paintable(True)
+ 
+ # This sets the windows colormap, so it supports transparency.
+ # This will only work if the wm support alpha channel
+ screen = win.get_screen()
+ rgba = screen.get_rgba_colormap()
+ win.set_colormap(rgba)
+ 
+ # This will actually make the window transparent.
+ win.connect("expose-event", expose)
+ 
+ # Load and scale the image
+ pixbuf = gtk.gdk.pixbuf_new_from_file(image_filename)
+ if size_p != 1:
+  pixbuf = gtk.gdk.pixbuf_new_from_file_at_size(image_filename,
+            int(round(pixbuf.get_width() * size_p)),
+            int(round(pixbuf.get_height() * size_p)))
+ 
+ # Calculate the hotspot
+ hotspot = Point(hotspot, width=pixbuf.get_width(), height=pixbuf.get_height())
+ 
+ # Hey, I just met you
+ # And this is crazy
+ # But I'm a gtk.WINDOW_POPUP
+ # So move me maybe?
+ 
+ # Add the image
+ img = gtk.image_new_from_pixbuf(pixbuf)
+ win.set_size_request(pixbuf.get_width(), pixbuf.get_height())
+ win.add(img)
+ win.show_all()
+ 
+ # Let the window update
+ for i in range(15):
+  gtk.main_iteration()
+ 
+ # Move window for the first time
+ root = gtk.gdk.get_default_root_window()
+ pos = last = root.get_pointer()[0:2]
+ win.window.raise_()
+ win.window.move(pos[0] - hotspot.x + 1, pos[1] - hotspot.y + 1)
+ win.set_opacity(opacity)
+ gtk.main_iteration(False)
+ 
+ # Main loop
+ while True:
+  gtk.main_iteration(False)
+  time.sleep(.025)
+  pos = root.get_pointer()[0:2]
+  gtk.main_iteration(False)
+  if pos != last:
+   last = pos
+   win.window.move(pos[0] - hotspot.x + 1, pos[1] - hotspot.y + 1)
+   time.sleep(.025)
+ 
+ return 0
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except (KeyboardInterrupt, EOFError):
+  pass

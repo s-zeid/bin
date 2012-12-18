@@ -1,0 +1,17 @@
+#!/bin/bash
+
+if [ "$2" = "CALLED_FROM_VNC" ]; then
+ VIA_PORT=$3
+ /usr/bin/ssh -f -p$VIA_PORT -L "$L":"$H":"$R" "$G" sleep 20
+else
+ VIA_HOST=$1
+ VIA_PORT=$2
+ OPTIONS=$3
+ DEST=$4
+ if [ "$OPTIONS" = "" ]; then
+  DEST=$3
+ fi
+
+ export VNC_VIA_CMD="$(dirname "$0")/$(basename "$0") unused CALLED_FROM_VNC $VIA_PORT"
+ vncviewer -via "$VIA_HOST" $OPTIONS $DEST
+fi

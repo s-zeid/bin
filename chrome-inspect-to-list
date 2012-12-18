@@ -1,0 +1,39 @@
+#!/usr/bin/env python
+
+import json
+import re
+import sys
+import urllib
+
+JS = """javascript:(function(pages) {
+ var a = document.createElement("a");
+ a.setAttribute("target", "_blank");
+ for (var i = 0; i < pages.length; i++) {
+  a.setAttribute("href", pages[i]); a.click();
+  a.removeAttribute("href");
+ }
+})(%s)"""
+
+def convert_list(pages, js=False):
+ for i in range(len(pages)):
+  pages[i] = re.sub(r"^.*? (http|file)", r"\1", pages[i])
+  pages[i] = re.sub(r" inspect$", r"", pages[i])
+  pages[i] = pages[i].replace("file:///home/scottywz", "http://[::1]/~")
+  pages[i] = re.sub("localhost6?", "[::1]", pages[i])
+  pages[i] = pages[i].replace("[::1]", "lady-labyrinth")
+ if js:
+  pages = json.dumps([urllib.quote(i) for i in pages])
+  pages = " ".join(JS.splitlines()) % pages
+ return pages
+
+def main(argv):
+ js = "-j" in argv or "--js" in argv
+ if sys.stdin.isatty():
+  print >> sys.stderr, "Paste the list of Web pages from chrome://inspect below, then press ^D:"
+ pages = convert_list(sys.stdin.read().splitlines(), js)
+ if sys.stdout.isatty():
+  print >> sys.stderr
+ print pages
+
+if __name__ == "__main__":
+ sys.exit(main(sys.argv))

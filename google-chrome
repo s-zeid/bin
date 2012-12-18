@@ -1,0 +1,6 @@
+#!/bin/sh
+
+/opt/google/chrome/google-chrome \
+--purge-memory-button \
+--enable-apps --enable-print-preview \
+"$@"

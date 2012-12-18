@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if [ -n "$2" ]; then
+ RE="\b$1/$2"
+else
+ RE="\b$1\b"
+fi
+
+if [ -e "/usr/share/nmap/nmap-services" ]; then
+ grep "$RE" /usr/share/nmap/nmap-services
+else
+ grep "$RE" /etc/services
+fi

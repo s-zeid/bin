@@ -1,0 +1,21 @@
+#!/bin/bash
+
+if [ $# -eq 0 ]; then
+ echo "Usage: $0 [-P|--preview] [pandoc-options] input-file"
+ echo "Output will be to input-file but with the extension changed to pdf"
+ exit 2
+fi
+
+if [ "$1" = "-P" -o "$1" = "--preview" ]; then
+ shift
+ PREVIEW=1
+else
+ PREVIEW=0
+fi
+
+IN="${!#}"
+OUT="`sed -r "s/(\.[^.]+)?$/.pdf/" <<< "$IN"`"
+
+pandoc "$@" -o "$OUT"
+
+if [ $PREVIEW -eq 1 ]; then xdg-open "$OUT"; fi
