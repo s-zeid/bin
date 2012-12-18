@@ -1,6 +1,6 @@
 #!/bin/sh
 
-case "$HOSTNAME" in
+case "`hostname --short`" in
  lady-labyrinth)
   xgamma -rgamma 0.670 -ggamma 0.648 -bgamma 0.704
   ;;
