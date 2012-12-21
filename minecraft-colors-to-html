@@ -13,7 +13,7 @@ COLORS.update(dict(
 ))
 
 def colors_to_html(text):
- text = text.split("\n")
+ text = text.decode("utf-8").split("\n")
  for i in range(len(text)):
   line = text[i]
   for j in COLORS:
