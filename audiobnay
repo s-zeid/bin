@@ -91,7 +91,10 @@ def convert_to_mp3(in_file, out_file, ffmpeg_path, lame_path,
    for i in in_tags:
     if i in EasyID3.valid_keys:
      out_tags[i] = in_tags[i]
-   out_tags.save()
+   try:
+    out_tags.save()
+   except ValueError:
+    pass   # No tags
 
 def main(argv):
  p = optparse.OptionParser(prog=os.path.basename(sys.argv[0]),
