@@ -101,7 +101,7 @@ else
    sleep 0.25
    OUT="`tail -n +$START "$LOG_FILE" | sed -r -e "s/$RE//"`" # read and remove prefix
    if [ "$CMD" = "sl" ]; then
-    which sl &>/dev/null && egrep -q "^Unknown command\." <<< "$OUT" && sl "$@"
+    which sl &>/dev/null && egrep -q "^Unknown command\." <<< "$OUT" && sl "$ARGS"
    fi
    echo "$OUT"
  esac
