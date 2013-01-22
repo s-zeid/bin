@@ -2,7 +2,7 @@
 
 """ Sets the APIC tag for a given MP3 file, replacing any APIC tag that already exists.
     
-    Usage: apic-set mp3-filename jpg-filename
+    Usage: apic-set img-filename mp3-filename [...]
 
     Dependencies: mutagen.id3, magic (optional, `mimetypes` will be used if magic
       is not available)
