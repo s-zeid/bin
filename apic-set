@@ -1,0 +1,95 @@
+#!/usr/bin/env python
+
+""" Sets the APIC tag for a given MP3 file, replacing any APIC tag that already exists.
+    
+    Usage: apic-set mp3-filename jpg-filename
+
+    Dependencies: mutagen.id3, magic (optional, `mimetypes` will be used if magic
+      is not available)
+
+    You can also import this as a module (rename it first?) and call
+    apic_set yourself.
+
+"""
+
+import mimetypes
+import os
+import sys
+
+from mutagen.id3 import ID3, APIC
+
+try:
+ import magic
+ HAVE_MAGIC = True
+except ImportError:
+ HAVE_MAGIC = False
+
+def apic_set(mp3, img, filename=None, mimetype=None,
+             mgc_file="/usr/share/misc/magic.mgc"):
+ """Sets the album art (APIC tag) for the given MP3 file to the given artwork file.
+
+img is either a string object containing the raw image data or an open file object
+to read from.
+
+If an APIC tag already exists, then it will be replaced.
+
+The MIME type is determined as follows:
+  1.  If the mimetype argument is set, then it will be used.
+  2.  libmagic will be used to get the MIME type.
+  3.  If libmagic fails or is not available, then mimetypes.guess_type will be used.
+      If filename is set, then it will be used.  Otherwise, if img is a file and
+      img.name is set, it will be used.  Otherwise, proceed to the next step.
+  4.  The MIME type is assumed to be image/jpeg.
+
+"""
+ if isinstance(img, basestring):
+  data = img
+ elif isinstance(img, file):
+  if not filename and getattr(img, "name", None):
+   filename = img.name
+  data = img.read()
+ else:
+  raise TypeError("img must be a string or file opened in read mode")
+ try:
+  id3 = ID3(mp3)
+ except:
+  raise Exception("Problem reading metadata")
+ if mimetype:
+  mime = mimetype
+ else:
+  try:
+   if not HAVE_MAGIC:
+    raise Exception("no magic; falling back to mimetypes")
+   mgc = magic.open(magic.MAGIC_MIME_TYPE)
+   r = mgc.load(mgc_file)
+   if r != 0:
+    mgc.close()
+    raise Exception("could not load mgc_file; falling back to mimetypes")
+   mime = mgc.buffer(data)
+   mgc.close()
+   if mime == None:
+    raise Exception("problem getting MIME type; falling back to mimetypes")
+  except Exception:
+   if filename:
+    mime = mimetypes.guess_type(filename)[0]
+    if not mime:
+     mime = "image/jpeg"
+   else:
+    mime = "image/jpeg"
+ id3.add(APIC(type=3, mime=mime, data=data, encoding=3, desc=filename))
+ id3.save()
+
+if __name__ == "__main__":
+ if len(sys.argv) < 3:
+  print "Usage: %s img-filename mp3-filename [...]" % os.path.basename(sys.argv[0])
+  sys.exit(2)
+ img_filename = sys.argv[1]
+ mp3_filenames = sys.argv[2:]
+ for m in mp3_filenames:
+  try:
+   with open(img_filename, "rb") as f:
+    apic_set(m, f)
+  except Exception:
+   raise
+   print "error: could not set album artwork for " + m
+   sys.exit(1)
