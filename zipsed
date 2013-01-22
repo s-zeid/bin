@@ -47,9 +47,9 @@ def main(argv):
   help="Input file (default is standard input)")
  parser.add_argument("--output", "-o", default=sys.stdout,
   help="Output file (default is standard output)")
- parser.add_argument("old_name", metavar="old_name",
+ parser.add_argument("old_name", metavar="old-name",
   help="The filename or search string to rename")
- parser.add_argument("new_name", metavar="new_name",
+ parser.add_argument("new_name", metavar="new-name",
   help="The new name or replacement pattern")
  args = parser.parse_args(argv[1:])
  
