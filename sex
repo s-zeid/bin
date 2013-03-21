@@ -2,8 +2,8 @@
 
 # One day in computer club, back when I was in high school, someone was teaching
 # basic Java to one of his friends by writing the Java equivalent of this program.
-# I found it funny and decided to port it to Python at the same time he was writing
-# his Java version.
+# I found it amusing and decided to port it to Python at the same time he was
+# writing his Java version.
 
 import re
 import sys
