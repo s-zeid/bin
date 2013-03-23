@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # CraftBukkit console client
-# Copyright (C) 2012 Scott Zeid.  X11 License.
+# Copyright (C) 2012-2013 Scott Zeid.  X11 License.
 
 # With no arguments, attaches to the screen/tmux instance on which the
 # server is running.
@@ -21,9 +21,9 @@
 #     backup, backup-worlds, backup-log, cmd, console
 #    it is passed to the script specified below as $SCRIPT.
 #  * Otherwise, it is passed to the CraftBukkit console as a command to
-# run, and output is printed to standard output 1/4 of a second after
-# the command is run.  Output is read from the log file and may be
-# slightly different from what you would see in the console.
+#    run, and output is printed to standard output 1/4 of a second after
+#    the command is run.  Output is read from the log file and may be
+#    slightly different from what you would see in the console.
 
 # Settings ################################################################
 
