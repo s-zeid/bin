@@ -9,6 +9,9 @@ fi
 if [ "$1" = "--stock-launcher" ]; then
  shift
  java -jar ~/opt/minecraft.jar "$@"
+elif [ "$1" = "--dev" ]; then
+ shift
+ java -jar ~/opt/minecraft-dev.jar "$@"
 else
  java -jar ~/opt/minecraft-MagicLauncher.jar "$@"
 fi
