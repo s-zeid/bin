@@ -1,0 +1,9 @@
+#!/bin/bash
+
+function psgrep() {
+ ps aux | head -n1
+ processes="`ps aux`"
+ grep "$@" <<< "$processes" | egrep -v "^$USER\\s+$$\s"
+}
+
+psgrep "$@"
