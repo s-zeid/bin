@@ -1,5 +1,7 @@
 #!/bin/bash
 
+LAUNCHERS=~/.minecraft/launchers
+
 JAVA_HOME="`readlink -f \`which java\` | sed -e "s:/bin/java::"`"
 if [ "`uname -i`" = "x86_64" ]; then
  export LD_LIBRARY_PATH="$JAVA_HOME/lib/amd64"
@@ -8,10 +10,10 @@ else
 fi
 if [ "$1" = "--stock-launcher" ]; then
  shift
- java -jar ~/opt/minecraft.jar "$@"
+ java -jar "$LAUNCHERS"/Minecraft.jar "$@"
 elif [ "$1" = "--dev" ]; then
  shift
- java -jar ~/opt/minecraft-dev.jar "$@"
+ java -jar "$LAUNCHERS"/MinecraftDev.jar "$@"
 else
- java -jar ~/opt/minecraft-MagicLauncher.jar "$@"
+ java -jar "$LAUNCHERS"/MagicLauncher.jar "$@"
 fi
