@@ -11,7 +11,8 @@ def entity2char(entity):
  entity = re.match(r"^&?(.*?);?$", entity).group(1)
  if re.match(r"^#x([0-9a-fA-F]+)$", entity):
   return unichr(int(entity[2:], 16))
- return unichr(htmlentitydefs.name2codepoint.get(entity, None))
+ codepoint = htmlentitydefs.name2codepoint.get(entity, None)
+ return unichr(codepoint) if codepoint else None
 
 def main(argv):
  if len(argv) != 2:
@@ -19,7 +20,12 @@ def main(argv):
   return 2
  
  arg1 = unicode(argv[1], "utf-8")
- print (char2entity if len(arg1) == 1 else entity2char)(arg1)
+ result = (char2entity if len(arg1) == 1 else entity2char)(arg1)
+ if result is not None:
+  print result
+ else:
+  print >> sys.stderr, "error: invalid entity %s" % repr(arg1)[1:]
+  return 1
  return 0
 
 if __name__ == "__main__":
