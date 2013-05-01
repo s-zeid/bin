@@ -22,7 +22,7 @@ def main(argv):
  arg1 = unicode(argv[1], "utf-8")
  result = (char2entity if len(arg1) == 1 else entity2char)(arg1)
  if result is not None:
-  print result
+  print result.encode("utf-8")
  else:
   print >> sys.stderr, "error: invalid entity %s" % repr(arg1)[1:]
   return 1
