@@ -5,7 +5,7 @@ import re
 import sys
 
 def char2entity(char):
- return "&%s;" % htmlentitydefs.codepoint2name.get(ord(char), "#x%s;" % hex(ord(char)))
+ return "&%s;" % htmlentitydefs.codepoint2name.get(ord(char), "#x%s" % hex(ord(char))[2:])
 
 def entity2char(entity):
  entity = re.match(r"^&?(.*?);?$", entity).group(1)
