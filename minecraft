@@ -10,10 +10,10 @@ else
 fi
 if [ "$1" = "--stock-launcher" ]; then
  shift
- java -jar "$LAUNCHERS"/Minecraft.jar "$@"
+ exec java -jar "$LAUNCHERS"/Minecraft.jar "$@"
 elif [ "$1" = "--dev" ]; then
  shift
- java -jar "$LAUNCHERS"/MinecraftDev.jar "$@"
+ exec java -jar "$LAUNCHERS"/MinecraftDev.jar "$@"
 else
- java -jar "$LAUNCHERS"/MagicLauncher.jar "$@"
+ exec java -jar "$LAUNCHERS"/MagicLauncher.jar "$@"
 fi
