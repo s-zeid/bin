@@ -3,16 +3,13 @@
 """Runs Minecraft.
 
 Launchers should be placed in `~/.minecraft/launchers/`, and a `launchers.yml`
-file describing each launcher should be placed in the same directory.
+file describing each launcher should be placed in the same directory.  These
+paths will be created if necessary, with sane defaults (i.e. it will try to
+run the stock launcher first, then the new dev launcher, then Magic Launcher
+as MagicLauncher.jar).  You will, however, need to manually add the JAR files.
 
 If no launcher is given, then the first launcher in launchers.yml that exists
 will be executed.
-
-If no launchers.yml file exists, then one with sane defaults (i.e. it will try
-to run the stock launcher first, then the new dev launcher, then Magic
-Launcher as MagicLauncher.jar) will be created.  The launchers directory will
-also be created if necessary; however, it probably won't be of any use if it
-contains no launchers.
 
 Optional environment variables:
 
@@ -22,6 +19,11 @@ Optional environment variables:
 
 If this script is invoked as `minceraft`, then it may or may not force the
 client to flip the E and C in the title screen logo.
+
+Depends on Python 2.7, python-yaml, and python-which:
+
+    fedora$ sudo yum install python-{yaml,which}
+    ubuntu$ sudo apt-get install python-{yaml,pip} && sudo pip install which
 
 launchers.yml should look like this (as an example):
 
@@ -99,12 +101,11 @@ def main(argv):
    print "launchers.yml " + __doc__.split("\n\nlaunchers.yml ")[1].rstrip()
   else:
    print "Usage: %s [--<launcher-name> or --help|-h or --] [launcher_args ...]" % argv[0]
-   print
    if len(argv) > 2 and argv[2] == "all":
     print __doc__.rstrip()
    else:
     print __doc__.split("\n\nlaunchers.yml ")[0] + "\n"
-    print "For information on the format of launchers.yml, run:"
+    print "For information on the format of launchers.yml, run:\n"
     print "    %s %s launchers.yml" % tuple(argv[:2])
   return 0
  
