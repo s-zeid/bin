@@ -1,0 +1,137 @@
+#!/usr/bin/env python
+
+"""Converts a Firefox sessionstore.js file to HTML.
+
+The sessionstore.js file should be given as an argument.  To read from standard
+input, use -.
+
+Currently does not support tab groups.  Tabs from multiple tab groups within a
+single window will be mixed together depending on the order they appear in the
+sessionstore.js file.
+
+"""
+
+import cgi
+import json
+import os
+import string
+import sys
+
+from collections import namedtuple
+
+def indent(s, n):
+ return "\n".join((" " * n) + line for line in s.splitlines())
+Template = namedtuple("Template", "template,indent")
+class Template(Template):
+ def compile(self): return string.Template(indent(self[0], self[1]))
+
+PAGE_TEMPLATE = Template("""<!DOCTYPE html>
+
+<html>
+ <head>
+  <title>Firefox Tabs</title>
+  <link rel="stylesheet" type="text/css" href="http://s.zeid.me/styles/global.css" />
+  <style type="text/css">
+   body { background: #f8f8f8; }
+   li { line-height: 22px; }
+   .tabs { padding-left: 0.5em; }
+   .tab { list-style-type: none; }
+   .tab .icon { float: left; width: 16px; height: 16px; margin-top: 0.2em; }
+   .tab .title { margin-left: 0.25em; }
+  </style>
+ </head>
+ <body>
+  <h1>Firefox Tabs</h1>
+  <section id="windows">
+   <ul>
+$window_list
+   </ul>
+  </section>
+$windows
+ </body>
+</html>
+""", 0).compile()
+
+WINDOW_LIST_TEMPLATE = Template("""<li>
+ <a href="#window-$n">Window $n ($n_tabs $tabs_word)</a>
+</li>""", 4).compile()
+
+WINDOW_TEMPLATE = Template("""<section id="window-$n" class="window">
+ <h2>Window $n ($n_tabs $tabs_word)</h2>
+ <ul class="tabs">
+$tabs
+ </ul>
+ <p><a href="#">Back to top</a></p>
+</section>""", 2).compile()
+
+TAB_TEMPLATE = Template("""<li class="tab">
+ <a href="$url" target="_blank" class="link">
+  <img src="$icon" alt="" class="icon" /><span class="title">$title</span>
+ </a>
+</li>""", 2).compile()
+
+TABS_WORD = ("tab", "tabs")
+
+def windows_from_sessionstore(store):
+ if isinstance(store, file):
+  store = store.read().decode("utf-8")
+ store = json.loads(store)
+ windows =  [[{"icon":  tab["attributes"].get("image", ""),
+               "title": tab["entries"][tab['index'] - 1].get("title",
+                         os.path.basename(tab["entries"][tab["index"] - 1]["url"])),
+               "url":   tab["entries"][tab['index'] - 1]["url"]}
+              for tab in window["tabs"]]
+             for window in store["windows"]]
+ return windows
+
+def html_escape_tab(tab):
+ return dict([(k, cgi.escape(tab[k], True).encode("utf-8")) for k in tab])
+
+def make_html(windows,
+              page_tpl=PAGE_TEMPLATE,
+              window_list_tpl=WINDOW_LIST_TEMPLATE,
+              window_tpl=WINDOW_TEMPLATE,
+              tab_tpl=TAB_TEMPLATE,
+              tabs_word=TABS_WORD):
+ return page_tpl.substitute(
+  windows="\n".join([
+   window_tpl.substitute(
+    n=i+1,
+    n_tabs=len(windows[i]),
+    tabs_word=tabs_word[int(len(windows[i]) > 1)],
+    tabs="\n".join([tab_tpl.substitute(html_escape_tab(tab))
+                    for tab in windows[i]])
+   )
+   for i in xrange(len(windows))
+  ]),
+  window_list="\n".join([window_list_tpl.substitute(
+   n=i+1, n_tabs=len(windows[i]), tabs_word=tabs_word[int(len(windows[i]) > 1)]
+  ) for i in xrange(len(windows))])
+ )
+
+def main(argv):
+ usage = "Usage: %s [--help|-h|-|[-- ]sessionstore-js]"
+ usage += "\n" + __doc__.rstrip()
+ if len(argv) == 3 and argv[1] == "--":
+  sessionstore_js = argv[2]
+ elif len(argv) == 2 and argv[1] == "-":
+  sessionstore_js = sys.stdin
+ elif len(argv) == 2 and argv[1] in ("--help", "-h"):
+  print usage % argv[0]
+  return 0
+ elif len(argv) not in (2, 3):
+  print usage % argv[0]
+  return 2
+ else:
+  sessionstore_js = argv[1]
+ 
+ if isinstance(sessionstore_js, basestring):
+  sessionstore_js = open(sessionstore_js, "rb")
+ print make_html(windows_from_sessionstore(sessionstore_js))
+ if sessionstore_js != sys.stdin:
+  sessionstore_js.close()
+ 
+ return 0
+
+if __name__ == "__main__":
+ sys.exit(main(sys.argv))
