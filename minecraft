@@ -20,9 +20,9 @@ Optional environment variables:
 If this script is invoked as `minceraft`, then it may or may not force the
 client to flip the E and C in the title screen logo.
 
-Depends on Python 2.7, python-yaml, and python-which:
+Depends on Python 2.7, PyYAML, and python-which:
 
-    fedora$ sudo yum install python-{yaml,which}
+    fedora$ sudo yum install python-which PyYAML
     ubuntu$ sudo apt-get install python-{yaml,pip} && sudo pip install which
 
 launchers.yml should look like this (as an example):
