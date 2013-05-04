@@ -20,7 +20,7 @@ import sys
 from collections import namedtuple
 
 def indent(s, n):
- return "\n".join((" " * n) + line for line in s.splitlines())
+ return "\n".join((" " * (n * int(not l.startswith("$")))) + l for l in s.splitlines())
 Template = namedtuple("Template", "template,indent")
 class Template(Template):
  def compile(self): return string.Template(indent(self[0], self[1]))
@@ -68,8 +68,8 @@ TAB_TEMPLATE = Template("""<li class="tab">
  <a href="$url" target="_blank" class="link">
   <img src="$icon" alt="" class="icon" /><span class="title">$title</span>
  </a>
-</li>""", 2).compile()
-
+</li>""", 4).compile()
+print >> sys.stderr, TAB_TEMPLATE.template
 TABS_WORD = ("tab", "tabs")
 
 def windows_from_sessionstore(store):
