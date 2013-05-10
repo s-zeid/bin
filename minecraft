@@ -126,9 +126,9 @@ def main(argv):
   args = argv[2:]
  elif len(argv) > 1 and argv[1].startswith("--"):
   want = argv[1][2:]
+  args = argv[2:]
   if want in launchers:
    launchers = {want: launchers[want]}
-   args = argv[2:]
   else:
    print >> sys.stderr, "warning: invalid launcher '%s'" % want
    return 2
@@ -182,7 +182,7 @@ def main(argv):
   environ.update(OrderedDict([(k, str(launcher["env"][k])) for k in launcher["env"]]))
 
  # Run (https://youtu.be/_PUtC6SC2h8)
- os.execvpe("java", ["java", "-jar", launcher["jar"]] + argv[1:], environ)
+ os.execvpe("java", ["java", "-jar", launcher["jar"]] + args, environ)
 
 def load_config(path=None, yml=None):
  if not path: path = DEFAULT_LAUNCHERS_PATH
