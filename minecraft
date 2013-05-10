@@ -125,8 +125,8 @@ def main(argv):
   want = None
   args = argv[2:]
  elif len(argv) > 1 and argv[1].startswith("--"):
-  if argv[1][2:] in launchers:
-   want = argv[1][2:]
+  want = argv[1][2:]
+  if want in launchers:
    launchers = {want: launchers[want]}
    args = argv[2:]
   else:
