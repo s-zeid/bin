@@ -13,9 +13,9 @@ if [ -z "$1" ]; then
  exit 2
 fi
 
-QUIET=""
+QUIET=0
 if egrep -qe "^(-q|--?quiet|-s|--?silent)$" <<< "$1"; then
- QUIET="--silent"
+ QUIET=1
  shift
 fi
 
@@ -24,5 +24,8 @@ if grep -q -v "x" <<< "$SIZE"; then
  SIZE="$1x$1"
 fi
 
+URL="http://placehold.it/$SIZE"
+TITLE="$SIZE Placeholder"
+
 shift
-curl "$QUIET" "http://placehold.it/$SIZE" | display -title "$SIZE Placeholder" "$@" -
+([ "$QUIET" -eq 1 ] && curl -s "$URL" || curl "$URL") | display -title "$TITLE" "$@" -
