@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Displays a placeholder window with the specified size.
+# The window border is not included in the window's size.
+# Omitting the height will result in a square window.
+
+# Known issue:  xwininfo reports a geometry of (width-1)x(height-1),
+#               even though the window is actually the correct size
+#               (at least for me).
+
+if [ -z "$1" ]; then
+ echo "Usage: $0 [-q|-quiet|-s|-silent] <width>[x<height>]"
+ exit 2
+fi
+
+QUIET=""
+if egrep -qe "^(-q|--?quiet|-s|--?silent)$" <<< "$1"; then
+ QUIET="--silent"
+ shift
+fi
+
+SIZE="$1"
+if grep -q -v "x" <<< "$SIZE"; then
+ SIZE="$1x$1"
+fi
+
+shift
+curl "$QUIET" "http://placehold.it/$SIZE" | display -title "$SIZE Placeholder" "$@" -
