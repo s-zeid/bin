@@ -24,7 +24,7 @@ import sys
 from collections import namedtuple
 
 Tag = namedtuple("Tag", "n,size")
-TagData = namedtuple("TagData", "tag,size,data")
+TagData = namedtuple("TagData", "i,tag,size,data")
 
 # Negative sizes indicate a -n-byte size prefix,
 # with the total size being  value of prefix + 2.
@@ -43,9 +43,8 @@ TAGS = {
 }
 FORMATS = {None: '', 2: '>H', 4: '>I', 8: '>Q'}
 
-def read_tag(data, ptr):
- n = struct.unpack("B", data[ptr:ptr+1])[0]
- ptr += 1
+def read_tag(fo, i):
+ n = struct.unpack("B", fo.read(1))[0]
  try:
   tag = TAGS[n]
  except KeyError:
@@ -53,32 +52,31 @@ def read_tag(data, ptr):
  size = tag.size
  if size < 0:
   prefix = -size
-  size = struct.unpack(FORMATS[prefix], data[ptr:ptr+prefix])[0]
-  data = data[ptr+prefix:ptr+prefix+size]
-  return TagData(tag, prefix + size, data)
- return TagData(tag, size, struct.unpack(FORMATS[size], data[ptr:ptr+size])[0])
+  size = struct.unpack(FORMATS[prefix], fo.read(prefix))[0]
+  data = fo.read(size)
+  return TagData(i, tag, prefix + size, data)
+ return TagData(i, tag, size, struct.unpack(FORMATS[size], fo.read(size))[0])
 
 def get_class_name(filename):
- with open(filename, "rb") as f:
-  data = f.read()
- 
- magic = struct.unpack(">I", data[0:4])[0]
- if magic != 0xCafeBabe:  # obligatory Emily reference... ಠ_ಠ
-  raise ValueError("'%s' is not a valid Java class file" % filename)
- cp = [None]
- cp_count = struct.unpack(">H", data[8:10])[0]
- ptr = 10
- i = 1
- while i < cp_count:
-  tag_data = read_tag(data, ptr)
-  cp += [tag_data]
-  ptr += tag_data.size + 1
-  if tag_data.size == 8:
-   cp += [None]
+ with open(filename, "rb") as fo:
+  magic = struct.unpack(">I", fo.read(4))[0]
+  if magic != 0xCafeBabe:  # obligatory Emily reference... ಠ_ಠ
+   raise ValueError("'%s' is not a valid Java class file" % filename)
+  fo.seek(4, os.SEEK_CUR)
+  cp = [None]
+  cp_count = struct.unpack(">H", fo.read(2))[0]
+  i = 1
+  while i < cp_count:
+   tag_data = read_tag(fo, i)
+   cp += [tag_data]
+   if tag_data.size == 8:
+    cp += [None]
+    #i += 1
    i += 1
-  i += 1
- cpsize = ptr - 11
- return cp[struct.unpack(">H", data[12+cpsize:14+cpsize])[0]-1].data
+  fo.seek(2, os.SEEK_CUR)
+  this_class = cp[struct.unpack(">H", fo.read(2))[0]]
+  class_name = cp[this_class.data + 1]
+  return class_name.data
 
 def main(argv):
  if len(argv) != 2:
