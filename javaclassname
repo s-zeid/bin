@@ -1,0 +1,91 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""Returns the name of a Java class.
+
+This outputs the name of a Java class in a given class file in the format
+expected by the javawrapper program in the Linux Kernel documentation (in
+java.txt).  It can be used as a drop-in replacement for its javaclassname.c
+helper program, or I've actually reimplemented javawrapper in Python if you
+would rather use that.  (My version is completely self-contained.  This
+script is provided separately in case it is useful to someone by itself.)
+
+Special thanks to Wikipedia for documenting the Java class file format:
+    <https://en.wikipedia.org/wiki/Java_class_file>
+
+Copyright (c) 2013 Scott Zeid.  Released under the X11 License.
+
+"""
+
+import os
+import struct
+import sys
+
+from collections import namedtuple
+
+Tag = namedtuple("Tag", "n,size")
+TagData = namedtuple("TagData", "tag,size,data")
+
+# Negative sizes indicate a -n-byte size prefix,
+# with the total size being  value of prefix + 2.
+TAGS = {
+ 1:  Tag(1,  -2),  
+ 3:  Tag(3,  4),
+ 4:  Tag(4,  4),
+ 5:  Tag(5,  8),
+ 6:  Tag(6,  8),
+ 7:  Tag(7,  2),
+ 8:  Tag(8,  2),
+ 9:  Tag(9,  4),
+ 10: Tag(10, 4),
+ 11: Tag(11, 4),
+ 12: Tag(12, 4)
+}
+FORMATS = {None: '', 2: '>H', 4: '>I', 8: '>Q'}
+
+def read_tag(data, ptr):
+ n = struct.unpack("B", data[ptr:ptr+1])[0]
+ ptr += 1
+ try:
+  tag = TAGS[n]
+ except KeyError:
+  raise ValueError("%d is not a valid tag" % n)
+ size = tag.size
+ if size < 0:
+  prefix = -size
+  size = struct.unpack(FORMATS[prefix], data[ptr:ptr+prefix])[0]
+  data = data[ptr+prefix:ptr+prefix+size]
+  return TagData(tag, prefix + size, data)
+ return TagData(tag, size, struct.unpack(FORMATS[size], data[ptr:ptr+size])[0])
+
+def get_class_name(filename):
+ with open(filename, "rb") as f:
+  data = f.read()
+ 
+ magic = struct.unpack(">I", data[0:4])[0]
+ if magic != 0xCafeBabe:  # obligatory Emily reference... ಠ_ಠ
+  raise ValueError("'%s' is not a valid Java class file" % filename)
+ cp = [None]
+ cp_count = struct.unpack(">H", data[8:10])[0]
+ ptr = 10
+ i = 1
+ while i < cp_count:
+  tag_data = read_tag(data, ptr)
+  cp += [tag_data]
+  ptr += tag_data.size + 1
+  if tag_data.size == 8:
+   cp += [None]
+   i += 1
+  i += 1
+ cpsize = ptr - 11
+ return cp[struct.unpack(">H", data[12+cpsize:14+cpsize])[0]-1].data
+
+def main(argv):
+ if len(argv) != 2:
+  print >> sys.stderr, "Usage: %s file.class" % argv[0]
+  return 2
+
+ print get_class_name(argv[1])
+
+if __name__ == "__main__":
+ sys.exit(main(sys.argv))
