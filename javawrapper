@@ -1,0 +1,154 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim: set fdm=marker:
+
+"""Runs a Java class file.
+
+This is a clean room reimplementation of the javawrapper from the Linux Kernel
+documentation (in java.txt), which can be used with binfmt_misc to directly
+execute a Java class file, as described further in java.txt.
+
+Unlike the javawrapper in java.txt, this does not require a binary helper to
+be compiled in order to read the class name.  Instead, the code that reads
+the Java class file is included right here.
+
+Copyright (c) 2013 Scott Zeid.  Released under the X11 License.
+
+"""
+
+import codecs
+import os
+import re
+import struct
+import subprocess
+import sys
+
+from collections import namedtuple
+
+class JavaWrapperError(StandardError): pass
+
+def main(argv):
+ if len(argv) != 2:
+  print >> sys.stderr, "Usage: %s file.class" % argv[0]
+  return 2
+ 
+ try:
+  run_class_file(argv[1], argv[2:], True)
+ except JavaWrapperError as exc:
+  print >> sys.stderr, "error:", exc
+  return 1
+
+def get_classpath(filename):
+ if isinstance(filename, unicode):
+  filename = filename.encode(getfilesystemencoding())
+ 
+ fqname = get_class_name(filename).encode(getfilesystemencoding()).strip("/")
+ fqpath, fqbase = os.path.split(os.path.normpath(fqname))
+ 
+ # try to resolve symlink if file basename is not "{fqbase}.class"
+ # one level at a time
+ depth = 0
+ while os.path.basename(filename) != fqbase + ".class":
+  filename = os.path.join(os.path.dirname(filename), os.readlink(filename))
+  depth += 1
+  if depth > 5: raise JavaWrapperError("Symbolic link depth is too deep")
+ 
+ # now get the directory to use in $CLASSPATH, and also check to see that
+ # the directory tree is valid (if the class is part of a package)
+ for path in [os.path.abspath(os.path.dirname(filename)),
+              os.path.realpath(os.path.dirname(filename))]:
+  if path.endswith(fqpath):
+   return path.rsplit(fqpath)[0] if fqpath else path
+ raise JavaWrapperError("%s should be in a path ending with %s"
+                         % (filename, fqpath))
+
+def run_class_file(filename, args=[], exec_=False, **subprocess_kwargs):
+ classpath = get_classpath(filename)
+ environ = os.environ.copy()
+ if "CLASSPATH" in environ:
+  if not re.search(r"(^|%s)(%s)(:|$)" % (os.path.pathsep, re.escape(classpath)),
+                   environ["CLASSPATH"], re.MULTILINE):
+   environ["CLASSPATH"] = classpath + ":" + environ["CLASSPATH"]
+ else:
+  environ["CLASSPATH"] = classpath
+ 
+ argv = ["java", get_class_name(filename)] + args
+ if exec_:
+  os.execvpe(argv[0], argv, environ)
+ else:
+  return subprocess.Popen(argv, env=environ, **subprocess_kwargs)
+
+def getfilesystemencoding():
+ """Returns the file system encoding, but substitutes UTF-8 for ASCII."""
+ enc = sys.getfilesystemencoding()
+ try:
+  if codecs.lookup(enc).name.lower() == "ascii":
+   return "utf-8"
+ except LookupError:
+  return "utf-8"
+ return enc
+
+### Java class name reading {{{1
+
+Tag = namedtuple("Tag", "n,size")
+TagData = namedtuple("TagData", "tag,size,data")
+
+# Negative sizes indicate a -n-byte size prefix,
+# with the total size being  value of prefix + 2.
+TAGS = {
+ 1:  Tag(1,  -2),  
+ 3:  Tag(3,  4),
+ 4:  Tag(4,  4),
+ 5:  Tag(5,  8),
+ 6:  Tag(6,  8),
+ 7:  Tag(7,  2),
+ 8:  Tag(8,  2),
+ 9:  Tag(9,  4),
+ 10: Tag(10, 4),
+ 11: Tag(11, 4),
+ 12: Tag(12, 4)
+}
+FORMATS = {None: '', 2: '>H', 4: '>I', 8: '>Q'}
+
+def read_tag(data, ptr):
+ n = struct.unpack("B", data[ptr:ptr+1])[0]
+ ptr += 1
+ try:
+  tag = TAGS[n]
+ except KeyError:
+  raise ValueError("%d is not a valid tag" % n)
+ size = tag.size
+ if size < 0:
+  prefix = -size
+  size = struct.unpack(FORMATS[prefix], data[ptr:ptr+prefix])[0]
+  data = data[ptr+prefix:ptr+prefix+size]
+  return TagData(tag, prefix + size, data)
+ return TagData(tag, size, struct.unpack(FORMATS[size], data[ptr:ptr+size])[0])
+
+def get_class_name(filename):
+ with open(filename, "rb") as f:
+  data = f.read()
+ 
+ magic = struct.unpack(">I", data[0:4])[0]
+ if magic != 0xCafeBabe:  # obligatory Emily reference... ಠ_ಠ
+  raise JavaWrapperError("'%s' is not a valid Java class file" % filename)
+ cp = [None]
+ cp_count = struct.unpack(">H", data[8:10])[0]
+ ptr = 10
+ i = 1
+ while i < cp_count:
+  tag_data = read_tag(data, ptr)
+  cp += [tag_data]
+  ptr += tag_data.size + 1
+  if tag_data.size == 8:
+   cp += [None]
+   i += 1
+  i += 1
+ cpsize = ptr - 11
+ return cp[struct.unpack(">H", data[12+cpsize:14+cpsize])[0]-1].data
+
+if __name__ == "__main__":  #{{{1
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
