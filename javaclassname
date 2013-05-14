@@ -83,7 +83,7 @@ def main(argv):
   print >> sys.stderr, "Usage: %s file.class" % argv[0]
   return 2
 
- print get_class_name(argv[1])
+ print get_class_name(argv[1]).replace("/", ".")
 
 if __name__ == "__main__":
  sys.exit(main(sys.argv))
