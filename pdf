@@ -16,6 +16,6 @@ fi
 IN="${!#}"
 OUT="`sed -r "s/(\.[^.]+)?$/.pdf/" <<< "$IN"`"
 
-pandoc "$@" -o "$OUT"
+pandoc --latex-engine=xelatex "$@" -o "$OUT"
 
 if [ $PREVIEW -eq 1 ]; then xdg-open "$OUT"; fi
