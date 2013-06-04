@@ -9,6 +9,8 @@ def char2entity(char):
 
 def entity2char(entity):
  entity = re.match(r"^&?(.*?);?$", entity).group(1)
+ if re.match(r"^#([0-9]+)$", entity):
+  return unichr(int(entity[1:], 10))
  if re.match(r"^#x([0-9a-fA-F]+)$", entity):
   return unichr(int(entity[2:], 16))
  codepoint = htmlentitydefs.name2codepoint.get(entity, None)
