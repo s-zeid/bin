@@ -1,4 +1,8 @@
 #!/bin/bash
 
+if [ -d "$HOME/bin" ] ; then
+ PATH="$HOME/bin:$PATH"
+fi
+
 screen -ls | grep "[0-9]\.byobu"
 [ $? -eq 0 ] && exec byobu -xr byobu || exec byobu
