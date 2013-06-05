@@ -1,0 +1,49 @@
+#!/bin/bash
+
+PENGUIN_PLAIN='<")'
+PENGUIN_COLOR='[0;31;40;91;100m<[39;49;37;40;100m")[39;49m'
+PENGUIN_SCREEN='%{= KR}<%{-}%{= Kw}")%{-} '
+PENGUIN_SCREEN_STATUS='{= KR}<{-}{= Kw}"){-} '
+
+if [ "$1" = "-h" -o "$1" = "--help" ]; then
+ cat <<USAGE
+Usage: $0 [OPTION]
+
+Displays a simple ASCII art penguin head.
+
+Options (only the first argument is considered):
+
+    -c, --color, --colour          Displays the penguin in colour using ANSI
+                                   escape sequences.  This is the default if
+                                   standard output is a terminal.
+    
+    -p, --plain,                   Displays the penguin without ANSI escape
+    -n, --no-color, --no-colour    sequences.  This is the default if standard
+                                   output is not a terminal.
+    
+    -s, --screen                   Displays the penguin using GNU screen escape
+                                   sequences.
+    
+    -S, --screen-hardstatus        Displays the penguin using GNU screen escape
+                                   sequences, using ^E as the escape sequences
+                                   (for use inside of a window's hardstatus).
+    
+    -h, --help                     Displays this help and exits.
+
+USAGE
+ exit
+fi
+
+PENGUIN="$PENGUIN_PLAIN"
+if [ "$1" = "-s" -o "$1" = "--screen" ]; then
+ PENGUIN="$PENGUIN_SCREEN"
+elif [ "$1" = "-S" -o "$1" = "--screen-status" ]; then
+ PENGUIN="$PENGUIN_SCREEN_STATUS"
+elif [ "$1" != "-p" -a "$1" != "--plain" -a \
+       "$1" != "-n" -a "$1" != "--no-color" -a "$1" != "--no-colour" ]; then
+ if [ -t 1 -o "$1" = "-c" -o "$1" = "--color" -o "$1" = "--colour" ]; then
+  PENGUIN="$PENGUIN_COLOR"
+ fi
+fi
+
+printf '%s\n' "$PENGUIN"
