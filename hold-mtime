@@ -1,25 +1,55 @@
 #!/usr/bin/env python
 
-"""Holds a file's modification time so you can reset it after modifying it."""
+"""Holds a file's modification time so you can reset it after modifying it.
+
+If no command is given, then the modification time will be printed to standard
+error along with a prompt to press Enter after modifying the file.  Once Enter
+is pressed, the modification time will be reset.
+
+If a command is given, then that command will be run before resetting the
+modification time.  Any argument consisting solely of a percent sign ("%")
+will be replaced with the filename being held, unless the command is preceded
+by an argument of two dashes ("--").
+
+"""
 
 import os
+import subprocess
 import sys
 
-def hold_mtime(path):
+def hold_mtime(path, cmd=None):
+ if not isinstance(cmd, (tuple, list)):
+  cmd = None
+ 
  mtime = os.stat(path).st_mtime
- print >> sys.stderr, "The file's modification time is currently %s." % str(mtime)
- print >> sys.stderr, "Press enter to reset the file's modification time. ",
- raw_input()
+ if cmd:
+  r = subprocess.call(cmd)
+ else:
+  r = None
+  print >> sys.stderr, "The file's modification time is currently %s." % str(mtime)
+  print >> sys.stderr, "Press enter to reset the file's modification time. ",
+  raw_input()
+ 
  atime = os.stat(path).st_atime
  os.utime(path, (atime, mtime))
+ 
+ return r
 
 def main(argv):
- if len(argv) != 2:
-  print >> sys.stderr, "Usage: %s file" % argv[0]
+ if len(argv) < 2:
+  print >> sys.stderr, "Usage: %s file [command [args ...]]" % argv[0]
   print >> sys.stderr
   print >> sys.stderr, __doc__.rstrip()
+  print >> sys.stderr
   return 2
- hold_mtime(argv[1])
+ 
+ path = argv[1]
+ if argv[2] == "--":
+  cmd = argv[3:]
+ else:
+  cmd  = [(path if arg == "%" else arg) for arg in argv[2:]]
+ 
+ hold_mtime(path, cmd)
 
 if __name__ == "__main__":
  sys.exit(main(sys.argv))
