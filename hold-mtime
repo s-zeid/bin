@@ -1,0 +1,25 @@
+#!/usr/bin/env python
+
+"""Holds a file's modification time so you can reset it after modifying it."""
+
+import os
+import sys
+
+def hold_mtime(path):
+ mtime = os.stat(path).st_mtime
+ print >> sys.stderr, "The file's modification time is currently %s." % str(mtime)
+ print >> sys.stderr, "Press enter to reset the file's modification time. ",
+ raw_input()
+ atime = os.stat(path).st_atime
+ os.utime(path, (atime, mtime))
+
+def main(argv):
+ if len(argv) != 2:
+  print >> sys.stderr, "Usage: %s file" % argv[0]
+  print >> sys.stderr
+  print >> sys.stderr, __doc__.rstrip()
+  return 2
+ hold_mtime(argv[1])
+
+if __name__ == "__main__":
+ sys.exit(main(sys.argv))
