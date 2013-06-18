@@ -44,7 +44,7 @@ def main(argv):
   return 2
  
  path = argv[1]
- if argv[2] == "--":
+ if len(argv) > 2 and argv[2] == "--":
   cmd = argv[3:]
  else:
   cmd  = [(path if arg == "%" else arg) for arg in argv[2:]]
