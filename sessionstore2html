@@ -33,7 +33,7 @@ PAGE_TEMPLATE = Template("""<!DOCTYPE html>
  <head>
   <meta charset="$charset" />
   <title>Firefox Tabs</title>
-  <link rel="stylesheet" type="text/css" href="http://s.zeid.me/styles/global.css" />
+  <link rel="stylesheet" type="text/css" href="https://s.zeid.me/styles/basic.css" />
   <style type="text/css">
    body { background: #f8f8f8; }
    li { line-height: 22px; }
@@ -42,6 +42,10 @@ PAGE_TEMPLATE = Template("""<!DOCTYPE html>
    .tab .icon { float: left; width: 16px; height: 16px; margin-top: 0.2em; }
    .tab .title { margin-left: 0.25em; }
   </style>
+  <!--[if lt IE 9]>
+   <script type="text/javascript" src="https://s.zeid.me/html5shiv.js"></script>
+   <script type="text/javascript" src="https://s.zeid.me/html5shiv-printshiv.js"></script>
+  <![endif]-->
  </head>
  <body>
   <h1>Firefox Tabs</h1>
