@@ -8,4 +8,4 @@ THUNDERBIRD_CMD=/usr/bin/thunderbird
 # Custom install
 #THUNDERBIRD_CMD=/home/scottywz/opt/thunderbird/thunderbird
 
-$THUNDERBIRD_CMD $@
+exec $THUNDERBIRD_CMD $@
