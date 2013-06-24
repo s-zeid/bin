@@ -4,4 +4,4 @@
 
 CHROMIUM_CMD=/usr/bin/chromium-browser
 
-$CHROMIUM_CMD --enable-sync --purge-memory-button $@
+exec $CHROMIUM_CMD --enable-sync --purge-memory-button $@
