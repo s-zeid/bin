@@ -20,6 +20,9 @@
 #  * If the first argument is one of:
 #     backup, backup-worlds, backup-log, cmd, console
 #    it is passed to the script specified below as $SCRIPT.
+#  * If the first argument is --script:
+#    All subsequent arguments will be passed to the script specified in
+#    $SCRIPT.
 #  * Otherwise, it is passed to the CraftBukkit console as a command to
 #    run, and output is printed to standard output 1/4 of a second after
 #    the command is run.  Output is read from the log file and may be
@@ -93,6 +96,9 @@ else
   backup|backup-worlds|backup-log|cmd|console)
    "$SCRIPT" "$CMD" "$@"
    exit $?
+   ;;
+  --script)
+   "$SCRIPT" "$@"
    ;;
   *)
    ARGS=$@   # so we can quote the whole string without splitting on spaces
