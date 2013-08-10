@@ -52,4 +52,7 @@ def main(argv):
  hold_mtime(path, cmd)
 
 if __name__ == "__main__":
- sys.exit(main(sys.argv))
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  print
