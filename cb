@@ -93,7 +93,7 @@ else
    systemctl_cmd "$SYSTEMCTL_CMD" "$@"
    exit $?
    ;;
-  backup|backup-worlds|backup-log|cmd|console)
+  backup|backup-worlds|backup-plugins|backup-log|cmd|console)
    "$SCRIPT" "$CMD" "$@"
    exit $?
    ;;
