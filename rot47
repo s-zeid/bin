@@ -1,0 +1,12 @@
+#!/bin/bash
+
+function rot47() {
+ tr '\!-~' 'P-~\!-O'
+}
+
+if [ $# -gt 0 ]; then
+ rot47 <<< "$@"
+ exit $?
+fi
+
+rot47
