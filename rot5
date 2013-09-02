@@ -1,0 +1,12 @@
+#!/bin/bash
+
+function rot5() {
+ tr '0-9' '5-90-4'
+}
+
+if [ $# -gt 0 ]; then
+ rot5 <<< "$@"
+ exit $?
+fi
+
+rot5
