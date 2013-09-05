@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Copyright (c) 2013 Scott Zeid <s.zeid.me>.  Released under the X11 License.
+
+TMP_DIR=".tmp_extract-osx-pkg_$$"
+
+if which xar &>/dev/null; then true; else
+ echo "error: xar is required to use this tool" >&2
+ exit 1
+fi
+
+if [ $# -eq 0 -o $# -gt 2 ]; then
+ echo "Usage: $0 pkg-file [output-dir]" >&2
+ exit 2
+fi
+
+PKG_NAME=$1
+PKG_BASE=$(basename "$PKG_NAME")
+PKG_ABS=$(readlink -m "$PKG_NAME")
+OUT_DIR=$2
+
+if [ -z "$OUT_DIR" ]; then
+ OUT_DIR=$(sed -e 's/\.pkg$//g' <<< "$PKG_BASE")
+fi
+
+mkdir -p "$OUT_DIR"
+cd "$OUT_DIR"
+mkdir -p "$TMP_DIR"
+cd "$TMP_DIR"
+xar -xf "$PKG_ABS" Payload
+cd ..
+cat "$TMP_DIR"/Payload | zcat | cpio -id
+rm -rf "$TMP_DIR"
