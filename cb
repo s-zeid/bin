@@ -33,7 +33,7 @@
 # General #########################
 
 # Script to use to start, stop, and manage CraftBukkit
-SCRIPT=~/opt/craftbukkit/systemd/craftbukkit.sh
+SCRIPT=~/opt/minecraft-servers/craftbukkit/systemd/craftbukkit.sh
 # Log file to read command output from
 LOG_FILE=~/opt/craftbukkit/server.log
 
