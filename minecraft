@@ -262,8 +262,6 @@ def load_config(path=None, yml=None):
     return False
    # Expand first argument of the command (the path to the executable)
    cmd[0] = os.path.expanduser(cmd[0])
-   if not os.path.isabs(cmd[0]):
-    cmd[0] = os.path.expanduser(os.path.join(config["cwd"], cmd[0]))
    # Save result
    l["cmd"] = cmd
   # Normalize arguments
