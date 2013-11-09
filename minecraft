@@ -14,7 +14,7 @@ will be executed.
 Optional environment variables:
 
  - `MC_LAUNCHERS_PATH`:  Overrides the launchers directory
- - `MC_LAUNCHERS_YML`:   Overrides the path to launchers.yml.
+ - `MC_LAUNCHERS_YML`:   Overrides the path to `launchers.yml`.
     May be either relative to the launchers directory or absolute.
 
 If this script is invoked as `minceraft`, then it may or may not force the
@@ -27,11 +27,15 @@ Depends on Python 2.7, PyYAML, and python-which:
 
 launchers.yml should look like this (as an example):
 
+    cwd: ..
     launchers:
      dev:
       jar:     MinecraftDev.jar
+      args:    ["--proxyHost", "some.proxy.example", "--proxyPort", 1080]
      stock:
       jar:     Minecraft.jar
+     command:
+      cmd:     ["some-command"]
 
 The ordering of the launchers is important.  Without arguments, the first
 launcher in the list whose JAR file exists will be executed.
@@ -40,8 +44,28 @@ launcher in the list whose JAR file exists will be executed.
 the launcher's JAR file.
 
 (optional) `env` is a mapping of environment variables to pass to the launcher.
-This can be specified either as part of a launcher or globally.  Environment
+This may be specified either as part of a launcher or globally.  Environment
 variables specified inside a launcher key will take precedence.
+
+(optional) `args` is a list of arguments to be passed to a launcher JAR or
+command.  This must be specified as part of a launcher.
+
+(optional) `cmd` lets you specify a command to run instead of `java`.  Having
+this set will cause `jar` to be ignored.  If this is a list, then the first
+element is the executable to run and the others are arguments; if it is a
+string, then it is just the executable.  `args` can be used with either form;
+arguments in `args` are added to the end of the command.  This must be
+specified as part of a launcher.
+
+(optional) `cwd` lets you specify a directory to change into before running
+a launcher.  It may be specified either as part of a launcher or globally.  If
+defined inside a launcher, it will override the global `cwd` and be evaluated
+relative to the global `cwd` if the launcher `cwd` is not an absolute path.
+
+By default, the working directory used for the launcher is the directory
+containing `launchers.yml`.
+
+Any `~/` at the beginning of a path is expanded to the user's home directory.
 
 """
 
@@ -112,6 +136,9 @@ def main(argv):
  config = load_config(
   os.environ.get("MC_LAUNCHERS_PATH", None), os.environ.get("MC_LAUNCHERS_YML", None)
  )
+ if not config:
+  print >> sys.stderr, "error: could not load configuration"
+  return 6
  launchers = config["launchers"]
  if len(launchers) == 0:
   print >> sys.stderr, "error: no launchers configured in launchers.yml"
@@ -138,11 +165,11 @@ def main(argv):
  
  # Find which launcher to use.  If want == None (i.e. no launcher was requested
  # as argv[1]), then we will use the first launcher whose .jar file exists and
- # is a regular file (or a symlink to one).
+ # is a regular file (or a symlink to one), or is an arbitrary command.
  launcher = None
  for name in launchers:
   l = launchers[name]
-  if os.path.isfile(os.path.realpath(l["jar"])):
+  if l.get("cmd") or os.path.isfile(os.path.realpath(l["jar"])):
    launcher = l
    break
   elif want:
@@ -181,8 +208,16 @@ def main(argv):
  if launcher.get("env", None):
   environ.update(OrderedDict([(k, str(launcher["env"][k])) for k in launcher["env"]]))
 
+ # Get any launcher arguments from launchers.yml and put them *before* the user's arguments
+ if launcher.get("args", None):
+  args = launcher["args"] + args
+ 
+ # Determine the command to run
+ cmd = launcher.get("cmd", ["java", "-jar", launcher["jar"]]) + args
+ 
  # Run (https://youtu.be/_PUtC6SC2h8)
- os.execvpe("java", ["java", "-jar", launcher["jar"]] + args, environ)
+ os.chdir(launcher.get("cwd", config["cwd"]))
+ os.execvpe(cmd[0], cmd, environ)
 
 def load_config(path=None, yml=None):
  if not path: path = DEFAULT_LAUNCHERS_PATH
@@ -204,14 +239,53 @@ def load_config(path=None, yml=None):
  config["path"] = path
  config["yml"] = yml
  
- # Expand JAR paths and convert string wmclass values to single-element lists
+ if "cwd" not in config:
+  config["cwd"] = path
+ elif not os.path.isabs(config["cwd"]):
+  config["cwd"] = os.path.normpath(os.path.join(path, config["cwd"]))
+ 
+ # Various transformations on config values
  launchers = config["launchers"]
  for name in launchers:
   l = launchers[name]
+  if "jar" not in l:
+   l["jar"] = ""
+  # Expand JAR paths
   if not os.path.isabs(l["jar"]):
    l["jar"] = os.path.expanduser(os.path.join(path, l["jar"]))
+  # Command option
+  if l.get("cmd", None):
+   cmd = normalize_yaml_list(l["cmd"])
+   # Make sure it has at least one argument
+   if len(cmd) < 1 or cmd[0] == "":
+    print >> sys.stderr, "error: launcher commands in launchers.yml cannot be empty"
+    return False
+   # Expand first argument of the command (the path to the executable)
+   cmd[0] = os.path.expanduser(cmd[0])
+   if not os.path.isabs(cmd[0]):
+    cmd[0] = os.path.expanduser(os.path.join(config["cwd"], cmd[0]))
+   # Save result
+   l["cmd"] = cmd
+  # Normalize arguments
+  if l.get("args", None):
+   l["args"] = normalize_yaml_list(l["args"])
+  # Expand working directory
+  if l.get("cwd", None):
+   cwd = os.path.expanduser(l["cwd"])
+   if not os.path.isabs(cwd):
+    cwd = os.path.expanduser(os.path.join(config["cwd"], cwd))
+   l["cwd"] = cwd
  
  return config
+
+def normalize_yaml_list(l):
+ # Normalize type
+ if isinstance(l, basestring):
+  l = [l]
+ if not isinstance(l, (list, tuple)):
+  l = [str(l)]
+ l = list(l)
+ return l
 
 # We need to load YAML mappings as OrderedDicts in order to preserve the ordering
 # of launcher entries while keeping the launchers.yml schema clean and easy to
