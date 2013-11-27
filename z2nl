@@ -1,0 +1,12 @@
+#!/bin/bash
+
+if [ "$1" = "-E" ]; then
+ # Add ANSI escape reset code to the end of each line
+ # Useful when doing, e.g., `z2nl -E /proc/N/environ` in a shell
+ shift
+ $0 "$@" | sed -e 's/$/[0m/g'
+elif [ -n "$1" ]; then
+ cat "$1" | "$0"
+else
+ tr '\000' '\n'
+fi
