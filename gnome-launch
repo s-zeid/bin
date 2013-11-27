@@ -45,12 +45,12 @@ def gnome_shell_launch(app):
  initial_search      = "Shell.AppSystem.get_default().initial_search"
  
  try:
-  gnome_shell_exec(lookup_app_for_path + "(%s).launch(0, [], -1)" % path_esc)
+  gnome_shell_eval(lookup_app_for_path + "(%s).launch(0, [], -1)" % path_esc)
  except ShellJSError as exc:
   message = exc.data.get("message", "")
   if message.startswith(lookup_app_for_path) and message.endswith(" is null"):
    try:
-    gnome_shell_exec(initial_search + "([%s])[0].launch(0, [], -1)" % name_esc)
+    gnome_shell_eval(initial_search + "([%s])[0].launch(0, [], -1)" % name_esc)
    except ShellJSError as exc:
     message = exc.data.get("message", "")
     if message.startswith(initial_search) and message.endswith(" is undefined"):
@@ -60,7 +60,7 @@ def gnome_shell_launch(app):
   else:
    raise
 
-def gnome_shell_exec(js):
+def gnome_shell_eval(js):
  bus = dbus.SessionBus()
  Shell = bus.get_object("org.gnome.Shell", "/org/gnome/Shell")
  success, result = Shell.Eval(js, dbus_interface="org.gnome.Shell")
