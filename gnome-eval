@@ -1,8 +1,46 @@
-#!/bin/bash
+#!/usr/bin/env python
 
-# By Aleksandar Jovanov:
-# http://aleksandarjovanov.blogspot.com/2012/10/having-fun-with-gnome-shell.html
+# Thanks to Aleksandar Jovanov:
+# <http://aleksandarjovanov.blogspot.com/2012/10/having-fun-with-gnome-shell.html>
 
-exec dbus-send --session --type=method_call \
-               --dest='org.gnome.Shell' '/org/gnome/Shell' \
-               org.gnome.Shell.Eval string:$1
+import json
+import os
+import sys
+
+import dbus
+
+class ShellJSError(Exception):
+ def __init__(self, data):
+  self.data = json.loads(data)
+ def __str__(self):
+  error  = "%s\n" % self.data.get("message", "unknown error")
+  keys = ["message", "fileName", "lineNumber", "stack"]
+  names = {"fileName":"Filename", "lineNumber": "Line number", "stack": "Stack trace"}
+  sep = {"stack": "\n"}
+  for key in keys[1:]:
+   error += "%s:%s%s\n" % (names[key], sep.get(key, " "), self.data.get(key, "unknown"))
+  for key in self.data.keys():
+   if key not in keys:
+    error += "%s: %s\n" % (key, self.data[key])
+  return error.rstrip()
+
+def gnome_shell_eval(js):
+ bus = dbus.SessionBus()
+ Shell = bus.get_object("org.gnome.Shell", "/org/gnome/Shell")
+ success, result = Shell.Eval(js, dbus_interface="org.gnome.Shell")
+ if not success:
+  raise ShellJSError(result)
+
+def main(argv):
+ if len(argv) != 2:
+  print >> sys.stderr, "Usage: %s {js}" % argv[0]
+  return 2
+ 
+ try:
+  gnome_shell_eval(argv[1])
+ except ShellJSError as exc:
+  print >> sys.stderr, "JS error: %s" % exc
+  return 1
+
+if __name__ == "__main__":
+ sys.exit(main(sys.argv))
