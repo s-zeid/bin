@@ -36,6 +36,10 @@ launchers.yml should look like this (as an example):
       jar:     Minecraft.jar
      command:
       cmd:     ["some-command"]
+     usb:
+      extends: stock
+      args:    ["--workDir", "/media/USB/Minecraft/.minecraft"]
+     portable: usb
 
 The ordering of the launchers is important.  Without arguments, the first
 launcher in the list whose JAR file exists will be executed.
@@ -61,6 +65,13 @@ specified as part of a launcher.
 a launcher.  It may be specified either as part of a launcher or globally.  If
 defined inside a launcher, it will override the global `cwd` and be evaluated
 relative to the global `cwd` if the launcher `cwd` is not an absolute path.
+
+(optional) `extends` indicates that a launcher *extends* another launcher.  It
+will inherit all properties of the other launcher, and those properties may be
+overridden.  As a shortcut, if you just want to make an alias of another
+launcher, you may define your alias using just a string instead of a mapping
+(e.g. "launcher-name: other-launcher").  This must be specified as part of a
+launcher.
 
 By default, the working directory used for the launcher is the directory
 containing `launchers.yml`.
@@ -247,12 +258,27 @@ def load_config(path=None, yml=None):
  # Various transformations on config values
  launchers = config["launchers"]
  for name in launchers:
-  l = launchers[name]
+  process_launcher_entry(name, launchers, config)
+ return config
+
+def process_launcher_entry(name, launchers, config):
+ l = launchers[name]
+ # Handle launchers that extend another launcher
+ if isinstance(l, basestring):
+  l = dict(extends=l)
+ if "extends" in l:
+  original = l
+  alias = original["extends"]
+  del original["extends"]
+  launchers[name] = l = process_launcher_entry(alias, launchers, config).copy()
+  del l["__values_expanded"]
+  l.update(original)
+ if "__values_expanded" not in l:
   if "jar" not in l:
    l["jar"] = ""
   # Expand JAR paths
   if not os.path.isabs(l["jar"]):
-   l["jar"] = os.path.expanduser(os.path.join(path, l["jar"]))
+   l["jar"] = os.path.expanduser(os.path.join(config["path"], l["jar"]))
   # Command option
   if l.get("cmd", None):
    cmd = normalize_yaml_list(l["cmd"])
@@ -273,8 +299,9 @@ def load_config(path=None, yml=None):
    if not os.path.isabs(cwd):
     cwd = os.path.expanduser(os.path.join(config["cwd"], cwd))
    l["cwd"] = cwd
- 
- return config
+  # Mark these values as expanded
+  l["__values_expanded"] = True
+ return l
 
 def normalize_yaml_list(l):
  # Normalize type
