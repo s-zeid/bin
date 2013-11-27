@@ -33,14 +33,18 @@ def gnome_shell_eval(js):
 
 def main(argv):
  if len(argv) != 2:
-  print >> sys.stderr, "Usage: %s {js}" % argv[0]
+  print >> sys.stderr, "Usage: %s {js, or - to read from stdin}" % argv[0]
   return 2
  
+ js = sys.stdin.read() if argv[1] == "-" else argv[1]
  try:
-  gnome_shell_eval(argv[1])
+  gnome_shell_eval(js)
  except ShellJSError as exc:
   print >> sys.stderr, "JS error: %s" % exc
   return 1
 
 if __name__ == "__main__":
- sys.exit(main(sys.argv))
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
