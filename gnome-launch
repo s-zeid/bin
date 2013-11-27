@@ -26,16 +26,12 @@ class ShellJSError(Exception):
     error += "%s: %s\n" % (key, self.data[key])
   return error.rstrip()
 
-def main(argv):
- if len(argv) != 2:
-  print >> sys.stderr, "Usage: %s {app name or .desktop file}" % argv[0]
-  return 2
- 
- try:
-  gnome_shell_launch(argv[1])
- except AppNotFoundError as exc:
-  print >> sys.stderr, "error: %s" % exc
-  return 1
+def gnome_shell_eval(js):
+ bus = dbus.SessionBus()
+ Shell = bus.get_object("org.gnome.Shell", "/org/gnome/Shell")
+ success, result = Shell.Eval(js, dbus_interface="org.gnome.Shell")
+ if not success:
+  raise ShellJSError(result)
 
 def gnome_shell_launch(app):
  name_esc = json.dumps(app)
@@ -60,12 +56,19 @@ def gnome_shell_launch(app):
   else:
    raise
 
-def gnome_shell_eval(js):
- bus = dbus.SessionBus()
- Shell = bus.get_object("org.gnome.Shell", "/org/gnome/Shell")
- success, result = Shell.Eval(js, dbus_interface="org.gnome.Shell")
- if not success:
-  raise ShellJSError(result)
+def main(argv):
+ if len(argv) != 2:
+  print >> sys.stderr, "Usage: %s {app name or .desktop file}" % argv[0]
+  return 2
+ 
+ try:
+  gnome_shell_launch(argv[1])
+ except AppNotFoundError as exc:
+  print >> sys.stderr, "error: %s" % exc
+  return 1
 
 if __name__ == "__main__":
- sys.exit(main(sys.argv))
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
