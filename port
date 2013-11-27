@@ -7,7 +7,7 @@ else
 fi
 
 if [ -e "/usr/share/nmap/nmap-services" ]; then
- grep "$RE" /usr/share/nmap/nmap-services
+ grep -i "$RE" /usr/share/nmap/nmap-services
 else
- grep "$RE" /etc/services
+ grep -i "$RE" /etc/services
 fi
