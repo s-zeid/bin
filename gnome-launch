@@ -9,6 +9,8 @@ import sys
 
 import dbus
 
+class ShellJSError(Exception): pass
+
 def main(argv):
  if len(argv) != 2:
   print >> sys.stderr, "Usage: %s desktop-file" % argv[0]
@@ -22,8 +24,23 @@ def gnome_shell_launch(desktop_file):
 
 def gnome_shell_exec(js):
  bus = dbus.SessionBus()
- proxy = bus.get_object("org.gnome.Shell", "/org/gnome/Shell")
- proxy.Eval(js, dbus_interface="org.gnome.Shell")
+ Shell = bus.get_object("org.gnome.Shell", "/org/gnome/Shell")
+ success, result = Shell.Eval(js, dbus_interface="org.gnome.Shell")
+ if not success:
+  raise ShellJSError(pretty_error(result))
+
+def pretty_error(result):
+ result = json.loads(result)
+ error  = "%s\n" % result.get("message", "unknown error")
+ keys = ["message", "fileName", "lineNumber", "stack"]
+ names = {"fileName":"Filename", "lineNumber": "Line number", "stack": "Stack trace"}
+ sep = {"stack": "\n"}
+ for key in keys[1:]:
+  error += "%s:%s%s\n" % (names[key], sep.get(key, " "), result.get(key, "unknown"))
+ for key in result.keys():
+  if key not in keys:
+   error += "%s: %s\n" % (key, result[key])
+ return error.rstrip()
 
 if __name__ == "__main__":
  sys.exit(main(sys.argv))
