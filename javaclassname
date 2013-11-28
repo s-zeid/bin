@@ -23,74 +23,148 @@ import sys
 
 from collections import namedtuple
 
-Tag = namedtuple("Tag", "n,size,name")
-TagData = namedtuple("TagData", "i,tag,size,data")
-Version = namedtuple("Version", "major,minor")
-
-class Tag(Tag):
- def __repr__(self):    return self.name
- def __str__(self):     return repr(self)
- def __unicode__(self): return repr(self)
-
-# Negative sizes indicate a -n-byte size prefix,
-# with the total size being  value of prefix + 2.
-TAGS = {
- 1:  Tag(1,  -2, "UTF8"),
- 3:  Tag(3,  4,  "INTEGER"),
- 4:  Tag(4,  4,  "FLOAT"),
- 5:  Tag(5,  8,  "LONG"),
- 6:  Tag(6,  8,  "DOUBLE"),
- 7:  Tag(7,  2,  "CLASS_REFERENCE"),
- 8:  Tag(8,  2,  "STRING_REFERENCE"),
- 9:  Tag(9,  4,  "FIELD_REFERENCE"),
- 10: Tag(10, 4,  "METHOD_REFERENCE"),
- 11: Tag(11, 4,  "INTERFACE_METHOD_REFERENCE"),
- 12: Tag(12, 4,  "NAME_AND_TYPE_DESCRIPTOR")
-}
-for n in TAGS.keys(): TAGS[TAGS[n].name] = TAGS[n]
-FORMATS = {None: '', 2: '>H', 4: '>I', 8: '>Q'}
-
-def read_tag(fo, i):
- n = struct.unpack("B", fo.read(1))[0]
- try:
-  tag = TAGS[n]
- except KeyError:
-  raise ValueError("%d is not a valid tag" % n)
- size = tag.size
- if size < 0:
-  prefix = -size
-  size = struct.unpack(FORMATS[prefix], fo.read(prefix))[0]
-  data = fo.read(size)
-  return TagData(i, tag, prefix + size, data)
- return TagData(i, tag, size, struct.unpack(FORMATS[size], fo.read(size))[0])
+try:
+ from cStringIO import StringIO
+except ImportError:
+ from StringIO import StringIO
 
 def get_class_name(filename):
- with open(filename, "rb") as fo:
-  magic = struct.unpack(">I", fo.read(4))[0]
-  if magic != 0xCafeBabe:  # obligatory Emily reference... ಠ_ಠ
-   raise ValueError("'%s' is not a valid Java class file" % filename)
-  version = Version(minor=struct.unpack(">H", fo.read(2)),
-                    major=struct.unpack(">H", fo.read(2)))
-  cp = [None]
-  cp_count = struct.unpack(">H", fo.read(2))[0]
-  i = 1
-  while i < cp_count:
-   tag_data = read_tag(fo, i)
-   cp += [tag_data]
-   i += 1
-  fo.seek(2, os.SEEK_CUR)
-  this_class_i = struct.unpack(">H", fo.read(2))[0]
-  this_class = cp[this_class_i]
-  class_name = cp[this_class.data]
-  return class_name.data
+ return JavaClass(filename).this_class
 
-def print_cp(cp):
- for i in range(len(cp)):
-  if i != 0:
-   if cp[i]:
-    print "%d: [%d] %s" % (i, cp[i].tag.n, cp[i].data)
-   else:
-    print "%d: None" % i
+class JavaClass(object):
+ __slots__ = ["version", "cp", "access_flags", "this_class", "super_class",
+              "interfaces", "fields", "methods", "attributes",
+              "source_file"]
+ 
+ Tag       = namedtuple("Tag",       "n,size,type,name")
+ TagData   = namedtuple("TagData",   "i,tag,size,data")
+ Version   = namedtuple("Version",   "major,minor")
+ Interface = namedtuple("Interface", "i,class_info")
+ Field     = namedtuple("Field",     "i,access,name,descriptor,attributes")
+ Method    = namedtuple("Method",    "i,access,name,descriptor,attributes")
+ Attribute = namedtuple("Attribute", "i,name,data")
+ 
+ class Tag(Tag):
+  def __repr__(self):    return self.name
+  def __str__(self):     return repr(self)
+  def __unicode__(self): return repr(self)
+ 
+ # Negative sizes indicate a -n-byte size prefix,
+ # with the total size being the value of prefix + 2.
+ # Floating point sizes have a total size of floor(n), and
+ # indicate that the tag is a list of unsigned 16-bit indices
+ # into the table.
+ TAGS = {
+  1:  Tag(1,  -2, str,   "UTF8"),
+  3:  Tag(3,  4,  int,   "INTEGER"),
+  4:  Tag(4,  4,  float, "FLOAT"),
+  5:  Tag(5,  8,  long,  "LONG"),
+  6:  Tag(6,  8,  float, "DOUBLE"),
+  7:  Tag(7,  2,  int,   "CLASS_REFERENCE"),
+  8:  Tag(8,  2,  int,   "STRING_REFERENCE"),
+  9:  Tag(9,  4., [int], "FIELD_REFERENCE"),
+  10: Tag(10, 4., [int], "METHOD_REFERENCE"),
+  11: Tag(11, 4., [int], "INTERFACE_METHOD_REFERENCE"),
+  12: Tag(12, 4., [int], "NAME_AND_TYPE_DESCRIPTOR")
+ }
+ for n in TAGS.keys(): TAGS[TAGS[n].name] = TAGS[n]
+ FORMATS = {None: '', 2: '>H', 4: '>I', 8: '>Q'}
+ 
+ def __init__(self, filename):
+  with open(filename, "rb") as fo:
+   magic = struct.unpack(">I", fo.read(4))[0]
+   if magic != 0xCafeBabe:  # obligatory Emily reference... ಠ_ಠ
+    raise ValueError("'%s' is not a valid Java class file" % filename)
+   self.version = self.Version(minor=struct.unpack(">H", fo.read(2)),
+                               major=struct.unpack(">H", fo.read(2)))
+   self.cp = self.__read_table(fo, None, 1)
+   fo.seek(2, os.SEEK_CUR)
+   self.this_class  = self.cp[self.cp[self.__read_ptr(fo)].data].data
+   self.super_class = self.cp[self.cp[self.__read_ptr(fo)].data].data
+   self.interfaces = self.__read_table(fo, self.__read_interface)
+   self.fields = self.__read_table(fo, self.__read_field)
+   self.methods = self.__read_table(fo, self.__read_method)
+   self.attributes = self.read_attributes(fo)
+   self.source_file = self.cp[self.read_data(self.attributes["SourceFile"].data, 2)].data
+ def read_attributes(self, fo):
+  return dict([(i.name, i) for i in self.__read_table(fo, self.__read_attribute)])
+ @classmethod
+ def read_data(cls, fo, size, use_raw=False):
+  if isinstance(fo, basestring):
+   fo = StringIO(fo)
+  raw = fo.read(size)
+  fmt = cls.FORMATS.get(size, None)
+  if fmt and not use_raw:
+   return struct.unpack(cls.FORMATS[size], raw)[0]
+  return raw
+ @classmethod
+ def __read_ptr(cls, fo):
+  return cls.read_data(fo, 2)
+ @classmethod
+ def __read_table(cls, fo, callback=None, starting_index=0):
+  if not callback:
+   callback = cls.__read_tag
+  count = struct.unpack(">H", fo.read(2))[0]
+  table = list((None,)) * starting_index
+  i = starting_index
+  while i < count:
+   tag_data = callback(fo, i)
+   table += [tag_data]
+   i += 1
+  return table
+ @classmethod
+ def __read_tag(cls, fo, i):
+  n = struct.unpack("B", fo.read(1))[0]
+  try:
+   tag = cls.TAGS[n]
+  except KeyError:
+   raise ValueError("%d is not a valid tag" % n)
+  size = tag_size = tag.size
+  if size < 0:
+   # size reflects prefix length; raw data length is prefix + size
+   prefix = -size
+   size = cls.read_data(fo, prefix)
+   data_size = prefix + size
+   fmt = None
+  elif isinstance(size, float):
+   # this is a list of 2-byte pointers
+   data_size = size = int(size)
+   fmt = cls.FORMATS[2][0] + (cls.FORMATS[2][1:] * (data_size / 2))
+  else:
+   # regular tag
+   data_size = size
+   fmt = cls.FORMATS.get(data_size, None)
+   unpack_tuple = True
+  data_raw  = fo.read(size)
+  data = struct.unpack(fmt, data_raw) if fmt else data_raw
+  if isinstance(data, (list, tuple)) and not isinstance(tag.type, (list, tuple)):
+   data = data[0]
+  return cls.TagData(i, tag, data_size, data)
+ def __read_interface(self, fo, i):
+  return self.Interface(i, self.cp[self.__read_tag(fo, i)].data)
+ def __read_field_or_method(self, fo, i, type_):
+  flags      = self.__read_ptr(fo)
+  name       = self.cp[self.__read_ptr(fo)].data
+  descriptor = self.cp[self.__read_ptr(fo)].data
+  attributes = self.__read_table(fo, self.__read_attribute)
+  return type_(i, flags, name, descriptor, attributes)
+ def __read_field(self, fo, i):
+  return self.__read_field_or_method(fo, i, self.Field)
+ def __read_method(self, fo, i):
+  return self.__read_field_or_method(fo, i, self.Method)
+ def __read_attribute(self, fo, i):
+  name = self.cp[self.__read_ptr(fo)].data
+  size = self.read_data(fo, 4)
+  data = self.read_data(fo, size, True)
+  return self.Attribute(i, name, data)
+ 
+ def print_cp(self):
+  for i in range(len(self.cp)):
+   if self.cp[i] != None:
+    if self.cp[i]:
+     print "%d(%d): [%d] %s" % (i, self.cp[i].i, self.cp[i].tag.n, self.cp[i].data)
+    else:
+     print "%d: None" % i
 
 def main(argv):
  if len(argv) != 2:
