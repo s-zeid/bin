@@ -68,7 +68,7 @@ def run_class_file(filename, args=[], exec_=False, **subprocess_kwargs):
  if "CLASSPATH" in environ:
   if not re.search(r"(^|%s)(%s)(:|$)" % (os.path.pathsep, re.escape(classpath)),
                    environ["CLASSPATH"], re.MULTILINE):
-   environ["CLASSPATH"] = classpath + ":" + environ["CLASSPATH"]
+   environ["CLASSPATH"] = classpath + os.pathsep + environ["CLASSPATH"]
  else:
   environ["CLASSPATH"] = classpath
  
