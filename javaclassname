@@ -23,24 +23,31 @@ import sys
 
 from collections import namedtuple
 
-Tag = namedtuple("Tag", "n,size")
+Tag = namedtuple("Tag", "n,size,name")
 TagData = namedtuple("TagData", "i,tag,size,data")
+Version = namedtuple("Version", "major,minor")
+
+class Tag(Tag):
+ def __repr__(self):    return self.name
+ def __str__(self):     return repr(self)
+ def __unicode__(self): return repr(self)
 
 # Negative sizes indicate a -n-byte size prefix,
 # with the total size being  value of prefix + 2.
 TAGS = {
- 1:  Tag(1,  -2),  
- 3:  Tag(3,  4),
- 4:  Tag(4,  4),
- 5:  Tag(5,  8),
- 6:  Tag(6,  8),
- 7:  Tag(7,  2),
- 8:  Tag(8,  2),
- 9:  Tag(9,  4),
- 10: Tag(10, 4),
- 11: Tag(11, 4),
- 12: Tag(12, 4)
+ 1:  Tag(1,  -2, "UTF8"),
+ 3:  Tag(3,  4,  "INTEGER"),
+ 4:  Tag(4,  4,  "FLOAT"),
+ 5:  Tag(5,  8,  "LONG"),
+ 6:  Tag(6,  8,  "DOUBLE"),
+ 7:  Tag(7,  2,  "CLASS_REFERENCE"),
+ 8:  Tag(8,  2,  "STRING_REFERENCE"),
+ 9:  Tag(9,  4,  "FIELD_REFERENCE"),
+ 10: Tag(10, 4,  "METHOD_REFERENCE"),
+ 11: Tag(11, 4,  "INTERFACE_METHOD_REFERENCE"),
+ 12: Tag(12, 4,  "NAME_AND_TYPE_DESCRIPTOR")
 }
+for n in TAGS.keys(): TAGS[TAGS[n].name] = TAGS[n]
 FORMATS = {None: '', 2: '>H', 4: '>I', 8: '>Q'}
 
 def read_tag(fo, i):
@@ -62,21 +69,28 @@ def get_class_name(filename):
   magic = struct.unpack(">I", fo.read(4))[0]
   if magic != 0xCafeBabe:  # obligatory Emily reference... ಠ_ಠ
    raise ValueError("'%s' is not a valid Java class file" % filename)
-  fo.seek(4, os.SEEK_CUR)
+  version = Version(minor=struct.unpack(">H", fo.read(2)),
+                    major=struct.unpack(">H", fo.read(2)))
   cp = [None]
   cp_count = struct.unpack(">H", fo.read(2))[0]
   i = 1
   while i < cp_count:
    tag_data = read_tag(fo, i)
    cp += [tag_data]
-   if tag_data.size == 8:
-    cp += [None]
-    #i += 1
    i += 1
   fo.seek(2, os.SEEK_CUR)
-  this_class = cp[struct.unpack(">H", fo.read(2))[0]]
-  class_name = cp[this_class.data + 1]
+  this_class_i = struct.unpack(">H", fo.read(2))[0]
+  this_class = cp[this_class_i]
+  class_name = cp[this_class.data]
   return class_name.data
+
+def print_cp(cp):
+ for i in range(len(cp)):
+  if i != 0:
+   if cp[i]:
+    print "%d: [%d] %s" % (i, cp[i].tag.n, cp[i].data)
+   else:
+    print "%d: None" % i
 
 def main(argv):
  if len(argv) != 2:
