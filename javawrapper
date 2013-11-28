@@ -18,10 +18,13 @@ Copyright (c) 2013 Scott Zeid.  Released under the X11 License.
 
 import codecs
 import os
+import posixpath
 import re
+import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 
 from collections import namedtuple
 
@@ -38,17 +41,21 @@ def main(argv):
   print >> sys.stderr, "error:", exc
   return 1
 
+def split_class_name(class_name, sep="."):
+ fqname = class_name.encode(getfilesystemencoding()).replace(".", "/").strip("/")
+ fqpath, fqbase = posixpath.split(posixpath.normpath(fqname))
+ return fqpath.replace("/", sep), fqbase
+ 
 def get_classpath(filename):
  if isinstance(filename, unicode):
   filename = filename.encode(getfilesystemencoding())
  
- fqname = get_class_name(filename).encode(getfilesystemencoding()).strip("/")
- fqpath, fqbase = os.path.split(os.path.normpath(fqname))
+ fqpath, fqbase = split_class_name(get_class_name(filename), "/")
  
  # try to resolve symlink if file basename is not "{fqbase}.class"
  # one level at a time
  depth = 0
- while os.path.basename(filename) != fqbase + ".class" and os.path.islink(filename):
+ while not filename_matches_class(filename, fqbase) and os.path.islink(filename):
   filename = os.path.join(os.path.dirname(filename), os.readlink(filename))
   depth += 1
   if depth > 5: raise JavaWrapperError("Symbolic link depth is too deep")
@@ -62,7 +69,15 @@ def get_classpath(filename):
  raise JavaWrapperError("%s should be in a path ending with %s"
                          % (filename, fqpath))
 
-def run_class_file(filename, args=[], exec_=False, **subprocess_kwargs):
+def filename_matches_class(filename, class_name=None):
+ if not class_name:
+  class_name = split_class_name(get_class_name(filename), "/")[1]
+ filename  = os.path.basename(filename)
+ base, ext = os.path.splitext(filename)
+ return base + ext.lower() == class_name + ".class"
+
+def run_class_file(filename, args=[], exec_=False, classpath_prepend="",
+                   **subprocess_kwargs):
  classpath = get_classpath(filename)
  environ = os.environ.copy()
  if "CLASSPATH" in environ:
@@ -72,11 +87,39 @@ def run_class_file(filename, args=[], exec_=False, **subprocess_kwargs):
  else:
   environ["CLASSPATH"] = classpath
  
+ if classpath_prepend:
+  environ["CLASSPATH"] = classpath_prepend + os.pathsep + environ["CLASSPATH"]
+ 
+ if not filename_matches_class(filename):
+  tmp_dir = tempfile.mkdtemp()
+  class_dir, class_name = split_class_name(get_class_name(filename), "/")
+  class_dir = os.path.join(tmp_dir, class_dir.replace("/", os.sep))
+  if not os.path.samefile(tmp_dir, class_dir):
+   os.makedirs(class_dir)
+  new_filename = os.path.join(class_dir, class_name + ".class")
+  if hasattr(os, "symlink"):
+   os.symlink(os.path.realpath(filename), new_filename)
+  else:
+   shutil.copy2(filename, new_filename)
+  if classpath_prepend:
+   classpath_prepend = class_dir + os.pathsep + classpath_prepend
+  else:
+   classpath_prepend = class_dir
+  ret = None
+  try:
+   ret = run_class_file(filename=new_filename, args=args, exec_=False,
+                        classpath_prepend=classpath_prepend, **subprocess_kwargs)
+  except:
+   raise
+  finally:
+   shutil.rmtree(tmp_dir)
+  return ret
+ 
  argv = ["java", get_class_name(filename)] + args
  if exec_:
   os.execvpe(argv[0], argv, environ)
  else:
-  return subprocess.Popen(argv, env=environ, **subprocess_kwargs)
+  return subprocess.call(argv, env=environ, **subprocess_kwargs)
 
 def getfilesystemencoding():
  """Returns the file system encoding, but substitutes UTF-8 for ASCII."""
