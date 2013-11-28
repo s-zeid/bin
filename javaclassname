@@ -31,6 +31,9 @@ except ImportError:
 def get_class_name(filename):
  return JavaClass(filename).this_class
 
+def get_source_file(filename):
+ return JavaClass(filename).source_file
+
 class JavaClass(object):
  __slots__ = ["version", "cp", "access_flags", "this_class", "super_class",
               "interfaces", "fields", "methods", "attributes",
@@ -167,11 +170,18 @@ class JavaClass(object):
      print "%d: None" % i
 
 def main(argv):
- if len(argv) != 2:
-  print >> sys.stderr, "Usage: %s file.class" % argv[0]
+ usage = "Usage: %s [-s|--source] file.class" % argv[0]
+ if len(argv) < 2:
+  print >> sys.stderr, usage
   return 2
-
- print get_class_name(argv[1]).replace("/", ".")
+ 
+ if argv[1] in ("-s", "--source"):
+  if len(argv) < 3:
+   print >> sys.stderr, usage
+   return 2
+  print get_source_file(argv[2])
+ else:
+  print get_class_name(argv[1]).replace("/", ".")
 
 if __name__ == "__main__":
  sys.exit(main(sys.argv))
