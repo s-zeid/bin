@@ -48,7 +48,7 @@ def get_classpath(filename):
  # try to resolve symlink if file basename is not "{fqbase}.class"
  # one level at a time
  depth = 0
- while os.path.basename(filename) != fqbase + ".class":
+ while os.path.basename(filename) != fqbase + ".class" and os.path.islink(filename):
   filename = os.path.join(os.path.dirname(filename), os.readlink(filename))
   depth += 1
   if depth > 5: raise JavaWrapperError("Symbolic link depth is too deep")
