@@ -1,0 +1,51 @@
+#!/usr/bin/env python
+
+import argparse
+import subprocess
+import os
+import sys
+
+def main(argv):
+ if len(argv) < 3 or "--" not in argv[2:]:
+  print >> sys.stderr, "Usage: %s {arguments to isolate [...]} -- [arguments to check]"
+  return 2
+ remove = os.environ.get("REMOVE", "") in ("1", "true", "yes")
+ 
+ pivot = argv.index("--")
+ found, values, other_args = isolate_argument(argv[pivot + 1:], *argv[1:pivot])
+ if found:
+  for arg in (values if not remove else other_args):
+   print arg
+  return 0
+ return 1
+
+def isolate_argument(args, *prefixes):
+ other_args = []
+ want = 0
+ found = False
+ values = []
+ for arg in args:
+  if want == 1:
+   values += [arg]
+   want = None
+  else:
+   want = 0
+  for prefix in prefixes:
+   if not prefix.endswith("=") and arg == prefix:
+    want = 1
+    found = True
+    break
+   elif (prefix.endswith("=") or not prefix.startswith("--")) and arg.startswith(prefix):
+    values += [arg.replace(prefix, "", 1)]
+    found = True
+    want = None
+    break
+  if want == 0:
+   other_args += [arg]
+ return found, values, other_args
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
