@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 """Holds a file's modification time so you can reset it after modifying it.
 

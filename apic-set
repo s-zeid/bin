@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 """ Sets the APIC tag for a given MP3 file, replacing any APIC tag that already exists.
     

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 """ Extracts album art from an MP3 file.  Album art is assumed to be in JPEG format.  Only the first artwork found is extracted.
 
