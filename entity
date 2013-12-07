@@ -19,7 +19,7 @@ def entity2char(entity):
 
 def main(argv):
  p = argparse.ArgumentParser()
- p.add_argument("-x", "--hex", "--code-point", dest="code_point", action="store_true",
+ p.add_argument("-x", "--code-point", "--hex", dest="code_point", action="store_true",
                 help="show the version number and exit")
  p.add_argument("input", metavar="entity-or-char",
                 help="the character to convert to an entity or"
