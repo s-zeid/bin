@@ -6,6 +6,8 @@
 FIREFOX_CMD=/usr/bin/firefox
 
 # Custom install
-#FIREFOX_CMD=/home/scottywz/opt/firefox/firefox
+if [ -x ~/opt/holly/holly ]; then
+ FIREFOX_CMD=~/opt/holly/holly
+fi
 
 exec $FIREFOX_CMD $@
