@@ -32,7 +32,7 @@ def number(n):
   if n < 10 ** (power + 3):
    if n % (10 ** power) == 0:
     return number(n / 10 ** power) + " " + STRINGS["powers"][i]
-   return number(n / (10 ** power) * (10 ** power)) + " " + number(n % (10 ** power))
+   return number(n / (10 ** power) * (10 ** power)) + ", " + number(n % (10 ** power))
  raise ValueError("%d is too big for this function to undestand" % n)
 
 def main(argv):
