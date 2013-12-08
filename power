@@ -1,0 +1,172 @@
+#!/usr/bin/env python2
+
+import os
+import socket
+import SocketServer
+import sys
+
+from collections import OrderedDict
+
+POWER_SUPPLY_ROOT = "/sys/class/power_supply"
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8888
+
+def main(argv):
+ if ((len(argv) > 3 and argv[1]     in ("-d", "--daemon")) or
+     (len(argv) > 2 and argv[1] not in ("-d", "--daemon")) or
+     (len(argv) > 1 and argv[1]     in ("-h", "--help"))):
+  print >> sys.stderr, "Usage: %s [{-d|--daemon}] [host][:port]"
+  return 2
+ 
+ host = port = root = None
+ if len(argv) > 1:
+  if argv[1] in ("-d", "--daemon"):
+   # TODO: background
+   args = {}
+   if len(argv) > 2:
+    hostport = argv[2]
+    if ":" not in hostport:
+     hostport += ":"
+    host, port = hostport.split(":")
+   daemon(host=host, port=int(port) if port else None)
+   return 0
+  else:
+   hostport = argv[1]
+   if ":" not in hostport:
+    hostport += ":"
+   host, port = hostport.split(":")
+ 
+ print format_power(power(root, host, port))
+
+class PowerHandler(SocketServer.BaseRequestHandler):
+ def handle(self):
+  self.request.send(format_power(power()))
+  self.request.shutdown(socket.SHUT_RDWR)
+  self.request.close()
+
+class PowerServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
+ pass
+
+def daemon(host=None, port=None):
+ server = PowerServer((host or DEFAULT_HOST, port or DEFAULT_PORT), PowerHandler)
+ try:
+  server.serve_forever()
+ finally:
+  server.shutdown()
+
+def format_power(power):
+ r = ""
+ for k in power:
+  r += "%s=%s\n" % (k, power[k])
+ return r
+
+def power(root=None, host=None, port=None):
+ if host or port:
+  return power_remote(host, port)
+ return power_local(root)
+
+def power_remote(host=None, port=None):
+ s = ""
+ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+ try:
+  sock.connect((host or DEFAULT_HOST, port or DEFAULT_PORT))
+  while True:
+   data = sock.recv(1024)
+   if not data:
+    break
+   s += data
+ finally:
+  sock.close()
+ 
+ r = make_status_dict()
+ for line in s.splitlines():
+  key, value = line.split("=")
+  r[key] = value
+ return r
+
+def make_status_dict():
+ d = OrderedDict()
+ d["human"]         = None
+ d["supply"]        = None
+ d["status"]        = None
+ d["percent"]       = None
+ d["remaining"]     = None
+ d["hours"]         = None
+ d["minutes"]       = None
+ d["seconds"]       = None
+ d["total_seconds"] = None
+ return d
+
+def power_local(root=None):
+ power_supplies = sorted(os.listdir(root or POWER_SUPPLY_ROOT))
+ ac = None
+ battery = None
+ status = make_status_dict()
+ for i in power_supplies:
+  type_ = read(i, "type").lower()
+  if type_ == "mains" and ac == None:
+   ac = i
+  elif type_ == "battery" and battery == None:
+   battery = i
+  if ac and battery:
+   break
+ 
+ if ac == None and battery == None:
+  status["supply"] = status["status"] = "Unknown"
+ else:
+  current_now = float(read(battery, "current_now") or 0)
+  charge_now  = float(read(battery, "charge_now") or 0)
+  charge_full = float(read(battery, "charge_full") or 0)
+  capacity    = float(read(battery, "capacity") or 0)
+  if capacity:
+   status["percent"] = int(round(capacity))
+  elif charge_full > 0:
+   status["percent"] = int(round(charge_now / charge_full) * 100)
+  
+  battery_status = read(battery, "status").lower()
+  if battery_status in ("discharging", "charging"):
+   if current_now > 0:
+    top = charge_full - charge_now if battery_status == "charging" else charge_now
+    status["total_seconds"] = int(round(3600 * top / current_now))
+    status["hours"]         = int(round(status["total_seconds"] / 3600))
+    status["minutes"]       = int(round(status["total_seconds"] / 60)) % 60
+    status["seconds"]       = int(round(status["total_seconds"] % 60))
+    status["remaining"]     = "%02d:%02d" % (status["minutes"], status["seconds"])
+    if status["hours"]:
+     status["remaining"]    = str(status["hours"]) + ":" + status["remaining"]
+  if battery_status == "discharging":
+   status["supply"] = "Battery"
+   status["status"] = "Discharging"
+  elif read(ac, "online") == "1":
+   status["supply"] = "AC Adapter"
+   if battery_status != "":
+    if status["percent"] < 100 or battery_status == "charging":
+     status["status"] = "Charging"
+    else:
+     status["status"] = "Charged"
+   else:
+    status["status"] = "Plugged in"
+ 
+ if battery_status != "":
+  if status["status"].lower() == "charged":
+   status["human"] = status["status"]
+  else:
+   status["human"] = "%s, %s%%, %s remaining" % (status["status"], status["percent"],
+                                                 status["remaining"])
+ else:
+  status["human"] = status["status"]
+ 
+ return status
+
+def read(supply, field, root=None):
+ path = os.path.join(root or POWER_SUPPLY_ROOT, supply or "", field or "")
+ if os.path.exists(path):
+  with open(path, "rb") as f:
+   return f.read().strip()
+ return ""
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
