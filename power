@@ -111,6 +111,7 @@ def power_local(root=None):
   if ac and battery:
    break
  
+ battery_status = ""
  if ac == None and battery == None:
   status["supply"] = status["status"] = "Unknown"
  else:
