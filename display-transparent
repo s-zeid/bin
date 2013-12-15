@@ -21,6 +21,14 @@ def _close_callback(window, data):
  window.hide()
  gtk.main_quit()
 
+
+def _drag_callback(window, e):
+ """Called when the window is clicked on."""
+ window.begin_move_drag(e.button,
+                        int(round(e.x + window.window.get_root_origin()[0])),
+                        int(round(e.y + window.window.get_root_origin()[1])),
+                        e.time)
+
 def make_transparent(window, event):
  """Makes a window transparent."""
  cr = window.window.cairo_create()
@@ -68,9 +76,13 @@ def display_transparent(image_filename, size_factor=1, opacity=1):
  img = gtk.image_new_from_pixbuf(pixbuf)
  win.set_size_request(pixbuf.get_width(), pixbuf.get_height())
  win.add(img)
- win.show_all()
+ 
+ # Make the window draggable
+ win.connect("button-press-event", _drag_callback)
+ win.add_events(gtk.gdk.BUTTON_PRESS_MASK)
  
  # Enter GTK main loop
+ win.show_all()
  gtk.main()
 
 def main(argv):
