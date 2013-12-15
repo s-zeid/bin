@@ -61,7 +61,7 @@ class Point(object):
   self.width = width
   self.height = height
 
-def _close_callback(window, data):
+def _close_callback(window, data=None):
  """Called when the window is closed."""
  window.hide()
  window.destroy()
@@ -80,7 +80,7 @@ def make_transparent(window, event):
  # Set the compositing operator back to the default
  cr.set_operator(cairo.OPERATOR_OVER)
 
-def display_follow(image_filename, size_percent, opacity, hotspot):
+def display_follow(image_filename, size_percent=1, opacity=1, hotspot="top,left"):
  win = gtk.Window(type=gtk.WINDOW_POPUP)
  win.set_title(os.path.basename(image_filename))
  win.set_position(gtk.WIN_POS_MOUSE)
@@ -143,17 +143,18 @@ def display_follow(image_filename, size_percent, opacity, hotspot):
  win.connect("delete-event", _close_callback)
  
  # Main loop
- while win.window != None:
-  gtk.main_iteration(False)
-  time.sleep(.025)
-  pos = root.get_pointer()[0:2]
-  gtk.main_iteration(False)
-  if pos != last:
-   last = pos
-   win.window.move(pos[0] - hotspot.x + 1, pos[1] - hotspot.y + 1)
+ try:
+  while win.window != None:
+   gtk.main_iteration(False)
    time.sleep(.025)
- 
- return 0
+   pos = root.get_pointer()[0:2]
+   gtk.main_iteration(False)
+   if pos != last:
+    last = pos
+    win.window.move(pos[0] - hotspot.x + 1, pos[1] - hotspot.y + 1)
+    time.sleep(.025)
+ except KeyboardInterrupt:
+  _close_callback(win)
 
 def main(argv):
  parser = argparse.ArgumentParser(prog=argv[0],
