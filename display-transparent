@@ -16,12 +16,12 @@ import pygtk
 
 pygtk.require("2.0")
 
-def close_callback(window, data):
+def _close_callback(window, data):
  """Called when the window is closed."""
  window.hide()
  gtk.main_quit()
 
-def expose(window, event):
+def make_transparent(window, event):
  """Makes a window transparent."""
  cr = window.window.cairo_create()
  # Sets the operator to clear which deletes everything below where an object is
@@ -42,8 +42,8 @@ def display_transparent(image_filename, size_factor=1, opacity=1):
  win.set_resizable(False)
  win.set_opacity(opacity)
  
- # Make sure that the process exits when the window is closed
- win.connect("delete-event", close_callback)
+ # Make sure that the main loop terminates when the window is closed
+ win.connect("delete-event", _close_callback)
  
  # Makes the window paintable, so we can draw directly on it
  win.set_app_paintable(True)
@@ -55,7 +55,7 @@ def display_transparent(image_filename, size_factor=1, opacity=1):
  win.set_colormap(rgba)
  
  # This will actually make the window transparent.
- win.connect("expose-event", expose)
+ win.connect("expose-event", make_transparent)
  
  # Load and scale the image
  pixbuf = gtk.gdk.pixbuf_new_from_file(image_filename)
