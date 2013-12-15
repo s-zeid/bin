@@ -82,6 +82,16 @@ def no_main():
 
 def main(argv):
  if len(argv) < 2:
-  print >> sys.stderr, "Usage: %s script [args]" % argv[0]
+  print >> sys.stderr, "Usage: %s {script [args]|--no-main}" % argv[0]
   return 2
+ if argv[1] == "--no-main":
+  for i in no_main():
+   print i
+  return 0
  return script(argv[1]).main(argv[1:])
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
