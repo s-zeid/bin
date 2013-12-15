@@ -35,5 +35,11 @@ class SexParty:
     sex.get_some()
     print sex.how_good_was_it()
 
+def main(argv):
+ SexParty(argv)
+
 if __name__ == "__main__":
- SexParty(parties=sys.argv)
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass

@@ -2,7 +2,7 @@
 
 from __future__ import with_statement
 
-import atexit
+import errno
 import os
 import subprocess
 import sys
@@ -17,60 +17,70 @@ def return_prompt():
    time.sleep(50)
  except KeyboardInterrupt:
   print
-
-atexit.register(return_prompt)
-
-if len(sys.argv) == 1:
- print "Usage: %s [command]" % sys.argv[0]
- sys.exit(2)
-
-args = sys.argv[1:]
-run_script = ""
-shell = True
-if args[0].endswith("geany_run_script.bat") or (args[0] == "-e" and
-                                                args[1] == ("/bin/sh " +
-                                                "./geany_run_script.sh")):
- if args[0].endswith(".bat"):
-  run_script = os.path.abspath(args[0])
-  shell = False
- else:
-  run_script = os.path.abspath("./geany_run_script.sh")
- with open(run_script) as f:
-  if args[0].endswith(".bat"):
-   args = f.read().splitlines()[0]
+ 
+def command_wrapper(argv):
+ run_script = ""
+ shell = True
+ if argv[0].endswith("geany_run_script.bat") or (argv[0] == "-e" and
+                                                 argv[1] == ("/bin/sh " +
+                                                 "./geany_run_script.sh")):
+  if argv[0].endswith(".bat"):
+   run_script = os.path.abspath(argv[0])
+   shell = False
   else:
-   args = f.read().splitlines()[4]
+   run_script = os.path.abspath("./geany_run_script.sh")
+  with open(run_script) as f:
+   if argv[0].endswith(".bat"):
+    argv = f.read().splitlines()[0]
+   else:
+    argv = f.read().splitlines()[4]
+  try:
+   os.remove(run_script)
+  except:
+   print >> sys.stderr, "warning: could not remove %s" % run_script
+   print >> sys.stderr, "(%s)" % traceback.format_exc().splitlines()[-1]
+   print >> sys.stderr, "==================================="
+ 
+ if isinstance(argv, (list, tuple)) and len(argv) > 1:
+  shell = False
+ 
  try:
-  os.remove(run_script)
+  r = subprocess.call(argv, shell=shell)
+  print >> sys.stderr, "=============================="
+  print >> sys.stderr, "(process exited with code %s)" % r
+  return_prompt()
+  return r
+ except SystemExit:
+  pass
+ except KeyboardInterrupt:
+  print >> sys.stderr, "\n======================"
+  print >> sys.stderr, "(^C pressed)"
+  return 126
+ except OSError:
+  if sys.exc_info()[1][0] == errno.ENOENT:
+   print >> sys.stderr, "No such file or directory: " + " ".join(argv)
+   return 127
+  else:
+   print >> sys.stderr, "\n=================================="
+   print >> sys.stderr, traceback.format_exc()
+   print >> sys.stderr, "=================================="
+   print >> sys.stderr, "(Unhandled operating system error)"
+   return 127
  except:
-  print "warning: could not remove %s" % run_script
-  print "(%s)" % traceback.format_exc().splitlines()[-1]
-  print "==================================="
+  print >> sys.stderr, "\n=================================="
+  print >> sys.stderr, traceback.format_exc()
+  print >> sys.stderr, "=================================="
+  print >> sys.stderr, "(Unhandled Python error)"
+  return 127
 
-try:
- r = subprocess.call(args, shell=shell)
- print "=============================="
- print "(process exited with code %s)" % r
- sys.exit(r)
-except SystemExit:
- pass
-except KeyboardInterrupt:
- print "\n======================"
- print "(^C pressed)"
- sys.exit(126)
-except OSError:
- if sys.exc_info()[1][0] == 2:
-  print "No such file or directory: " + " ".join(args)
-  sys.exit(127)
- else:
-  print "\n=================================="
-  traceback.print_exc()
-  print "=================================="
-  print "(Unhandled operating system error)"
-  sys.exit(127)
-except:
- print "\n=================================="
- traceback.print_exc()
- print "=================================="
- print "(Unhandled Python error)"
- sys.exit(127)
+def main(argv):
+ if len(argv) == 1:
+  print >> sys.stderr, "Usage: %s [command]" % argv[0]
+  return 2
+ return command_wrapper(argv[1:])
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass

@@ -1,13 +1,42 @@
 #!/usr/bin/env python2
 
-import os, subprocess, sys, urllib
-if len(sys.argv) != 2:
- print "Usage: %s file" % sys.argv[0]
- sys.exit(2)
-
-archive = "file://" + os.path.abspath(sys.argv[1])
-archive_quoted = urllib.quote(archive, safe="")
-subprocess.call(["gvfs-mount", "archive://" + archive_quoted])
-
 # The hard way:
 # $ /usr/lib/gvfs/gvfsd-archive file=(file) &
+
+import os
+import subprocess
+import sys
+import urllib
+
+def main(argv):
+ usage = "Usage: %s file" % argv[0]
+ if len(argv) not in (2, 3):
+  print >> sys.stderr, usage
+  return 2
+ if len(argv) == 3:
+  if argv[1] in ("-u", "--unmount", "--umount"):
+   unmount_archive(argv[2])
+  else:
+   print >> sys.stderr, usage
+   return 2
+ else:
+  mount_archive(argv[1])
+
+def archive_url(archive, double_quote=False):
+ archive = "file://" + os.path.abspath(archive)
+ archive_quoted = urllib.quote(archive, safe="")
+ if double_quote:
+  archive_quoted = urllib.quote(archive_quoted, safe="")
+ return "archive://" + archive_quoted
+
+def mount_archive(archive):
+ subprocess.call(["gvfs-mount", archive_url(archive)])
+
+def unmount_archive(archive):
+ subprocess.call(["gvfs-mount", "--unmount", archive_url(archive, double_quote=True)])
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass

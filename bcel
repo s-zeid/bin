@@ -3,8 +3,22 @@
 import subprocess
 import sys
 
-bc = subprocess.Popen(["bc", "-q", "-l"], stdin=subprocess.PIPE)
-bc.stdin.write(" ".join(sys.argv[1:]) + "\n")
-bc.stdin.flush()
-bc.stdin.close()
-bc.wait()
+def bcel(expr):
+ bc = subprocess.Popen(["bc", "-q", "-l"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+ bc.stdin.write(expr + "\n" if not expr.endswith("\n") else expr)
+ bc.stdin.flush()
+ bc.stdin.close()
+ c = bc.wait()
+ r = bc.stdout.read().strip()
+ return r, c
+
+def main(argv):
+ r, c = bcel(" ".join(argv[1:]))
+ print r
+ return c
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass

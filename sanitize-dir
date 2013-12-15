@@ -10,7 +10,7 @@ def sanitize_dir(directory, level=0):
   ls = os.listdir(directory)
   ls.sort()
  except Exception:
-  print "sanitize_dir(): could not access", directory
+  print >> sys.stderr, "sanitize_dir(): could not access", directory
   success = False
   return False
  else:
@@ -20,21 +20,28 @@ def sanitize_dir(directory, level=0):
     try:
      os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
     except Exception:
-     print "sanitize_dir(): could not set permissions on", path
+     print >> sys.stderr, "sanitize_dir(): could not set permissions on", path
      success = False
    elif os.path.isdir(path):
     try:
      os.chmod(path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
     except Exception:
-     print "sanitize_dir(): could not set permissions on", path
+     print >> sys.stderr, "sanitize_dir(): could not set permissions on", path
      success = False
     sanitize_dir(path, level=level + 1)
  return success
 
-if len(sys.argv) < 2:
- print "Usage: %s [directory] ..."
- sys.exit(2)
+def main(argv):
+ if len(argv) < 2:
+  print >> sys.stderr, "Usage: %s [directory] ..."
+  return 2
+ 
+ dirs = argv[1:]
+ for i in dirs:
+  sanitize_dir(i)
 
-dirs = sys.argv[1:]
-for i in dirs:
- sanitize_dir(i)
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass

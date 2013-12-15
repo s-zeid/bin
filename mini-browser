@@ -8,30 +8,27 @@ import webkit
 APP_NAME = "Mini Browser"
 APP_ICON_NAME = "emblem-web"
 
-def close_callback(window, data):
- window.hide()
- sys.exit()
-
-try:
- if len(sys.argv) < 2 or sys.argv[1] == ".":
-  url = raw_input("Please enter a URL: ")
- else:
-  url = sys.argv[1]
+def mini_browser(url, title=None, icon=None, wmclass=None):
+ if title == None:
+  title = APP_NAME
+ if icon == None:
+  icon = APP_ICON_NAME
+ if wmclass == None:
+  wmclass = title
  
  url = list(urlparse.urlsplit(url))
  if not url[0]:
   url[0] = "http"
   url[1] = "/" + url[1]
  url = urlparse.urlunsplit(url)
- title = sys.argv[2] if len(sys.argv) > 2 else APP_NAME
- icon = sys.argv[3] if len(sys.argv) > 3 else APP_ICON_NAME
  
  w = gtk.Window()
  w.set_title(title)
+ w.set_wmclass(wmclass, wmclass)
  w.set_icon_name(icon)
  w.set_size_request(1, 1)
  w.resize(1024, 576)
- w.connect("delete-event", close_callback)
+ w.connect("delete-event", _close_callback)
  
  s = gtk.ScrolledWindow()
  wv = webkit.WebView()
@@ -44,5 +41,21 @@ try:
  wv.open(url)
  
  gtk.main()
-except KeyboardInterrupt:
- sys.exit()
+
+def _close_callback(window, data):
+ window.hide()
+ gtk.main_quit()
+
+def main(argv):
+ url = raw_input("Please enter a URL: ") if len(argv) < 2 or argv[1] == "." else argv[1]
+ title = argv[2] or None if len(argv) > 2 else None
+ icon = argv[3] or None if len(argv) > 3 else None
+ wmclass = argv[4] or None if len(argv) > 4 else None
+ 
+ mini_browser(url, title, icon, wmclass)
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass

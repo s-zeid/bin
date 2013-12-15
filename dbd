@@ -22,31 +22,37 @@ def strptime(s, fmt):
   return gmtime(int(s))
  return _strptime(s, fmt)
   
-if __name__ == "__main__":
- usage = "Usage: %s [+format (strftime)] date1|word [date2|word]\n" % sys.argv[0]
+def main(argv):
+ usage = "Usage: %s [+format (strftime)] date1|word [date2|word]\n" % argv[0]
  usage += "word is one of today, yesterday, or tomorrow"
  
- if len(sys.argv) < 2 or len(sys.argv) > 4:
-  print usage
-  sys.exit(2)
+ if len(argv) < 2 or len(argv) > 4:
+  print >> sys.stderr, usage
+  return 2
  
- if sys.argv[1] in ("-h", "--help"):
+ if argv[1] in ("-h", "--help"):
   print usage
-  sys.exit()
- elif sys.argv[1].startswith("+"):
-  if len(sys.argv) < 3:
-   print usage
-   sys.exit(2)
-  fmt = sys.argv[1][1:]
-  date1 = sys.argv[2]
-  date2 = sys.argv[3] if len(sys.argv) > 3 else "today"
+  return 0
+ elif argv[1].startswith("+"):
+  if len(argv) < 3:
+   print >> sys.stderr, usage
+   return 2
+  fmt = argv[1][1:]
+  date1 = argv[2]
+  date2 = argv[3] if len(argv) > 3 else "today"
  else:
   fmt = "%Y-%m-%d"
-  date1 = sys.argv[1]
-  date2 = sys.argv[2] if len(sys.argv) > 2 else "today"
+  date1 = argv[1]
+  date2 = argv[2] if len(argv) > 2 else "today"
  
  try:
   print dbd(date1, date2, fmt)
  except ValueError as exc:
-  print "error:", exc
-  sys.exit(2)
+  print >> sys.stderr, "error:", exc
+  return 2
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass

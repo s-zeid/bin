@@ -47,17 +47,26 @@ Returns False if mp3 can't be opened, and None if no art was found.
   return True
  return data
 
-if __name__ == "__main__":
- if len(sys.argv) < 2 or len(sys.argv) > 3:
-  print "Usage: %s mp3-filename [jpg-filename]" % os.path.basename(sys.argv[0])
-  print "(the default value for jpg-filename is \"albumart.jpg\")"
-  sys.exit(2)
- mp3_filename = sys.argv[1]
+def main(argv):
+ if len(argv) < 2 or len(argv) > 3:
+  print >> sys.stderr, "Usage: %s mp3-filename [jpg-filename]" % argv[0]
+  print >> sys.stderr, "(the default value for jpg-filename is \"albumart.jpg\")"
+  return 2
+ mp3_filename = argv[1]
  jpg_filename = "albumart.jpg"
- if len(sys.argv) == 3:
-  jpg_filename = sys.argv[2]
+ if len(argv) == 3:
+  jpg_filename = argv[2]
  status = apic_extract(mp3_filename, jpg_filename)
  if status == False:
-  print "\"%s\" could not be opened or is not a valid MP3 file" % mp3_filename
+  print >> sys.stderr, ("\"%s\" could not be opened or is not a valid MP3 file"
+                        % mp3_filename)
+  return 1
  elif status == None:
-  print "\"%s\" does not contain artwork" % mp3_filename
+  print >> sys.stderr, "\"%s\" does not contain artwork" % mp3_filename
+  return 3
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass

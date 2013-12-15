@@ -79,17 +79,23 @@ The MIME type is determined as follows:
  id3.add(APIC(type=3, mime=mime, data=data, encoding=3, desc=filename))
  id3.save()
 
-if __name__ == "__main__":
- if len(sys.argv) < 3:
-  print "Usage: %s img-filename mp3-filename [...]" % os.path.basename(sys.argv[0])
-  sys.exit(2)
- img_filename = sys.argv[1]
- mp3_filenames = sys.argv[2:]
+def main(argv):
+ if len(argv) < 3:
+  print >> sys.stderr, "Usage: %s img-filename mp3-filename [...]" % argv[0]
+  return 2
+ img_filename = argv[1]
+ mp3_filenames = argv[2:]
  for m in mp3_filenames:
   try:
    with open(img_filename, "rb") as f:
     apic_set(m, f)
   except Exception:
    raise
-   print "error: could not set album artwork for " + m
-   sys.exit(1)
+   print >> sys.stderr, "error: could not set album artwork for " + m
+   return 1
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
