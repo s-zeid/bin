@@ -18,7 +18,7 @@ import pygtk
 pygtk.require("2.0")
 
 class Point(object):
- __slots__ = ["x", "y", "width", "height"]
+ __slots__ = ["x", "y", "width", "height", "original_x", "original_y"]
  def __init__(self, x, y=None, width=None, height=None):
   if isinstance(x, basestring) and y != None:
    raise ValueError("y cannot be given separately when x is a string")
@@ -37,6 +37,9 @@ class Point(object):
   else:
    parts = [x, y]
   parts = [(i.lower() if isinstance(i, basestring) else i) for i in parts]
+  
+  self.original_x = parts[0]
+  self.original_y = parts[1]
   
   if parts[0] == "left":
    self.x = 0
@@ -63,7 +66,7 @@ def _close_callback(window, data):
  window.hide()
  window.destroy()
 
-def expose(window, event):
+def make_transparent(window, event):
  """Makes a window transparent."""
  cr = window.window.cairo_create()
  # Sets the operator to clear which deletes everything below where an object is
@@ -77,27 +80,7 @@ def expose(window, event):
  # Set the compositing operator back to the default
  cr.set_operator(cairo.OPERATOR_OVER)
 
-def main(argv):
- # Check arguments
- parser = argparse.ArgumentParser(prog=argv[0],
-           description="Causes an image follow your cursor.")
- parser.add_argument("filename", help="The image to display")
- parser.add_argument("-s", "--size", type=float, default=100.,
-                     help="Desired size of the image as a percentage")
- parser.add_argument("-o", "--opacity", type=float, default=100.,
-                     help="Desired opacity of the image as a percentage")
- parser.add_argument("-H", "--hotspot", default="top,left",
-                     help="Hotspot position ('x,y'; x and y can also be one of the"
-                          " keywords top, right, bottom, left)")
- try:
-  args = parser.parse_args(argv[1:])
- except SystemExit as exit:
-  return exit.code
- image_filename = args.filename
- size_p         = args.size * 0.01
- opacity        = args.opacity * 0.01
- hotspot        = args.hotspot
- 
+def display_follow(image_filename, size_percent, opacity, hotspot):
  win = gtk.Window(type=gtk.WINDOW_POPUP)
  win.set_title(os.path.basename(image_filename))
  win.set_position(gtk.WIN_POS_MOUSE)
@@ -119,17 +102,21 @@ def main(argv):
  win.set_colormap(rgba)
  
  # This will actually make the window transparent.
- win.connect("expose-event", expose)
+ win.connect("expose-event", make_transparent)
  
  # Load and scale the image
  pixbuf = gtk.gdk.pixbuf_new_from_file(image_filename)
- if size_p != 1:
+ if size_percent != 1:
   pixbuf = gtk.gdk.pixbuf_new_from_file_at_size(image_filename,
-            int(round(pixbuf.get_width() * size_p)),
-            int(round(pixbuf.get_height() * size_p)))
+            int(round(pixbuf.get_width() * size_percent)),
+            int(round(pixbuf.get_height() * size_percent)))
  
  # Calculate the hotspot
- hotspot = Point(hotspot, width=pixbuf.get_width(), height=pixbuf.get_height())
+ if isinstance(hotspot, Point):
+  hotspot = Point(hotspot.original_x, hotspot.original_y,
+                  pixbuf.get_width(), pixbuf.get_height())
+ else:
+  hotspot = Point(hotspot, width=pixbuf.get_width(), height=pixbuf.get_height())
  
  # Hey, I just met you
  # And this is crazy
@@ -171,6 +158,25 @@ def main(argv):
    time.sleep(.025)
  
  return 0
+
+def main(argv):
+ parser = argparse.ArgumentParser(prog=argv[0],
+           description="Causes an image follow your cursor.")
+ parser.add_argument("filename", help="The image to display")
+ parser.add_argument("-s", "--size", type=float, default=100.,
+                     help="Desired size of the image as a percentage")
+ parser.add_argument("-o", "--opacity", type=float, default=100.,
+                     help="Desired opacity of the image as a percentage")
+ parser.add_argument("-H", "--hotspot", default="top,left",
+                     help="Hotspot position ('x,y'; x and y can also be one of the"
+                          " keywords top, right, bottom, left)")
+ try:
+  args = parser.parse_args(argv[1:])
+ except SystemExit as exit:
+  return exit.code
+ 
+ display_follow(args.filename, size_percent=args.size * 0.01,
+                opacity=args.opacity * 0.01, hotspot=args.hotspot)
 
 if __name__ == "__main__":
  try:
