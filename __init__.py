@@ -71,13 +71,14 @@ def scripts():
 
 def no_main():
  r = []
- for i in scripts():
-  with open(i, "rb") as f:
+ for script in scripts():
+  path = os.path.join(ROOT, script)
+  with open(path, "rb") as f:
    if "python" not in f.xreadlines().next():
     continue
-  with open(i, "rb") as f:
+  with open(path, "rb") as f:
    if not re.search(r"^def main\(argv", f.read(), re.MULTILINE):
-    r += [i]
+    r += [script]
  return r
 
 def main(argv):
