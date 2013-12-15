@@ -2,11 +2,12 @@
 
 import imp
 import os
+import re
 import subprocess
 import sys
 import types
 
-ROOT = os.path.dirname(__file__)
+ROOT = os.path.abspath(os.path.dirname(__file__))
 
 class ShellScript(object):
  __slots__ = ["filename"]
@@ -67,6 +68,17 @@ def script(script, name=None):
 def scripts():
  return [i for i in sorted(os.listdir(ROOT))
          if "." not in i and not os.path.isdir(os.path.join(ROOT, i))]
+
+def no_main():
+ r = []
+ for i in scripts():
+  with open(i, "rb") as f:
+   if "python" not in f.xreadlines().next():
+    continue
+  with open(i, "rb") as f:
+   if not re.search(r"^def main\(argv", f.read(), re.MULTILINE):
+    r += [i]
+ return r
 
 def main(argv):
  if len(argv) < 2:
