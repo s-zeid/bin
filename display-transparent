@@ -21,7 +21,7 @@ pygtk.require("2.0")
 def close_callback(window, data):
  """Called when the window is closed."""
  window.hide()
- sys.exit(0)
+ gtk.main_quit()
 
 def expose(window, event):
  """Makes a window transparent."""
