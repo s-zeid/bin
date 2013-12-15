@@ -37,24 +37,7 @@ def expose(window, event):
  # Set the compositing operator back to the default
  cr.set_operator(cairo.OPERATOR_OVER)
 
-def main(argv):
- # Get arguments
- parser = argparse.ArgumentParser(prog=argv[0],
-           description="Displays an image with no background or"
-                       " window decorations.")
- parser.add_argument("filename", help="The image to display")
- parser.add_argument("-s", "--size", type=float, default=100.,
-                     help="Desired size of the image as a percentage")
- parser.add_argument("-o", "--opacity", type=float, default=100.,
-                     help="Desired opacity of the image as a percentage")
- try:
-  args = parser.parse_args(argv[1:])
- except SystemExit as exit:
-  return exit.code
- image_filename = args.filename
- size_p         = args.size * 0.01
- opacity        = args.opacity * 0.01
- 
+def display_transparent(image_filename, size_percent, opacity):
  win = gtk.Window()
  win.set_title(os.path.basename(image_filename))
  win.set_decorated(False)
@@ -78,10 +61,10 @@ def main(argv):
  
  # Load and scale the image
  pixbuf = gtk.gdk.pixbuf_new_from_file(image_filename)
- if size_p != 1:
+ if size_percent != 1:
   pixbuf = gtk.gdk.pixbuf_new_from_file_at_size(image_filename,
-            int(round(pixbuf.get_width() * size_p)),
-            int(round(pixbuf.get_height() * size_p)))
+            int(round(pixbuf.get_width() * size_percent)),
+            int(round(pixbuf.get_height() * size_percent)))
  
  # Add the image
  img = gtk.image_new_from_pixbuf(pixbuf)
@@ -93,6 +76,23 @@ def main(argv):
  gtk.main()
  
  return 0
+
+def main(argv):
+ parser = argparse.ArgumentParser(prog=argv[0],
+           description="Displays an image with no background or"
+                       " window decorations.")
+ parser.add_argument("filename", help="The image to display")
+ parser.add_argument("-s", "--size", type=float, default=100.,
+                     help="Desired size of the image as a percentage")
+ parser.add_argument("-o", "--opacity", type=float, default=100.,
+                     help="Desired opacity of the image as a percentage")
+ try:
+  args = parser.parse_args(argv[1:])
+ except SystemExit as exit:
+  return exit.code
+ 
+ display_transparent(args.filename, size_percent=args.size * 0.01,
+                     opacity=args.opacity * 0.01)
 
 if __name__ == "__main__":
  try:
