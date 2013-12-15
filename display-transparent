@@ -10,8 +10,6 @@ import argparse
 import os
 import sys
 
-from math import pi
-
 import cairo
 import gtk
 import pygtk
@@ -37,7 +35,7 @@ def expose(window, event):
  # Set the compositing operator back to the default
  cr.set_operator(cairo.OPERATOR_OVER)
 
-def display_transparent(image_filename, size_percent, opacity):
+def display_transparent(image_filename, size_percent=1, opacity=1):
  win = gtk.Window()
  win.set_title(os.path.basename(image_filename))
  win.set_decorated(False)
@@ -74,8 +72,6 @@ def display_transparent(image_filename, size_percent, opacity):
  
  # Enter GTK main loop
  gtk.main()
- 
- return 0
 
 def main(argv):
  parser = argparse.ArgumentParser(prog=argv[0],
