@@ -58,10 +58,10 @@ class Point(object):
   self.width = width
   self.height = height
 
-def close_callback(window, data):
+def _close_callback(window, data):
  """Called when the window is closed."""
  window.hide()
- sys.exit(0)
+ window.destroy()
 
 def expose(window, event):
  """Makes a window transparent."""
@@ -109,9 +109,6 @@ def main(argv):
  
  win.set_role("display-follow-" + str(time.time()))
  
- # Make sure that the process exits when the window is closed
- win.connect("delete-event", close_callback)
- 
  # Makes the window paintable, so we can draw directly on it
  win.set_app_paintable(True)
  
@@ -143,6 +140,8 @@ def main(argv):
  img = gtk.image_new_from_pixbuf(pixbuf)
  win.set_size_request(pixbuf.get_width(), pixbuf.get_height())
  win.add(img)
+ 
+ # Show the window
  win.show_all()
  
  # Let the window update
@@ -157,8 +156,11 @@ def main(argv):
  win.set_opacity(opacity)
  gtk.main_iteration(False)
  
+ # Make sure that the main loop terminates when the window is closed
+ win.connect("delete-event", _close_callback)
+ 
  # Main loop
- while True:
+ while win.window != None:
   gtk.main_iteration(False)
   time.sleep(.025)
   pos = root.get_pointer()[0:2]
