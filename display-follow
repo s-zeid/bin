@@ -88,7 +88,7 @@ def display_follow(image_filename, size_percent, opacity, hotspot):
  win.set_resizable(False)
  win.set_keep_above(True)
  # Set opacity to 0 until the window is moved for the first time
- #win.set_opacity(opacity)
+ win.set_opacity(0)
  
  win.set_role("display-follow-" + str(time.time()))
  
@@ -131,16 +131,12 @@ def display_follow(image_filename, size_percent, opacity, hotspot):
  # Show the window
  win.show_all()
  
- # Let the window update
- for i in range(15):
-  gtk.main_iteration()
- 
  # Move window for the first time
  root = gtk.gdk.get_default_root_window()
  pos = last = root.get_pointer()[0:2]
  win.window.raise_()
- win.window.move(pos[0] - hotspot.x + 1, pos[1] - hotspot.y + 1)
  win.set_opacity(opacity)
+ win.window.move(pos[0] - hotspot.x + 1, pos[1] - hotspot.y + 1)
  gtk.main_iteration(False)
  
  # Make sure that the main loop terminates when the window is closed
