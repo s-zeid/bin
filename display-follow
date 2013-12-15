@@ -18,10 +18,11 @@ import pygtk
 pygtk.require("2.0")
 
 class Point(object):
- __slots__ = ["x", "y"]
+ __slots__ = ["x", "y", "width", "height"]
  def __init__(self, x, y=None, width=None, height=None):
-  if not (y == None and isinstance(x, basestring) or
-          isinstance(x, (int, long, float))):
+  if isinstance(x, basestring) and y != None:
+   raise ValueError("y cannot be given separately when x is a string")
+  if not isinstance(x, (int, long, float, basestring)):
    raise TypeError("x must be a number or string")
   for arg, name in ((y, 'y'), (width, 'width'), (height, 'height')):
    if not isinstance(arg, (int, long, float)) and arg != None:
@@ -29,24 +30,33 @@ class Point(object):
   
   if isinstance(x, basestring):
    parts = x.lower().split(",")
+   if len(parts) == 1:
+    parts += [y]
    if parts[0] in ("top", "bottom"):
     parts.reverse()
-   if parts[0] == "left":
-    self.x = 0
-   elif parts[0] == "right":
-    if width == None:
-     raise ValueError("width must be given when coordinates contain 'right'")
-    self.x = width
-   else:
-    self.x = int(parts[0])
-   if parts[1] == "top":
-    self.y = 0
-   elif parts[1] == "bottom":
-    if height == None:
-     raise ValueError("height must be given when coordinates contain 'bottom'")
-    self.y = height
-   else:
-    self.y = int(parts[1])
+  else:
+   parts = [x, y]
+  parts = [(i.lower() if isinstance(i, basestring) else i) for i in parts]
+  
+  if parts[0] == "left":
+   self.x = 0
+  elif parts[0] == "right":
+   if width == None:
+    raise ValueError("width must be given when coordinates contain 'right'")
+   self.x = width
+  else:
+   self.x = int(parts[0])
+  if parts[1] == "top":
+   self.y = 0
+  elif parts[1] == "bottom":
+   if height == None:
+    raise ValueError("height must be given when coordinates contain 'bottom'")
+   self.y = height
+  else:
+   self.y = int(parts[1])
+  
+  self.width = width
+  self.height = height
 
 def close_callback(window, data):
  """Called when the window is closed."""
