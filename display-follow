@@ -80,7 +80,7 @@ def make_transparent(window, event):
  # Set the compositing operator back to the default
  cr.set_operator(cairo.OPERATOR_OVER)
 
-def display_follow(image_filename, size_percent=1, opacity=1, hotspot="top,left"):
+def display_follow(image_filename, size_factor=1, opacity=1, hotspot="top,left"):
  win = gtk.Window(type=gtk.WINDOW_POPUP)
  win.set_title(os.path.basename(image_filename))
  win.set_position(gtk.WIN_POS_MOUSE)
@@ -106,10 +106,10 @@ def display_follow(image_filename, size_percent=1, opacity=1, hotspot="top,left"
  
  # Load and scale the image
  pixbuf = gtk.gdk.pixbuf_new_from_file(image_filename)
- if size_percent != 1:
+ if size_factor != 1:
   pixbuf = gtk.gdk.pixbuf_new_from_file_at_size(image_filename,
-            int(round(pixbuf.get_width() * size_percent)),
-            int(round(pixbuf.get_height() * size_percent)))
+            int(round(pixbuf.get_width() * size_factor)),
+            int(round(pixbuf.get_height() * size_factor)))
  
  # Calculate the hotspot
  if isinstance(hotspot, Point):
@@ -172,7 +172,7 @@ def main(argv):
  except SystemExit as exit:
   return exit.code
  
- display_follow(args.filename, size_percent=args.size * 0.01,
+ display_follow(args.filename, size_factor=args.size * 0.01,
                 opacity=args.opacity * 0.01, hotspot=args.hotspot)
 
 if __name__ == "__main__":
