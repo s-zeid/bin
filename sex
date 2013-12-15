@@ -36,7 +36,7 @@ class SexParty:
     print sex.how_good_was_it()
 
 def main(argv):
- SexParty(argv)
+ SexParty(parties=argv)
 
 if __name__ == "__main__":
  try:
