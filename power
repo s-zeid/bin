@@ -36,7 +36,7 @@ def main(argv):
     hostport += ":"
    host, port = hostport.split(":")
  
- print format_power(power(root, host, port))
+ print format_power(power(root=root, host=host, port=int(port) if port else None))
 
 class PowerHandler(SocketServer.BaseRequestHandler):
  def handle(self):
