@@ -55,50 +55,71 @@ Tags = namedtuple("Tags", "RESET_TAG,COLOR_TAG,MAGIC_TAG,BOLD_TAG,STRIKE_TAG,"
 TAG_FORMATS = TagFormats(
  html=Tags(
   RESET_TAG=Tag(
-   open=lambda color, shadow=None:
-    (("<span style=\"color: %s;%s"
-      " font-weight: normal; font-style: normal; text-decoration: none;\">")
-     %(color.html, " text-shadow: 1px 1px %s;" % shadow.html if shadow else "")),
+   open=lambda color, shadow=None, attribs=None, style=None:
+    (("<span%s style=\"color: %s;%s"
+      " font-weight: normal; font-style: normal; text-decoration: none;%s\">")
+     % (" " + attribs if attribs else "",
+        color.html, " text-shadow: 1px 1px %s;" % shadow.html if shadow else "",
+        " " + style if style else "")),
    close=lambda: "</span>"
   ),
   COLOR_TAG=Tag(
-   open=lambda color, shadow=None:
-    ("<span style=\"color: %s;%s\">"
-     %(color.html, " text-shadow: 1px 1px %s;" % shadow.html if shadow else "")),
+   open=lambda color, shadow=None, attribs=None, style=None:
+    ("<span%s style=\"color: %s;%s%s\">"
+     % (" " + attribs if attribs else "",
+        color.html, " text-shadow: 1px 1px %s;" % shadow.html if shadow else "",
+        " " + style if style else "")),
    close=lambda: "</span>"
   ),
   MAGIC_TAG=Tag(
-   open=lambda color, shadow=None:
-    ("<span style=\"background: %s; color: %s;%s\">"
-     %(color.html, color.html, " text-shadow: 1px 1px %s;"%shadow.html if shadow else "")),
+   open=lambda color, shadow=None, attribs=None, style=None:
+    ("<span%s style=\"background: %s; color: %s;%s%s\">"
+     %(" " + attribs if attribs else "",
+       color.html, color.html, " text-shadow: 1px 1px %s;" % shadow.html if shadow else "",
+       " " + style if style else "")),
    close=lambda: "</span>"
   ),
-  BOLD_TAG=Tag(open=lambda: "<b>", close=lambda: "</b>"),
+  BOLD_TAG=Tag(
+   open=lambda attribs=None, style=None:
+    "<b%s%s>" % (" " + attribs if attribs else "", " style=\"%s\""%style if style else ""),
+   close=lambda: "</b>"
+  ),
   STRIKE_TAG=Tag(
-   open=lambda: "<span style=\"text-decoration: line-through;\">",
+   open=lambda attribs=None, style=None:
+    ("<span%s style=\"text-decoration: line-through;%s\">"
+     % (" " + attribs if attribs else "", " " + style if style else "")),
    close=lambda: "</span>"
   ),
-  UNDERLINE_TAG=Tag(open=lambda: "<u>", close=lambda: "</u>"),
-  ITALIC_TAG=Tag(open=lambda: "<i>", close=lambda: "</i>")
+  UNDERLINE_TAG=Tag(
+   open=lambda attribs=None, style=None:
+    "<u%s%s>" % (" " + attribs if attribs else "", " style=\"%s\""%style if style else ""),
+   close=lambda: "</u>"
+  ),
+  ITALIC_TAG=Tag(
+   open=lambda attribs=None, style=None:
+    "<i%s%s>" % (" " + attribs if attribs else "", " style=\"%s\""%style if style else ""),
+   close=lambda: "</i>"
+  ),
  ),
  ansi=Tags(
   RESET_TAG=Tag(
-   open=lambda color, shadow=None:
+   open=lambda color, shadow=None, *_, **__:
     "\x1b[0m" + color.ansi,
    close=lambda: "\x1b[0m"
   ),
   COLOR_TAG=Tag(
-   open=lambda color, shadow=None: color.ansi,
+   open=lambda color, shadow=None, *_, **__: color.ansi,
    close=lambda: "\x1b[22m"
   ),
   MAGIC_TAG=Tag(
-   open=lambda color, shadow=None: "%s\x1b[4%dm" % (color.ansi, color.ansi_n),
+   open=lambda color, shadow=None, *_, **__:
+    "%s\x1b[4%dm" % (color.ansi, color.ansi_n),
    close=lambda: "\x1b[39m\x1b[49m"
   ),
-  BOLD_TAG=Tag(open=lambda: "\x1b[1m", close=lambda: "\x1b[21m"),
-  STRIKE_TAG=Tag(open=lambda: "\x1b[9m", close=lambda: "\x1b[29m"),
-  UNDERLINE_TAG=Tag(open=lambda: "\x1b[4m", close=lambda: "\x1b[24m"),
-  ITALIC_TAG=Tag(open=lambda: "\x1b[3m", close=lambda: "\x1b[23m")
+  BOLD_TAG=Tag(open=lambda *_, **__: "\x1b[1m", close=lambda: "\x1b[21m"),
+  STRIKE_TAG=Tag(open=lambda *_, **__: "\x1b[9m", close=lambda: "\x1b[29m"),
+  UNDERLINE_TAG=Tag(open=lambda *_, **__: "\x1b[4m", close=lambda: "\x1b[24m"),
+  ITALIC_TAG=Tag(open=lambda *_, **__: "\x1b[3m", close=lambda: "\x1b[23m")
  )
 )
 
@@ -114,7 +135,35 @@ def to_html(s="", **kwargs):
 def to_xterm256(s="", **kwargs):
  return to_x(s, fmt=XTERM256, **kwargs)
 
-def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False):
+_TAG_ALIASES_BY_FORMAT = dict()
+def _attribs_styles_to_dict(x, fmt):
+ fmt = fmt.lower()
+ tag = lambda s: getattr(getattr(TAG_FORMATS, fmt), s)
+ if fmt not in _TAG_ALIASES_BY_FORMAT:
+  _TAG_ALIASES_BY_FORMAT[fmt] = (
+   ("RESET_TAG", (tag("RESET_TAG"), "R", "RESET")),
+   ("COLOR_TAG", (tag("COLOR_TAG"), "C", "COLOR")),
+   ("MAGIC_TAG", (tag("MAGIC_TAG"), "M", "MAGIC")),
+   ("BOLD_TAG", (tag("BOLD_TAG"), "B", "BOLD", "STRONG")),
+   ("STRIKE_TAG", (tag("STRIKE_TAG"), "S", "STRIKE", "STRIKETHROUGH", "DEL")),
+   ("UNDERLINE_TAG", (tag("UNDERLINE_TAG"), "U", "UNDERLINE", "INS")),
+   ("ITALIC_TAG", (tag("ITALIC_TAG"), "I", "ITALIC", "EM", "EMPHASIS"))
+  )
+ tags = _TAG_ALIASES_BY_FORMAT[fmt]
+ d = dict([(t[0], None) for t in tags])
+ for k in x:
+  n = k.upper() if isinstance(k, basestring) else k
+  for t, aliases in tags:
+   if n == t or n in aliases:
+    d[t] = x[k]
+ def r(t):
+  for tag in tags:
+   if tag[1][0] == t:
+    return d[tag[0]]
+ return r
+
+def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False,
+         attribs=None, styles=None):
  # reject invalid formats
  if fmt not in FORMATS:
   raise ValueError("\"%s\" is not a valid output format" % str(fmt))
@@ -145,6 +194,10 @@ def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False):
   color_values[DEFAULT_COLOR] = default_color
   shadow_values[DEFAULT_COLOR] = shadow_values[0]
  
+ # process attribs and styles arguments
+ attribs = _attribs_styles_to_dict(attribs or {}, fmt)
+ styles = _attribs_styles_to_dict(styles or {}, fmt)
+ 
  # convert input string to Unicode object, assuming utf-8
  if isinstance(s, str):
   s = unicode(s, "utf-8")
@@ -156,7 +209,8 @@ def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False):
  
  # wrap output with a span tag containing default styles if reset is true
  if reset:
-  r += tags.RESET_TAG.open(color_values[color], shadow_values[color] if shadow else None)
+  r += tags.RESET_TAG.open(color_values[color], shadow_values[color] if shadow else None,
+                           attribs(tags.RESET_TAG), styles(tags.RESET_TAG))
  
  len_ = len(s)
  for i in xrange(len_ + 1):
@@ -184,24 +238,39 @@ def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False):
      r += tag.close()
     current_tags = []
    if re.search(r"^[0-9a-f]$", c, re.S):
+    tag = tags.COLOR_TAG
     color = int(c, 16)
-    r += tags.COLOR_TAG.open(color_values[color], shadow_values[color] if shadow else None)
-    current_tags += [tags.COLOR_TAG]
-   elif c == "k" and tags.MAGIC_TAG not in current_tags:
-    r += tags.MAGIC_TAG.open(color_values[color], shadow_values[color] if shadow else None)
-    current_tags += [tags.MAGIC_TAG]
-   elif c == "l" and tags.BOLD_TAG not in current_tags:
-    r += tags.BOLD_TAG.open()
-    current_tags += [tags.BOLD_TAG]
-   elif c == "m" and tags.STRIKE_TAG not in current_tags:
-    r += tags.STRIKE_TAG.open()
-    current_tags += [tags.STRIKE_TAG]
-   elif c == "n" and tags.UNDERLINE_TAG not in current_tags:
-    r += tags.UNDERLINE_TAG.open()
-    current_tags += [tags.UNDERLINE_TAG]
-   elif c == "o" and tags.ITALIC_TAG not in current_tags:
-    r += tags.ITALIC_TAG.open()
-    current_tags += [tags.ITALIC_TAG]
+    r += tag.open(color_values[color], shadow_values[color] if shadow else None,
+                  attribs(tag), styles(tag))
+    current_tags += [tag]
+   else:
+    tag = tags.MAGIC_TAG
+    if c == "k" and tag not in current_tags:
+     r += tag.open(color_values[color],
+                   shadow_values[color] if shadow else None,
+                   attribs(tag), styles(tag))
+     current_tags += [tag]
+    
+    tag = tags.BOLD_TAG
+    if c == "l" and tag not in current_tags:
+     r += tag.open(attribs(tag), styles(tag))
+     current_tags += [tag]
+    
+    tag = tags.STRIKE_TAG
+    if c == "m" and tag not in current_tags:
+     r += tag.open(attribs(tag), styles(tag))
+     current_tags += [tag]
+    
+    tag = tags.UNDERLINE_TAG
+    if c == "n" and tag not in current_tags:
+     r += tag.open(attribs(tag), styles(tag))
+     current_tags += [tag]
+    
+    tag = tags.ITALIC_TAG
+    if c == "o" and tag not in current_tags:
+     r += tag.open(attribs(tag), styles(tag))
+     current_tags += [tag]
+   
    reading_format = False
  
  # close outer span tag
