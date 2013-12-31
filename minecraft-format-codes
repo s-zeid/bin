@@ -1,0 +1,308 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+# Copyright (c) 2013 Scott Zeid.  Released under the X11 License.
+
+import os
+import re
+import sys
+
+from collections import namedtuple
+
+_Color = namedtuple("Color", "html,ansi,ansi_n,xterm256")
+class Color(_Color):
+ def __new__(cls, html=None, ansi=None, xterm256=None):
+  if ansi >= 10:
+   intense = 1
+   ansi = int(int(ansi) % 10)
+  else:
+   intense = 0
+  ansi_n = int(ansi or 0)
+  ansi = u'\x1b[%dm\x1b[3%dm' % (intense, ansi_n)
+  return super(Color, cls).__new__(cls, html, ansi, ansi_n, xterm256)
+
+COLOR_VALUES = {
+ 0x0: ("#000000",  0), 0x1: ("#0000aa",  4), 0x2: ("#00aa00",  2), 0x3: ("#00aaaa",  6),
+ 0x4: ("#aa0000",  1), 0x5: ("#aa00aa",  5), 0x6: ("#ffaa00",  3), 0x7: ("#aaaaaa",  7),
+ 0x8: ("#555555", 10), 0x9: ("#5555ff", 14), 0xa: ("#55ff55", 12), 0xb: ("#55ffff", 16),
+ 0xc: ("#ff5555", 11), 0xd: ("#ff55ff", 15), 0xe: ("#ffff55", 13), 0xf: ("#ffffff", 17)
+}
+for i in COLOR_VALUES:
+ COLOR_VALUES[i] = Color(*COLOR_VALUES[i])
+
+SHADOW_VALUES = {
+ 0x0: ("#000000",  0), 0x1: ("#00002a",  4), 0x2: ("#002a00",  2), 0x3: ("#002a2a",  6),
+ 0x4: ("#2a0000",  1), 0x5: ("#2a002a",  5), 0x6: ("#2a2a00",  3), 0x7: ("#2a2a2a",  7),
+ 0x8: ("#151515", 10), 0x9: ("#15153f", 14), 0xa: ("#153f15", 12), 0xb: ("#153f3f", 16),
+ 0xc: ("#3f1515", 11), 0xd: ("#3f153f", 15), 0xe: ("#3f3f15", 13), 0xf: ("#3f3f3f", 17)
+}
+for i in SHADOW_VALUES:
+ SHADOW_VALUES[i] = Color(*SHADOW_VALUES[i])
+
+DEFAULT_COLOR = -1
+
+_TagFormats = namedtuple("TagFormats", "html,ansi,xterm256")
+class TagFormats(_TagFormats):
+ def __new__(cls, html=None, ansi=None, xterm256=None):
+  if not xterm256:
+   xterm256 = ansi
+  return super(TagFormats, cls).__new__(cls, html, ansi, xterm256)
+
+Tag = namedtuple("Tag", "open,close")
+Tags = namedtuple("Tags", "RESET_TAG,COLOR_TAG,MAGIC_TAG,BOLD_TAG,STRIKE_TAG,"
+                          "UNDERLINE_TAG,ITALIC_TAG")
+
+TAG_FORMATS = TagFormats(
+ html=Tags(
+  RESET_TAG=Tag(
+   open=lambda color, shadow=None:
+    (("<span style=\"color: %s;%s"
+      " font-weight: normal; font-style: normal; text-decoration: none;\">")
+     %(color.html, " text-shadow: 1px 1px %s;" % shadow.html if shadow else "")),
+   close=lambda: "</span>"
+  ),
+  COLOR_TAG=Tag(
+   open=lambda color, shadow=None:
+    ("<span style=\"color: %s;%s\">"
+     %(color.html, " text-shadow: 1px 1px %s;" % shadow.html if shadow else "")),
+   close=lambda: "</span>"
+  ),
+  MAGIC_TAG=Tag(
+   open=lambda color, shadow=None:
+    ("<span style=\"background: %s; color: %s;%s\">"
+     %(color.html, color.html, " text-shadow: 1px 1px %s;"%shadow.html if shadow else "")),
+   close=lambda: "</span>"
+  ),
+  BOLD_TAG=Tag(open=lambda: "<b>", close=lambda: "</b>"),
+  STRIKE_TAG=Tag(
+   open=lambda: "<span style=\"text-decoration: line-through;\">",
+   close=lambda: "</span>"
+  ),
+  UNDERLINE_TAG=Tag(open=lambda: "<u>", close=lambda: "</u>"),
+  ITALIC_TAG=Tag(open=lambda: "<i>", close=lambda: "</i>")
+ ),
+ ansi=Tags(
+  RESET_TAG=Tag(
+   open=lambda color, shadow=None:
+    "\x1b[0m" + color.ansi,
+   close=lambda: "\x1b[0m"
+  ),
+  COLOR_TAG=Tag(
+   open=lambda color, shadow=None: color.ansi,
+   close=lambda: "\x1b[22m"
+  ),
+  MAGIC_TAG=Tag(
+   open=lambda color, shadow=None: "%s\x1b[4%dm" % (color.ansi, color.ansi_n),
+   close=lambda: "\x1b[39m\x1b[49m"
+  ),
+  BOLD_TAG=Tag(open=lambda: "\x1b[1m", close=lambda: "\x1b[21m"),
+  STRIKE_TAG=Tag(open=lambda: "\x1b[9m", close=lambda: "\x1b[29m"),
+  UNDERLINE_TAG=Tag(open=lambda: "\x1b[4m", close=lambda: "\x1b[24m"),
+  ITALIC_TAG=Tag(open=lambda: "\x1b[3m", close=lambda: "\x1b[23m")
+ )
+)
+
+ANSI = "ANSI"
+HTML = "HTML"
+XTERM256 = "XTERM256"
+FORMATS = (ANSI, HTML, XTERM256)
+
+def minecraft_format_to_ansi(s="", **kwargs):
+ return minecraft_format_to_x(s, fmt=ANSI, **kwargs)
+def minecraft_format_to_html(s="", **kwargs):
+ return minecraft_format_to_x(s, fmt=HTML, **kwargs)
+def minecraft_format_to_xterm256(s="", **kwargs):
+ return minecraft_format_to_x(s, fmt=XTERM256, **kwargs)
+
+def minecraft_format_to_x(s="", fmt=HTML, reset=True, default_color=None,
+                          shadow=False):
+ # reject invalid formats
+ if fmt not in FORMATS:
+  raise ValueError("\"%s\" is not a valid output format" % str(fmt))
+ 
+ tags = getattr(TAG_FORMATS, fmt.lower())
+ 
+ color_values  = COLOR_VALUES.copy()
+ shadow_values = SHADOW_VALUES.copy()
+ 
+ # parse default_color argument
+ if isinstance(default_color, (int, long, float)) and default_color != -1:
+  default_color_code = default_color
+  default_color = color_values[default_color]
+  color_values[DEFAULT_COLOR] = default_color
+  shadow_values[DEFAULT_COLOR] = shadow_values[default_color_code]
+ else:
+  if not default_color or default_color == -1:
+   if fmt in (ANSI, XTERM256):
+    default_color = Color(ansi=9)
+   else:
+    default_color = color_values[0]
+  elif isinstance(default_color, basestring):
+   if fmt == HTML:
+    default_color = re.sub(r";$", r"", default_color)
+   kwargs = {fmt.lower(): default_color}
+   default_color = Color(**kwargs)
+  
+  color_values[DEFAULT_COLOR] = default_color
+  shadow_values[DEFAULT_COLOR] = shadow_values[0]
+ 
+ # convert input string to Unicode object, assuming utf-8
+ if isinstance(s, str):
+  s = unicode(s, "utf-8")
+ 
+ r = u""
+ color = DEFAULT_COLOR
+ current_tags = []
+ reading_format = False
+ 
+ # wrap output with a span tag containing default styles if reset is true
+ if reset:
+  r += tags.RESET_TAG.open(color_values[color], shadow_values[color] if shadow else None)
+ 
+ len_ = len(s)
+ for i in xrange(len_ + 1):
+  if i == len_:
+   # invoke tag closing if at end of string
+   reading_format = True
+   c = "r"
+  else:
+   c = s[i]
+  
+  if not reading_format:
+   if c == u"§" or c == "&":
+    if i + 1 < len_ and re.search(r"^[0-9a-fkl-or]$", s[i+1], re.I):
+     reading_format = True
+     continue
+    elif c == u"§":
+     continue
+   r += c
+  else:
+   c = c.lower()
+   if c == "r" or re.search(r"^[0-9a-f]$", c, re.S):
+    # close all tags if the current format is RESET or a color
+    color = DEFAULT_COLOR
+    for tag in reversed(current_tags):
+     r += tag.close()
+    current_tags = []
+   if re.search(r"^[0-9a-f]$", c, re.S):
+    color = int(c, 16)
+    r += tags.COLOR_TAG.open(color_values[color], shadow_values[color] if shadow else None)
+    current_tags += [tags.COLOR_TAG]
+   elif c == "k" and tags.MAGIC_TAG not in current_tags:
+    r += tags.MAGIC_TAG.open(color_values[color], shadow_values[color] if shadow else None)
+    current_tags += [tags.MAGIC_TAG]
+   elif c == "l" and tags.BOLD_TAG not in current_tags:
+    r += tags.BOLD_TAG.open()
+    current_tags += [tags.BOLD_TAG]
+   elif c == "m" and tags.STRIKE_TAG not in current_tags:
+    r += tags.STRIKE_TAG.open()
+    current_tags += [tags.STRIKE_TAG]
+   elif c == "n" and tags.UNDERLINE_TAG not in current_tags:
+    r += tags.UNDERLINE_TAG.open()
+    current_tags += [tags.UNDERLINE_TAG]
+   elif c == "o" and tags.ITALIC_TAG not in current_tags:
+    r += tags.ITALIC_TAG.open()
+    current_tags += [tags.ITALIC_TAG]
+   reading_format = False
+ 
+ # close outer span tag
+ if reset:
+  r += tags.RESET_TAG.close()
+ 
+ return r.encode("utf-8")
+
+
+def test_minecraft_format_to_x(s, fmt, reset=True, default_color=None,
+                               shadow=False):
+ print s
+ print "-" * (len(unicode(s, "utf-8")) if len(unicode(s, "utf-8")) != 0 else 4)
+ 
+ print minecraft_format_to_x(s, fmt, reset, default_color, shadow)
+ print
+
+
+def test_main(fmt):
+ test = lambda s, *args: test_minecraft_format_to_x(s, fmt, *args)
+ 
+ if fmt == HTML:
+  test_color_1 = "#123456"
+  test_color_2 = "123456;"
+ elif fmt in (ANSI, XTERM256):
+  test_color_1 = test_color_2 = "4"
+ 
+ test('')
+ test('hi')
+ test('§4hi')
+ test('§kbnay')
+ test('§lhello')
+ test('§mtesting')
+ test('§nminceraft')
+ test('§ocontainers')
+ test('§n1 §m2 §k3 §o4 §l5 §r6')
+ test('§N1 §M2 §K3 §64 §O5 §L6 §R7', True, test_color_1)
+ test('&4Hello&r & welcome!')
+ test('Bare section signs§ §should be removed from the output string.')
+ test('No reset CSS for me! :D', False)
+ test('Extra characters in $default_color', True, test_color_2)
+ test('$default_color set to a color code', True, 0x4)
+ test('$default_color set to -1', True, -1)
+ test('Shadows! §4Y§2a§1y§6!', True, None, True)
+ test('§k§k §r§l§lRepeated §m§mformat §n§ncodes §o§oshould §lbe §ncollapsed!  §4§4(Except for color codes.)§r§r')
+
+
+def main(argv):
+ usage_prefix = "Usage: %s" % argv[0]
+ usage_suffix = "[text (default: from stdin)]"
+ 
+ usage_generic = "%s --<format> %s" % (usage_prefix, usage_suffix)
+ usage_format  = "%s %s" % (usage_prefix, usage_suffix)
+ 
+ args = argv[1:]
+ basename = os.path.basename(argv[0])
+ fmt = None
+ generic = True
+ if basename.endswith("-html"):
+  fmt = HTML
+  generic = False
+ elif basename.endswith("-ansi"):
+  fmt = ANSI
+  generic = False
+ else:
+  if len(argv) > 1:
+   for i in FORMATS:
+    if argv[1] == "--" + i.lower().replace("_", "-").replace(" ", "-"):
+     fmt = i
+     break
+   if fmt == None:
+    fmt_name = argv[1]
+    if fmt_name.startswith("--"):
+     fmt_name = fmt_name.replace("--", "", 1)
+    elif fmt_name.startswith("-"):
+     fmt_name = fmt_name.replace("-", "", 1)
+    print >> sys.stderr, "error: invalid output format \"%s\"" % fmt_name
+  if fmt == None:
+   print >> sys.stderr, usage_generic
+   return 2
+  args = argv[2:]
+ 
+ if len(args) == 1:
+  if args[0] == "--test":
+   test_main(fmt=fmt)
+   return 0
+  if args[0] in ("-h", "--help"):
+   print usage_generic if generic else usage_format
+   return 0
+ 
+ text = " ".join(args)
+ if not text:
+  text = sys.stdin.read()
+  if sys.stdin.isatty():
+   print >> sys.stderr
+ print minecraft_format_to_x(text, fmt=fmt)
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
