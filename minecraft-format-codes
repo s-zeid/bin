@@ -139,6 +139,8 @@ _TAG_ALIASES_BY_FORMAT = dict()
 def _attribs_styles_to_dict(x, fmt):
  fmt = fmt.lower()
  tag = lambda s: getattr(getattr(TAG_FORMATS, fmt), s)
+ all_ = x.get("all", "")
+ default = x.get("default", "")
  if fmt not in _TAG_ALIASES_BY_FORMAT:
   _TAG_ALIASES_BY_FORMAT[fmt] = (
    ("RESET_TAG", (tag("RESET_TAG"), "R", "RESET")),
@@ -150,12 +152,17 @@ def _attribs_styles_to_dict(x, fmt):
    ("ITALIC_TAG", (tag("ITALIC_TAG"), "I", "ITALIC", "EM", "EMPHASIS"))
   )
  tags = _TAG_ALIASES_BY_FORMAT[fmt]
- d = dict([(t[0], None) for t in tags])
+ d = dict([(t[0], all_) for t in tags])
+ not_default = []
  for k in x:
   n = k.upper() if isinstance(k, basestring) else k
   for t, aliases in tags:
    if n == t or n in aliases:
-    d[t] = x[k]
+    d[t] += (" " + x[k]) if d[t] and x[k] else x[k]
+    not_default += [t]
+ for k in d:
+  if k not in not_default:
+   d[k] = d[k] + " " + default if d[k] else default
  def r(t):
   for tag in tags:
    if tag[1][0] == t:
