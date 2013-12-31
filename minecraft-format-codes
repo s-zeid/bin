@@ -108,11 +108,11 @@ XTERM256 = "XTERM256"
 FORMATS = (ANSI, HTML, XTERM256)
 
 def to_ansi(s="", **kwargs):
- return minecraft_format_to_x(s, fmt=ANSI, **kwargs)
+ return to_x(s, fmt=ANSI, **kwargs)
 def to_html(s="", **kwargs):
- return minecraft_format_to_x(s, fmt=HTML, **kwargs)
+ return to_x(s, fmt=HTML, **kwargs)
 def to_xterm256(s="", **kwargs):
- return minecraft_format_to_x(s, fmt=XTERM256, **kwargs)
+ return to_x(s, fmt=XTERM256, **kwargs)
 
 def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False):
  # reject invalid formats
