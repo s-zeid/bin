@@ -107,15 +107,14 @@ HTML = "HTML"
 XTERM256 = "XTERM256"
 FORMATS = (ANSI, HTML, XTERM256)
 
-def minecraft_format_to_ansi(s="", **kwargs):
+def to_ansi(s="", **kwargs):
  return minecraft_format_to_x(s, fmt=ANSI, **kwargs)
-def minecraft_format_to_html(s="", **kwargs):
+def to_html(s="", **kwargs):
  return minecraft_format_to_x(s, fmt=HTML, **kwargs)
-def minecraft_format_to_xterm256(s="", **kwargs):
+def to_xterm256(s="", **kwargs):
  return minecraft_format_to_x(s, fmt=XTERM256, **kwargs)
 
-def minecraft_format_to_x(s="", fmt=HTML, reset=True, default_color=None,
-                          shadow=False):
+def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False):
  # reject invalid formats
  if fmt not in FORMATS:
   raise ValueError("\"%s\" is not a valid output format" % str(fmt))
@@ -212,17 +211,16 @@ def minecraft_format_to_x(s="", fmt=HTML, reset=True, default_color=None,
  return r.encode("utf-8")
 
 
-def test_minecraft_format_to_x(s, fmt, reset=True, default_color=None,
-                               shadow=False):
+def test_to_x(s, fmt, reset=True, default_color=None, shadow=False):
  print s
  print "-" * (len(unicode(s, "utf-8")) if len(unicode(s, "utf-8")) != 0 else 4)
  
- print minecraft_format_to_x(s, fmt, reset, default_color, shadow)
+ print to_x(s, fmt, reset, default_color, shadow)
  print
 
 
 def test_main(fmt):
- test = lambda s, *args: test_minecraft_format_to_x(s, fmt, *args)
+ test = lambda s, *args: test_to_x(s, fmt, *args)
  
  if fmt == HTML:
   test_color_1 = "#123456"
@@ -298,7 +296,7 @@ def main(argv):
   text = sys.stdin.read()
   if sys.stdin.isatty():
    print >> sys.stderr
- print minecraft_format_to_x(text, fmt=fmt)
+ print to_x(text, fmt=fmt)
 
 
 if __name__ == "__main__":
