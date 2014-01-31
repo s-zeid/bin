@@ -63,7 +63,9 @@ or middle dot followed by the name of the bookmark, a colon, and
 the page number.  A minus sign causes the bookmark to be closed
 when the PDF is loaded, and any other symbol causes the bookmark
 to be open.  Bookmarks will be children of other bookmarks depending
-on their indentation.
+on their indentation.  The type or amount of indentation does not
+matter, nor does it need to be consistent, as long as the indentation
+levels are clear.
 
 Up to one space after the symbol will be ignored, and subsequent
 whitespace becomes part of the bookmark's title.
