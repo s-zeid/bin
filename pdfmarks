@@ -118,9 +118,31 @@ import subprocess
 import tempfile
 import sys
 
+DEBUG = False
 FLAGS = ("Debug", "KeepBookmarks")
 
 class GhostscriptError(Exception): pass
+
+def main(argv):
+ usage = "Usage: %s in-file bookmarks-file out-file [ghostscript [args [...]]]" % argv[0]
+ if len(argv) < 4:
+  print >> sys.stderr, usage
+  return 2
+ in_file, bookmarks_file, out_file = argv[1:4]
+ ghostscript = argv[4:]
+ with open(bookmarks_file, "rb") as f:
+  bookmarks = f.read()
+ 
+ pdfmarks = bookmarks_to_pdfmarks(bookmarks)
+ flags, _ = filter_flags(pdfmarks)
+ if DEBUG or flags.get("Debug", False):
+  for i in bookmarks_to_pdfmarks(bookmarks):
+   print i
+ else:
+  try:
+   write_pdfmarks(pdfmarks, in_file, out_file, ghostscript)
+  except GhostscriptError as exc:
+   print >> sys.stderr, "Ghostscript error with %s" % exc
 
 def bookmarks_to_pdfmarks(bookmarks, meta=None):
  if not meta:
@@ -168,7 +190,10 @@ def bookmarks_to_pdfmarks(bookmarks, meta=None):
      want_meta = False
    if not bookmark.strip():
     continue
+   
    # old format
+   # this was "([ +-]n) Title: page" with optional indentation
+   #
    #level_match = re.search(r"^(\s*\(\s*[+-]?\s*[0-9]*\s*\)\s?)", bookmark)
    #if level_match:
    # level = level_match.group(0).replace("(", "").replace(")", "").strip()
@@ -240,9 +265,6 @@ def bookmarks_to_pdfmarks(bookmarks, meta=None):
  
  return pdfmarks
 
-def write_bookmarks(bookmarks, in_file, out_file, ghostscript=None):
- ghostscript_pdfmarks(bookmarks_to_pdfmarks(bookmarks), in_file, out_file, ghostscript)
-
 def filter_flags(pdfmarks):
  flags = {}
  filtered = []
@@ -257,7 +279,10 @@ def filter_flags(pdfmarks):
    filtered += [bookmark]
  return flags, filtered
 
-def ghostscript_pdfmarks(pdfmarks, in_file, out_file, ghostscript=None):
+def write_bookmarks(bookmarks, in_file, out_file, ghostscript=None):
+ write_pdfmarks(bookmarks_to_pdfmarks(bookmarks), in_file, out_file, ghostscript)
+
+def write_pdfmarks(pdfmarks, in_file, out_file, ghostscript=None):
  if isinstance(pdfmarks, basestring):
   pdfmarks = pdfmarks.splitlines()
  
@@ -285,7 +310,7 @@ def ghostscript_pdfmarks(pdfmarks, in_file, out_file, ghostscript=None):
   
   in_files  += [pdfmarks_file]
   
-  cmd  = []
+  cmd = []
   if isinstance(ghostscript, (list, tuple)):
    # allow extra arguments to be given for Ghostscript
    cmd += list(ghostscript[:]) if ghostscript else [None]
@@ -373,28 +398,6 @@ def _pdfmark_unicode(string):
         return '({})'.format(string)
 
 # End code from pdf-merge.py
-
-DEBUG = False
-def main(argv):
- usage = "Usage: %s in-file bookmarks-file out-file [ghostscript [args [...]]]" % argv[0]
- if len(argv) < 4:
-  print >> sys.stderr, usage
-  return 2
- in_file, bookmarks_file, out_file = argv[1:4]
- ghostscript = argv[4:]
- with open(bookmarks_file, "rb") as f:
-  bookmarks = f.read()
- 
- pdfmarks = bookmarks_to_pdfmarks(bookmarks)
- flags, _ = filter_flags(pdfmarks)
- if DEBUG or flags.get("Debug", False):
-  for i in bookmarks_to_pdfmarks(bookmarks):
-   print i
- else:
-  try:
-   ghostscript_pdfmarks(pdfmarks, in_file, out_file, ghostscript)
-  except GhostscriptError as exc:
-   print >> sys.stderr, "Ghostscript error with %s" % exc
 
 if __name__ == "__main__":
  try:
