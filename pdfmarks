@@ -25,6 +25,13 @@
 This script allows one to add bookmarks and metadata to a PDF file
 by making a file containing them in a human-friendly format.
 
+Using this script requires Ghostscript.
+
+Usage
+-----
+
+    pdfmarks in-file bookmarks-file out-file [ghostscript [args [...]]]
+
 Example file
 ------------
 
