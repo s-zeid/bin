@@ -1,0 +1,387 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+
+# Copyright (c) 2014 Scott Zeid.
+# Contains code copyright (c) 2011-2013 W. Trevor King <wking@drexel.edu>
+# (the PostScript code that removes existing bookmarks from the output
+# file, and a function to escape text for PostScript).
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this program.  If not, see
+# <http://www.gnu.org/licenses/>.
+
+"""Adds bookmarks and metadata to PDF files
+
+This script allows one to add bookmarks and metadata to a PDF file
+by making a file containing them in a human-friendly format.
+
+Example file
+------------
+
+% Title: My Awesome PDF File
+% Author: Scott Zeid
+
++ My Awesome PDF File: 1
+ - Stuffs: 2
+  * Testing: 3
+  * 1: 10
+  * 2: 20
+  * 3: 30
+ - Moar stuffs: 256
+  * Even: 4096
+   • more: 65536
+    · stuffs!: 4,294,967,296
+
+Outline format
+--------------
+
+The outline consists of a plus sign, minus sign, asterisk, bullet,
+or middle dot followed by the name of the bookmark, a colon, and
+the page number.  A minus sign causes the bookmark to be closed
+when the PDF is loaded, and any other symbol causes the bookmark
+to be open.  Bookmarks will be children of other bookmarks depending
+on their indentation.
+
+Up to one space after the symbol will be ignored, and subsequent
+whitespace becomes part of the bookmark's title.
+
+The titles may contain colons; only the last colon on a given line
+separates the title from the page number.
+
+Commas or periods in the page number will be ignored.
+
+Metadata
+--------
+
+Metadata can be given by placing it at the top of the file.  Each
+line of metadata must start with a percent sign.  Any valid PDF
+metadata key is accepted, and the first colon on the line separates
+the key from the value.
+
+The script recognizes some special keys that control the behavior of
+the script:
+
+ * KeepBookmarks  
+   This causes any bookmarks from the input file to be preserved; the
+   default behavior is to get rid of them.
+ * Debug
+   This causes the internally generated PostScript code to be printed
+   to standard output for debugging purposes.
+
+These special keys will not appear in the output PDF file.  Also, these
+keys support a special syntax:  you can leave off the colon and value,
+in which case the value will be true, and you can make the value false
+by putting an exclamation point at the beginning of the key name.  If
+you prefer to use a colon and value, the only values considered to be
+true are (case-insensitive) "true", "1", "yes", and "on".
+
+* * * * *
+
+Special thanks to W. Trevor King for explaining how pdfmarks work,
+and for the code I included:
+
+* <http://blog.tremily.us/posts/PDF_bookmarks_with_Ghostscript/>
+* <http://blog.tremily.us/posts/PDF_bookmarks_with_Ghostscript/pdf-merge.py>
+
+"""
+
+import codecs
+import os
+import re
+import subprocess
+import tempfile
+import sys
+
+FLAGS = ("Debug", "KeepBookmarks")
+
+class GhostscriptError(Exception): pass
+
+def bookmarks_to_pdfmarks(bookmarks, meta=None):
+ if not meta:
+  meta = {}
+ want_meta = True
+ intermediate = []
+ pdfmarks = []
+ 
+ if isinstance(bookmarks, basestring):
+  bookmarks = bookmarks.splitlines()
+ 
+ for bookmark in bookmarks:
+  if isinstance(bookmark, (list, tuple)):
+   # sequence will be ([level,] title, page)
+   want_meta = False  # stop collection of metadata (now if only the NSA would...)
+   if len(bookmark) >= 3:
+    level, title, page = bookmark[:3]
+   elif len(bookmark) == 2:
+    title, page = bookmark
+    level = 1
+   else:
+    continue
+  elif isinstance(bookmark, basestring):
+   if not isinstance(bookmark, unicode):
+    bookmark = unicode(bookmark, "utf-8")
+   if want_meta:
+    # Collect metadata from the beginning of the file
+    if bookmark.startswith("%"):
+     bookmark = bookmark[1:].strip()
+     if ":" in bookmark:
+      k, v = bookmark.split(":", 1)
+      k, v = k.strip(), v.lstrip()
+     else:
+      # If the metadata key has no colon, then it's treated as a flag for this script
+      if bookmark in FLAGS:
+       k, v = bookmark, True
+      elif "!" + bookmark in FLAGS:
+       k, v = bookmark, False
+      else:
+       continue
+     meta[k] = v
+     continue
+    else:
+     # Stop metadata collection on the first line that does not start with '%'
+     want_meta = False
+   if not bookmark.strip():
+    continue
+   # old format
+   #level_match = re.search(r"^(\s*\(\s*[+-]?\s*[0-9]*\s*\)\s?)", bookmark)
+   #if level_match:
+   # level = level_match.group(0).replace("(", "").replace(")", "").strip()
+   # rest  = bookmark.replace(level_match.group(0), "", 1)
+   # if not level:
+   #  level = "1"
+   #else:
+   # level, rest = "1", bookmark
+   
+   # New format:
+   # Indentation is the level number; the first character after that
+   # determines the level's sign (open or closed); we eat one space
+   # after the symbol, and other whitespace is considered part of the
+   # bookmark title.
+   level_match = re.search(ur"^(\s*)([+\-*•·])\s?", bookmark)
+   if level_match:
+    sign  = -1 if level_match.group(2) == "-" else 1
+    level = sign * (len(level_match.group(1)) + 1)
+    rest  = bookmark.replace(level_match.group(0), "", 1)
+   else:
+    continue
+   title, page = rest.rsplit(":", 1)
+  else:
+   continue
+  #for special in ("\\", "(", ")", "\n", "\t"):
+  # title = title.replace(special, "\\" + special)
+  #title = "(%s)" % title
+  title = _pdfmark_unicode(title)
+  try:
+   level, page = int(level), int(page.replace(",", "").replace(".", ""))
+  except ValueError:
+   continue
+  intermediate += [[level, title, page]]
+ 
+ for k in meta.keys():
+  # Move script flags out of the meta dict and into the pdfmarks list.
+  # They will be added as PostScript comments, which are filtered out
+  # by filter_flags()
+  if k in FLAGS:
+   v = meta[k]
+   if isinstance(v, basestring):
+    v = v.lower() in ("true", "1", "yes", "on")
+   pdfmarks += ["%" + (k if v else "!" + k)]
+   del meta[k]
+ 
+ for i in xrange(0, len(intermediate)):
+  level, title, page = intermediate[i]
+  # Convert level numbers to pdfmarks counts
+  count = 0
+  level, sign = abs(level), 1 if level >= 0 else -1
+  for j in xrange(i + 1, len(intermediate)):
+   j_level = abs(intermediate[j][0])
+   if j_level == level + 1:
+    count += 1
+   elif j_level <= level:
+    break
+  count = sign * count
+  # Add the bookmark to the pdfmarks list as PostScript
+  pdfmarks += ["[/Title %s /Count %d /Page %d /View [/XYZ null null null] /OUT pdfmark"
+               % (title, count, page)]
+ 
+ # Add metadata to the pdfmarks list
+ if meta:
+  docinfo = "["
+  for k in sorted(meta.keys()):
+   docinfo += "/%s %s " % (k, _pdfmark_unicode(meta[k]))
+  docinfo += "/DOCINFO pdfmark"
+  pdfmarks += [docinfo]
+ 
+ return pdfmarks
+
+def write_bookmarks(bookmarks, in_file, out_file, ghostscript=None):
+ ghostscript_pdfmarks(bookmarks_to_pdfmarks(bookmarks), in_file, out_file, ghostscript)
+
+def filter_flags(pdfmarks):
+ flags = {}
+ filtered = []
+ for bookmark in pdfmarks:
+  if bookmark.startswith("%"):
+   flag = bookmark.replace("%", "", 1)
+   if not flag.startswith("!"):
+    flags[flag] = True
+   else:
+    flags[flag.replace("!", "", 1)] = False
+  else:
+   filtered += [bookmark]
+ return flags, filtered
+
+def ghostscript_pdfmarks(pdfmarks, in_file, out_file, ghostscript=None):
+ if isinstance(pdfmarks, basestring):
+  pdfmarks = pdfmarks.splitlines()
+ 
+ tmp_files = []
+ in_files  = []
+ try:
+  pdfmarks_file = tempfile.mkstemp(text=True)[1]
+  tmp_files += [pdfmarks_file]
+  flags, pdfmarks = filter_flags(pdfmarks)
+  with open(pdfmarks_file, "wb") as f:
+   for bookmark in pdfmarks:
+    f.write(bookmark)
+  
+  if not flags.get("KeepBookmarks", False):
+   noop_file = _write_pdfmark_noop_file()
+   tmp_files += [noop_file]
+   in_files  += [noop_file]
+  
+  in_files += [in_file]
+  
+  if not flags.get("KeepBookmarks", False):
+   restore_file = _write_pdfmark_restore_file()
+   tmp_files += [restore_file]
+   in_files  += [restore_file]
+  
+  in_files  += [pdfmarks_file]
+  
+  cmd  = []
+  if isinstance(ghostscript, (list, tuple)):
+   # allow extra arguments to be given for Ghostscript
+   cmd += list(ghostscript[:]) if ghostscript else [None]
+  else:
+   cmd += [ghostscript]
+  if not cmd[0]:
+   cmd[0] = "gs"
+  cmd += ["-q", "-dBATCH", "-dNOPAUSE", "-sDEVICE=pdfwrite",
+         "-sOutputFile=" + out_file]
+  cmd += in_files
+  p = subprocess.Popen(cmd, stderr=subprocess.PIPE)
+  r = p.wait()
+  if r != 0:
+   raise GhostscriptError("exit code %d: %s" % (r, p.stderr.read()))
+ finally:
+  for i in tmp_files:
+   os.remove(i)
+
+# From pdf-merge.py by W. Trevor King
+# <http://blog.tremily.us/posts/PDF_bookmarks_with_Ghostscript/pdf-merge.py>
+
+# SZ:  no prefix in mkstemp(); PostScript code is silent when skipping /OUT
+def _write_pdfmark_noop_file(encoding='ascii'):
+ # By default, Ghostscript will preserve pdfmarks from the sources PDFs
+ fd,filename = tempfile.mkstemp(text=True)
+ # Make `[... /OUT pdfmark` a no-op.
+ os.write(fd, """
+% store the original pdfmark
+/originalpdfmark { //pdfmark } bind def
+
+% replace pdfmark with a wrapper that ignores OUT
+% SZ:  modified to be silent when skipping /OUT
+/pdfmark
+{
+  {  % begin loop
+
+      { counttomark pop }
+    stopped
+      { /pdfmark errordict /unmatchedmark get exec stop }
+    if
+
+    dup type /nametype ne
+      { /pdfmark errordict /typecheck get exec stop }
+    if
+
+    dup /OUT eq
+    if
+
+    originalpdfmark exit
+
+  } loop
+} def
+""".encode(encoding))
+ os.close(fd)
+ return filename
+
+# SZ:  no prefix in mkstemp()
+def _write_pdfmark_restore_file(encoding='ascii'):
+ fd,filename = tempfile.mkstemp(text=True)
+ # Restore the default `[... /Out pdfmark` behaviour
+ os.write(fd, '/pdfmark { originalpdfmark } bind def\n'.encode(encoding))
+ os.close(fd)
+ return filename
+
+# SZ:  Python 2
+def _pdfmark_unicode(string):
+    r"""
+    >>> _pdfmark_unicode('ascii text with ) paren')
+    '(ascii text with \\) paren)'
+    >>> _pdfmark_unicode('\u03b1\u03b2\u03b3')
+    '<FEFF03B103B203B3>'
+    """
+    try:
+        ascii = string.encode('ascii')
+    except UnicodeEncodeError:
+        b = codecs.BOM_UTF16_BE + string.encode('utf-16-be')
+        #return '<{}>'.format(''.join('{:02X}'.format(byte) for byte in b))
+        r = '<%s>' % ''.join(("0" + hex(ord(byte)).replace("0x",""))[-2:] for byte in b)
+        return r.upper()
+    else:
+        # escape special characters
+        for a,b in [('\\', '\\\\'), ('(', '\\('), (')', '\\)'),
+                    ('\n', '\\n'), ('\t', '\\t')]:
+            string = string.replace(a, b)
+        return '({})'.format(string)
+
+# End code from pdf-merge.py
+
+DEBUG = False
+def main(argv):
+ usage = "Usage: %s in-file bookmarks-file out-file [ghostscript [args [...]]]" % argv[0]
+ if len(argv) < 4:
+  print >> sys.stderr, usage
+  return 2
+ in_file, bookmarks_file, out_file = argv[1:4]
+ ghostscript = argv[4:]
+ with open(bookmarks_file, "rb") as f:
+  bookmarks = f.read()
+ 
+ pdfmarks = bookmarks_to_pdfmarks(bookmarks)
+ flags, _ = filter_flags(pdfmarks)
+ if DEBUG or flags.get("Debug", False):
+  for i in bookmarks_to_pdfmarks(bookmarks):
+   print i
+ else:
+  try:
+   ghostscript_pdfmarks(pdfmarks, in_file, out_file, ghostscript)
+  except GhostscriptError as exc:
+   print >> sys.stderr, "Ghostscript error with %s" % exc
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
