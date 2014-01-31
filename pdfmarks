@@ -36,7 +36,7 @@ Note:  if you just want to pass custom arguments to Ghostscript, but
 you don't want to give a new path to it, you can set the `ghostscript`
 argument to the empty string (not tested on Windows\*):
 
-    pdfmarks in.pdf bookmarks.txt out.pdf "" -arg1 -arg2 -arg...
+    pdfmarks in.pdf bookmarks.txt out.pdf "" -arg1 -arg2 ... -argN
 
 Example file
 ------------
