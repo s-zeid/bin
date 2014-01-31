@@ -32,6 +32,12 @@ Usage
 
     pdfmarks in-file bookmarks-file out-file [ghostscript [args [...]]]
 
+Note:  if you just want to pass custom arguments to Ghostscript, but
+you don't want to give a new path to it, you can set the `ghostscript`
+argument to the empty string (not tested on Windows\*):
+
+    pdfmarks in.pdf bookmarks.txt out.pdf "" -arg1 -arg2 -arg...
+
 Example file
 ------------
 
@@ -99,6 +105,9 @@ and for the code I included:
 
 * <http://blog.tremily.us/posts/PDF_bookmarks_with_Ghostscript/>
 * <http://blog.tremily.us/posts/PDF_bookmarks_with_Ghostscript/pdf-merge.py>
+
+
+\* Actually, *none* of this script has been tested on Windows.
 
 """
 
