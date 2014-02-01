@@ -143,7 +143,7 @@ def main(argv):
  pdfmarks = bookmarks_to_pdfmarks(bookmarks)
  flags, _ = filter_flags(pdfmarks)
  if DEBUG or flags.get("Debug", False):
-  for i in bookmarks_to_pdfmarks(bookmarks):
+  for i in pdfmarks:
    print i
  else:
   try:
