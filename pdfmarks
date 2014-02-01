@@ -120,8 +120,13 @@ import subprocess
 import tempfile
 import sys
 
+from collections import namedtuple
+from collections import OrderedDict
+
 DEBUG = False
 FLAGS = ("Debug", "KeepBookmarks")
+
+Bookmark = namedtuple("Bookmark", "level,title,page")
 
 class GhostscriptError(Exception): pass
 
@@ -146,18 +151,26 @@ def main(argv):
   except GhostscriptError as exc:
    print >> sys.stderr, "Ghostscript error with %s" % exc
 
-def bookmarks_to_pdfmarks(bookmarks, meta=None):
+def parse_bookmarks(bookmarks, meta=None):
  if not meta:
   meta = {}
+ meta = OrderedDict(meta)
  want_meta = True
- intermediate = []
- pdfmarks = []
+ parsed = []
  
  if isinstance(bookmarks, basestring):
   bookmarks = bookmarks.splitlines()
  
  for bookmark in bookmarks:
-  if isinstance(bookmark, (list, tuple)):
+  if isinstance(bookmark, Bookmark):
+   want_meta = False
+   level, title, page = bookmark.level, bookmark.title, bookmark.page
+  elif isinstance(bookmark, (dict, OrderedDict)):
+   if "title" in bookmark and "page" in bookmark:
+    level, title, page = bookmark.get("level", 1), bookmark["title"], bookmark["page"]
+   else:
+    continue
+  elif isinstance(bookmark, (list, tuple)):
    # sequence will be ([level,] title, page)
    want_meta = False  # stop collection of metadata (now if only the NSA would...)
    if len(bookmark) >= 3:
@@ -181,8 +194,8 @@ def bookmarks_to_pdfmarks(bookmarks, meta=None):
       # If the metadata key has no colon, then it's treated as a flag for this script
       if bookmark in FLAGS:
        k, v = bookmark, True
-      elif "!" + bookmark in FLAGS:
-       k, v = bookmark, False
+      elif bookmark.startswith("!") and bookmark[1:] in FLAGS:
+       k, v = bookmark, True  # changed to False later on
       else:
        continue
      meta[k] = v
@@ -225,10 +238,32 @@ def bookmarks_to_pdfmarks(bookmarks, meta=None):
   #title = "(%s)" % title
   title = _pdfmark_unicode(title)
   try:
-   level, page = int(level), int(page.replace(",", "").replace(".", ""))
+   level, page = int(level), int(str(page).replace(",", "").replace(".", ""))
   except ValueError:
    continue
-  intermediate += [[level, title, page]]
+  parsed += [Bookmark(level=level, title=title, page=page)]
+ 
+ for k in meta.keys():
+  # convert flags in meta to boolean values
+  v = meta[k]
+  if k in FLAGS:
+   if isinstance(v, basestring):
+    meta[k] = v = v.lower() in ("true", "1", "yes", "on")
+   else:
+    meta[k] = v = bool(v)
+  elif k.startswith("!") and k[1:] in FLAGS:
+   del meta[k]
+   k = k[1:]
+   if isinstance(v, basestring):
+    meta[k] = v = v.lower() not in ("true", "1", "yes", "on")
+   else:
+    meta[k] = v = not v
+ 
+ return parsed, meta
+ 
+def bookmarks_to_pdfmarks(bookmarks, meta=None):
+ bookmarks, meta = parse_bookmarks(bookmarks, meta)
+ pdfmarks = []
  
  for k in meta.keys():
   # Move script flags out of the meta dict and into the pdfmarks list.
@@ -236,18 +271,17 @@ def bookmarks_to_pdfmarks(bookmarks, meta=None):
   # by filter_flags()
   if k in FLAGS:
    v = meta[k]
-   if isinstance(v, basestring):
-    v = v.lower() in ("true", "1", "yes", "on")
    pdfmarks += ["%" + (k if v else "!" + k)]
    del meta[k]
  
- for i in xrange(0, len(intermediate)):
-  level, title, page = intermediate[i]
+ for i in xrange(0, len(bookmarks)):
+  bookmark = bookmarks[i]
+  level, title, page = bookmark.level, bookmark.title, bookmark.page
   # Convert level numbers to pdfmarks counts
   count = 0
   level, sign = abs(level), 1 if level >= 0 else -1
-  for j in xrange(i + 1, len(intermediate)):
-   j_level = abs(intermediate[j][0])
+  for j in xrange(i + 1, len(bookmarks)):
+   j_level = abs(bookmarks[j].level)
    if j_level == level + 1:
     count += 1
    elif j_level <= level:
