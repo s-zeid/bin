@@ -82,14 +82,20 @@ TABS_WORD = ("tab", "tabs")
 def windows_from_sessionstore(store):
  if isinstance(store, file):
   store = store.read().decode("utf-8")
- store = json.loads(store)
- windows =  [[{"icon":  tab["attributes"].get("image", ""),
-               "title": tab["entries"][tab['index'] - 1].get("title",
-                         os.path.basename(tab["entries"][tab["index"] - 1]["url"])),
-               "url":   tab["entries"][tab['index'] - 1]["url"]}
-              for tab in window["tabs"]]
-             for window in store["windows"]]
- return windows
+ if isinstance(store, basestring):
+  store = json.loads(store)
+ return [window_to_list(window) for window in store["windows"]]
+
+def window_to_list(window):
+ return [i for i in [tab_to_dict(tab) for tab in window["tabs"]] if i]
+
+def tab_to_dict(tab):
+ if not tab.get("entries"):
+  return None
+ return {"icon":  tab["attributes"].get("image", ""),
+         "title": tab["entries"][tab["index"] - 1].get("title",
+                   os.path.basename(tab["entries"][tab["index"] - 1]["url"])),
+         "url":   tab["entries"][tab["index"] - 1]["url"]}
 
 def html_escape_tab(tab, charset=OUTPUT_CHARSET):
  return dict([(k, cgi.escape(tab[k], True).encode(OUTPUT_CHARSET)) for k in tab])
