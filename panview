@@ -1,0 +1,190 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+
+"""View documents on the terminal.
+
+Dependencies:
+
+* pandoc
+* groff
+* less
+* (optional) unoconv for viewing formats not supported by pandoc
+
+"""
+
+import argparse
+import errno
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+UNOCONV_BLACKLIST = ["html", "html5", "xhtml", "htm", "txt", "pdf"]
+PANDOC_FORMAT_ALIASES = {"xhtml": "html", "htm": "html",
+                         "md": "markdown", "mkdown": "markdown", "ronn": "markdown"}
+
+class PanviewError(Exception): pass
+
+def main(argv):
+ p = argparse.ArgumentParser(description="View a document using less.")
+ p.add_argument("--verbose", "-v", dest="verbose", action="store_true",
+                help="Show extra warnings.")
+ p.add_argument("--roff", "-r", dest="roff", action="store_true",
+                help="Only show the roff output of pandoc.")
+ p.add_argument("--format", "-f", dest="format", default=None,
+                help="The input format name to pass to pandoc."
+                    +" (Default is to auto-detect.)")
+ p.add_argument("--filename", "--name", "-n", dest="filename",
+                help="The filename to display."
+                    +" (Default is the input filename.)")
+ p.add_argument("--title", "-t", dest="title", default=None,
+                help="The document's title."
+                    +" (Default is the input filename.)")
+ p.add_argument("file",
+                help="The file to view.  Use - for standard input.")
+ try:
+  args = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ filename = args.filename if args.filename else args.file
+ title = args.title or filename
+ 
+ f = sys.stdin if args.file == "-" else open(args.file, "rb")
+ try:
+  roff = file2roff(f, filename, format=args.format, title=title)
+ except PanviewError as exc:
+  print >> sys.stderr, "error:", exc
+  return 1
+ finally:
+  if args.filename != "-":
+   f.close()
+ 
+ output = roff if args.roff else roff2ansi(roff, verbose=args.verbose, trim=False)
+ 
+ if sys.stdout.isatty():
+  prompt = title
+  prompt = prompt.replace("\\", "\\\\").replace("%", "\\%")
+  prompt = prompt.replace(":", "\\:").replace("?", "\\?").replace(".", "\\.")
+  p = subprocess.Popen(["less", "-P", prompt], stdin=subprocess.PIPE)
+  p.communicate(output)
+  return p.wait()
+ 
+ print output
+ return 0
+
+def file2roff(file_, filename=None, format=None, title=None):
+ roff = ('.TH "" "" "" "" "%s"\n'
+         % (title or filename or "").replace('"', "").replace("\\", ""))
+ input_ = file_ if isinstance(file_, basestring) else file_.read()
+ unoconv_formats = get_unoconv_formats()
+ 
+ if not filename and isinstance(file_, file):
+  filename = file_.name
+ 
+ if not format:
+  format = ""
+  ext = os.path.splitext(filename or "")[1][1:] or "txt"
+ 
+ format_dealiased = PANDOC_FORMAT_ALIASES.get(format.lower(), None)
+ if (format_dealiased or ext) in unoconv_formats:
+  input_ = to_html(input_, format_dealiased or ext)
+  format = "html"
+ else:
+  format = format_dealiased
+ 
+ try:
+  p = subprocess.Popen(["pandoc", "-", "-t", "man", "-o", "-"]
+                       + (["-f", format] if format else []),
+                       stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+ except EnvironmentError as exc:
+  if exc.errno == errno.ENOENT:
+   raise PanviewError("error: pandoc is required")
+  else:
+   raise
+ 
+ roff += p.communicate(input_)[0]
+ r = p.wait()
+ if r != 0:
+  raise PanviewError("pandoc failed with exit code %d" % r)
+ 
+ return roff
+
+def roff2ansi(roff, trim=False, verbose=False):
+ try:
+  p = subprocess.Popen(["groff", "-mtty-char", "-mandoc", "-Kutf8", "-Tutf8"]
+                       + ([] if verbose else ["-Wall"]),
+                       stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+ except EnvironmentError as exc:
+  if exc.errno == errno.ENOENT:
+   raise PanviewError("error: groff is required")
+  else:
+   raise
+ 
+ ansi = p.communicate(roff)[0]
+ r = p.wait()
+ if r != 0:
+  raise PanviewError("groff failed with exit code %d" % r)
+ 
+ ansi = ansi.splitlines()[:-1]
+ ansi[0] = re.sub(r"^\(\)|\(\)$", "  ", ansi[0])
+ if trim:
+  for i in xrange(len(ansi)):
+   ansi[i] = ansi[i][7:]
+ 
+ return "\n".join(ansi)
+
+def get_unoconv_formats():
+ try:
+  p = subprocess.Popen(["unoconv", "--show"],
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+ except EnvironmentError as exc:
+  if exc.errno == errno.ENOENT:
+   return []
+  else:
+   raise
+ 
+ text = p.communicate()[0]
+ formats = []
+ for i in re.findall(r'\[\.([^]]+?)\]', text):
+  i = i.lower()
+  if i not in UNOCONV_BLACKLIST:
+   formats += [i]
+ 
+ return formats
+
+def to_html(input_, input_format):
+ tmp_in = None
+ tmp_out = None
+ try:
+  tmp_in = tempfile.mkstemp(suffix="." + input_format.lower())[1]
+  tmp_out = tempfile.mkstemp()[1]
+  
+  with open(tmp_in, "wb") as f:
+   f.write(input_)
+  
+  try:
+   p = subprocess.Popen(["unoconv", "-f", "html", "-o", tmp_out, tmp_in])
+  except EnvironmentError as exc:
+   if exc.errno == errno.ENOENT:
+     raise PanviewError("error: unoconv is required for this format")
+   else:
+    raise
+  r = p.wait()
+  if r != 0:
+   raise PanviewError("unoconv failed with exit code %d" % r)
+  
+  with open(tmp_out, "rb") as f:
+   html = f.read()
+ finally:
+  if tmp_in:  os.unlink(tmp_in)
+  if tmp_out: os.unlink(tmp_out)
+ 
+ return html
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
