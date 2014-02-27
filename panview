@@ -88,7 +88,7 @@ def file2roff(file_, filename=None, format=None, title=None):
  if not format:
   format = ""
  
- format_dealiased = PANDOC_FORMAT_ALIASES.get(format.lower(), None)
+ format_dealiased = PANDOC_FORMAT_ALIASES.get(format.lower(), format)
  if (format_dealiased or ext) in unoconv_formats:
   input_ = to_html(input_, format_dealiased or ext)
   format = "html"
