@@ -83,9 +83,10 @@ def file2roff(file_, filename=None, format=None, title=None):
  if not filename and isinstance(file_, file):
   filename = file_.name
  
+ ext = os.path.splitext(filename or "")[1][1:] or "txt"
+ 
  if not format:
   format = ""
-  ext = os.path.splitext(filename or "")[1][1:] or "txt"
  
  format_dealiased = PANDOC_FORMAT_ALIASES.get(format.lower(), None)
  if (format_dealiased or ext) in unoconv_formats:
