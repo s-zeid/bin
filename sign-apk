@@ -12,11 +12,16 @@ fi
 
 SRC="$1"
 APK="$2"
+APK_U="$2".unaligned
 
 if [ -z "$APK" ]; then
  if grep -q -e '-unsigned\.apk$' <<< "$SRC"; then
   APK=$(sed -e 's/-unsigned\.apk$/.apk/g' <<< "$SRC")
  fi
+fi
+
+if grep -q -e '\.apk$' <<< "$APK"; then
+ APK_U=$(sed -e 's/\.apk$/-unaligned.apk/g' <<< "$APK")
 fi
 
 if [ -z "$APK" -o -z "$SRC" ]; then
@@ -26,13 +31,12 @@ if [ -z "$APK" -o -z "$SRC" ]; then
  exit 2
 fi
 
-cp -a "$SRC" "$APK".tmp
+cp -a "$SRC" "$APK_U"
 [ $VERBOSE -ne 0 ] && echo jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \\
-[ $VERBOSE -ne 0 ] && echo '          '-keystore "$KEYSTORE" "$APK".tmp "$ALIAS"
+[ $VERBOSE -ne 0 ] && echo '          '-keystore "$KEYSTORE" "$APK_U" "$ALIAS"
 jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \
-          -keystore "$KEYSTORE" "$APK".tmp "$ALIAS"
+          -keystore "$KEYSTORE" "$APK_U" "$ALIAS"
 
 rm -f "$APK"
-[ $VERBOSE -ne 0 ] && echo zipalign 4 "$APK".tmp "$APK"
-zipalign 4 "$APK".tmp "$APK"
-rm -f "$APK".tmp
+[ $VERBOSE -ne 0 ] && echo zipalign 4 "$APK_U" "$APK"
+zipalign 4 "$APK_U" "$APK"
