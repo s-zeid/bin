@@ -1,0 +1,26 @@
+#!/bin/sh
+
+KEYSTORE=/home/scottywz/.android/release.keystore
+ALIAS=androidreleasekey
+
+SRC="$1"
+APK="$2"
+
+if [ -z "$APK" ]; then
+ if grep -q -e '-unsigned\.apk$' <<< "$SRC"; then
+  APK=$(sed -e 's/-unsigned\.apk$/.apk/g' <<< "$SRC")
+ fi
+fi
+
+if [ -z "$APK" -o -z "$SRC" ]; then
+ echo "Usage: $(basename "$0") input-apk output-apk" >&2
+ echo "If \`input-apk\` ends in \"-unsigned.apk\", then \`output-apk\` may be omitted" >&2
+ echo "and \`input-apk\` with \"-unsigned.apk\" removed will be used." >&2
+ exit 2
+fi
+
+cp -a "$SRC" "$APK".tmp
+jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \
+          -keystore "$KEYSTORE" "$APK".tmp "$ALIAS"
+zipalign 4 "$APK".tmp "$APK"
+rm -f "$APK".tmp
