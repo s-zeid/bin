@@ -3,6 +3,13 @@
 KEYSTORE=/home/scottywz/.android/release.keystore
 ALIAS=androidreleasekey
 
+if [ "$1" = "--verbose" -o "$1" = "-v" ]; then
+ VERBOSE=1
+ shift
+else
+ VERBOSE=0
+fi
+
 SRC="$1"
 APK="$2"
 
@@ -13,15 +20,19 @@ if [ -z "$APK" ]; then
 fi
 
 if [ -z "$APK" -o -z "$SRC" ]; then
- echo "Usage: $(basename "$0") input-apk output-apk" >&2
+ echo "Usage: $(basename "$0") [-v|--verbose] input-apk output-apk" >&2
  echo "If \`input-apk\` ends in \"-unsigned.apk\", then \`output-apk\` may be omitted" >&2
  echo "and \`input-apk\` with \"-unsigned.apk\" removed will be used." >&2
  exit 2
 fi
 
 cp -a "$SRC" "$APK".tmp
+[ $VERBOSE -ne 0 ] && echo jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \\
+[ $VERBOSE -ne 0 ] && echo '          '-keystore "$KEYSTORE" "$APK".tmp "$ALIAS"
 jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \
           -keystore "$KEYSTORE" "$APK".tmp "$ALIAS"
+
 rm -f "$APK"
+[ $VERBOSE -ne 0 ] && echo zipalign 4 "$APK".tmp "$APK"
 zipalign 4 "$APK".tmp "$APK"
 rm -f "$APK".tmp
