@@ -22,5 +22,6 @@ fi
 cp -a "$SRC" "$APK".tmp
 jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \
           -keystore "$KEYSTORE" "$APK".tmp "$ALIAS"
+rm -f "$APK"
 zipalign 4 "$APK".tmp "$APK"
 rm -f "$APK".tmp
