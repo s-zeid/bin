@@ -1,0 +1,19 @@
+#!/bin/bash
+
+if [ -z "$1" -o -z "$2" ]; then
+ echo "Usage: $0 apk [username@]device-address" >&2
+ exit 2
+fi
+
+APK="$1"
+DEVICE="$2"
+
+if grep -v -q -e '@' <<< "$DEVICE"; then
+ DEVICE=root@"$DEVICE"
+fi
+
+TMP_NAME=/sdcard/.install-apk.tmp.apk
+
+scp -p "$APK" "$DEVICE":"$TMP_NAME"
+[ $? -eq 0 ] && ssh "$DEVICE" pm install -r "$TMP_NAME"
+[ $? -eq 0 ] && ssh "$DEVICE" rm -f "$TMP_NAME"
