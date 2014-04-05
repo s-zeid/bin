@@ -1,0 +1,93 @@
+#!/usr/bin/env python2
+
+import argparse
+import base64
+import os
+import re
+import sys
+import urllib
+
+DEFAULT_MIME_TYPE = "application/octet-stream"
+DEFAULT_MIME_TYPE_TEXT = "text/plain"
+
+def data_uri(data, mime=None, force_text=None, force_base64=None):
+ uri = "data:"
+ use_base64 = True
+ 
+ if not mime:
+  if force_text:
+   mime = DEFAULT_MIME_TYPE_TEXT
+  else:
+   mime = DEFAULT_MIME_TYPE
+ 
+ mime = mime.lower()
+ if mime == "text":
+  mime = "text/plain"
+  if force_text == None:
+   force_base64 = False
+ 
+ if mime in ("binary", "base64", "base-64", "base_64", "b64"):
+  mime = "application/octet-stream"
+  if force_base64 == None:
+   force_text = False
+ 
+ if force_text != False:
+  if (force_text or mime.startswith("text") or
+      (mime.startswith("application") and "script" in mime) or
+      mime.startswith("image/svg")):
+   use_base64 = False
+ 
+ if force_base64:
+  use_base64 = True
+ 
+ uri += mime
+
+ if use_base64:
+  uri += ";base64"
+ 
+ uri += ","
+ 
+ if use_base64:
+  uri += base64.standard_b64encode(data)
+ else:
+  uri += re.sub(r"</(script)", r"<%2F\1", urllib.quote(data, safe="/<> "), flags=re.I)
+ 
+ return uri
+
+def main(argv):
+ parser = argparse.ArgumentParser(
+  description="Converts input to a data: URI."
+ )
+ parser.add_argument("--type", "-t", "--mime-type", default=None,
+  help="The MIME type of the input.  Defaults to '%s', or '%s' if --text is used."
+       % (DEFAULT_MIME_TYPE, DEFAULT_MIME_TYPE_TEXT)),
+ parser.add_argument("--text", "-T", default=None, action="store_true",
+  help="Force the input to be represented as text, even with binary MIME types.")
+ parser.add_argument("--base64", "-B", default=None, action="store_true",
+  help="Force the input to be represented as Base 64, even with text MIME types.")
+ parser.add_argument("input", metavar="FILE", default=None, nargs="?",
+  help="Input file (default is standard input)")
+ parser.add_argument("--output", "-o", default=None,
+  help="Output file (default is standard output)")
+ args = parser.parse_args(argv[1:])
+ 
+ is_stdin = args.input == None
+ 
+ f = open(args.input, "rb") if not is_stdin else sys.stdin
+ 
+ uri = data_uri(f.read(), mime=args.type, force_text=args.text, force_base64=args.base64)
+ 
+ if not is_stdin:
+  f.close()
+ 
+ if args.output == None:
+  print uri
+ else:
+  with open(args.output) as out:
+   out.write(result.read())
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
