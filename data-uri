@@ -25,15 +25,17 @@ def decode(uri):
  else:
   return urllib.unquote(data)
 
-def encode(data, mime=None, force_text=None, force_base64=None):
+def encode(data, mime=None, filename=None, force_text=None, force_base64=None,
+           mgc_file=None):
  uri = "data:"
  use_base64 = True
  
  if not mime:
   if force_text:
-   mime = DEFAULT_MIME_TYPE_TEXT
+   default_mime = DEFAULT_MIME_TYPE_TEXT
   else:
-   mime = DEFAULT_MIME_TYPE
+   default_mime = DEFAULT_MIME_TYPE
+  mime = guess_mime_type(filename, default_mime, data, mgc_file)
  
  mime = mime.lower()
  if mime == "text":
@@ -97,7 +99,8 @@ def main(argv):
  if args.decode:
   result = decode(f.read())
  else:
-  result = encode(f.read(), mime=args.type, force_text=args.text, force_base64=args.base64)
+  result = encode(f.read(), mime=args.type, filename=args.input,
+                  force_text=args.text, force_base64=args.base64)
  
  if not is_stdin:
   f.close()
@@ -107,6 +110,72 @@ def main(argv):
  else:
   with open(args.output) as out:
    out.write(result)
+
+def guess_mime_type(filename, default="application/octet-stream", data=None,
+                    mgc_file=None):
+ """Guesses a file's MIME type.
+
+If data is given, it will be used as the file's data; otherwise, the
+file at the given filename will be used.  Regardless, the filename may
+be used to guess the MIME type if libmagic fails or is unavailable.
+
+The MIME type is determined as follows:
+  1.  If the mimetype argument is set, then it will be used.
+  2.  libmagic will be used to get the MIME type.
+  3.  If libmagic fails or is not available, then mimetypes.guess_type
+      will be used.  If filename is a truthy string, then it will be
+      used.
+  4.  As a last resort, the MIME type will default to
+      "application/octet-stream".
+
+"""
+ import mimetypes
+ try:
+  import magic
+  HAVE_MAGIC = True
+ except ImportError:
+  HAVE_MAGIC = False
+ 
+ class Fallback(Warning): pass
+ 
+ if not mgc_file:
+  mgc_file = "/usr/share/misc/magic.mgc"
+ 
+ if not filename or not isinstance(filename, basestring):
+  filename = ""
+ 
+ mime = default
+ 
+ if data == None:
+  try:
+   with open(filename, "rb") as f:
+    data = f.read()
+  except EnvironmentError as exc:
+   if exc.errno == errno.ENOENT:
+    pass
+   else:
+    raise
+ 
+ try:
+  if not HAVE_MAGIC:
+   raise Fallback("no magic; falling back to mimetypes")
+  mgc = magic.open(magic.MAGIC_MIME_TYPE)
+  r = mgc.load(mgc_file)
+  if r != 0:
+   mgc.close()
+   raise Fallback("could not load mgc_file; falling back to mimetypes")
+  mime = mgc.buffer(data)
+  mgc.close()
+  if mime == None:
+   raise Fallback("problem getting MIME type; falling back to mimetypes")
+ except Fallback:
+  if filename:
+   mime = mimetypes.guess_type(filename, strict=False)[0]
+   if not mime:
+    mime = default
+  else:
+   mime = default
+ return mime
 
 if __name__ == "__main__":
  try:
