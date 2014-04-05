@@ -10,7 +10,22 @@ import urllib
 DEFAULT_MIME_TYPE = "application/octet-stream"
 DEFAULT_MIME_TYPE_TEXT = "text/plain"
 
-def data_uri(data, mime=None, force_text=None, force_base64=None):
+def decode(uri):
+ if uri[:5].lower() != "data:" or "," not in uri[5:]:
+  raise ValueError("Invalid data: URI")
+ 
+ mime, data = uri[5:].split(",", 1)
+ if ";base64" in mime.lower():
+  use_base64 = True
+ else:
+  use_base64 = False
+ 
+ if use_base64:
+  return base64.standard_b64decode(data)
+ else:
+  return urllib.unquote(data)
+
+def encode(data, mime=None, force_text=None, force_base64=None):
  uri = "data:"
  use_base64 = True
  
@@ -58,6 +73,10 @@ def main(argv):
  parser = argparse.ArgumentParser(
   description="Converts input to a data: URI."
  )
+ parser.add_argument("--decode", "-d", default=False, action="store_true",
+  help="Decodes the input instead of encoding it.  The --type,"
+       " --text, and --base64 options are ignored and are instead"
+       " inferred from the input.")
  parser.add_argument("--type", "-t", "--mime-type", default=None,
   help="The MIME type of the input.  Defaults to '%s', or '%s' if --text is used."
        % (DEFAULT_MIME_TYPE, DEFAULT_MIME_TYPE_TEXT)),
@@ -75,16 +94,19 @@ def main(argv):
  
  f = open(args.input, "rb") if not is_stdin else sys.stdin
  
- uri = data_uri(f.read(), mime=args.type, force_text=args.text, force_base64=args.base64)
+ if args.decode:
+  result = decode(f.read())
+ else:
+  result = encode(f.read(), mime=args.type, force_text=args.text, force_base64=args.base64)
  
  if not is_stdin:
   f.close()
  
  if args.output == None:
-  print uri
+  sys.stdout.write(result)
  else:
   with open(args.output) as out:
-   out.write(result.read())
+   out.write(result)
 
 if __name__ == "__main__":
  try:
