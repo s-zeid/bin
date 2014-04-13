@@ -1,0 +1,46 @@
+#!/usr/bin/env python2
+
+import json
+import os
+import sys
+
+from collections import OrderedDict
+
+def dict_schema(d):
+ d = d.copy()
+ for k in d:
+  if isinstance(d[k], dict):
+   d[k] = dict_schema(d[k])
+  else:
+   d[k] = type(d[k]).__name__
+ return d
+
+def json_schema(s):
+ d = json.loads(s, object_pairs_hook=OrderedDict)
+ schema = dict_schema(d)
+ return json.dumps(schema, sort_keys=True, indent=2)
+
+def main(argv):
+ if len(argv) != 2:
+  print >> sys.stderr, "Usage: %s json-file (- for standard input)"
+  return 2
+ 
+ filename = argv[1]
+ json = ""
+ 
+ if filename == "-":
+  json = sys.stdin.read()
+ else:
+  with open(filename, "rb") as f:
+   json = f.read()
+ 
+ schema = json_schema(json)
+ print schema
+ 
+ return 0
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
