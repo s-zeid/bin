@@ -126,7 +126,7 @@ def main(argv):
   f.close()
  
  if args.decode and args.info:
-  print >> sys.stderr, "MIME Type: " + result.mime
+  print >> sys.stderr, "MIME type: " + result.mime
   for k in result.mime_params:
    print >> sys.stderr, k + "=" + result.mime_params[k]
   print >> sys.stderr
