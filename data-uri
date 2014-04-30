@@ -7,23 +7,40 @@ import re
 import sys
 import urllib
 
+from collections import OrderedDict
+
 DEFAULT_MIME_TYPE = "application/octet-stream"
 DEFAULT_MIME_TYPE_TEXT = "text/plain"
+
+class DataURIString(bytes):
+ def __new__(cls, value, mime, mime_params, charset):
+  self = super(DataURIString, cls).__new__(cls, value)
+  self.mime = mime
+  self.mime_params = mime_params
+  self.charset = charset
+  return self
 
 def decode(uri):
  if uri[:5].lower() != "data:" or "," not in uri[5:]:
   raise ValueError("Invalid data: URI")
  
  mime, data = uri[5:].split(",", 1)
- if ";base64" in mime.lower():
+ if mime.lower().endswith(";base64"):
   use_base64 = True
+  mime = mime[:-7]
  else:
   use_base64 = False
  
+ mime, mime_params = (mime + ";").split(";", 1)
+ mime_params = OrderedDict([i.split("=", 1) for i in mime_params.split(";") if i])
+ charset = mime_params.get("charset", "us-ascii")
+ 
  if use_base64:
-  return base64.standard_b64decode(data)
+  result = base64.standard_b64decode(data)
  else:
-  return urllib.unquote(data)
+  result = urllib.unquote(data)
+ 
+ return DataURIString(result, mime, mime_params, charset)
 
 def encode(data, mime=None, filename=None, force_text=None, force_base64=None,
            mgc_file=None):
@@ -86,6 +103,9 @@ def main(argv):
   help="Force the input to be represented as text, even with binary MIME types.")
  parser.add_argument("--base64", "-B", default=None, action="store_true",
   help="Force the input to be represented as Base 64, even with text MIME types.")
+ parser.add_argument("--info", "-i", default=False, action="store_true",
+  help="Print info about the decoded data: URI (e.g. mime type) to standard error."
+       "  Only applies with -d/--decode.")
  parser.add_argument("input", metavar="FILE", default=None, nargs="?",
   help="Input file (default is standard input)")
  parser.add_argument("--output", "-o", default=None,
@@ -104,6 +124,12 @@ def main(argv):
  
  if not is_stdin:
   f.close()
+ 
+ if args.decode and args.info:
+  print >> sys.stderr, "MIME Type: " + result.mime
+  for k in result.mime_params:
+   print >> sys.stderr, k + "=" + result.mime_params[k]
+  print >> sys.stderr
  
  if args.output == None:
   sys.stdout.write(result)
