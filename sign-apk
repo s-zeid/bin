@@ -1,6 +1,6 @@
-#!/bin/sh
+#!/bin/bash
 
-KEYSTORE=/home/scottywz/.android/release.keystore
+KEYSTORE=~/.android/release.keystore
 ALIAS=androidreleasekey
 
 if [ "$1" = "--verbose" -o "$1" = "-v" ]; then
