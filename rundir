@@ -105,7 +105,7 @@ function default() {
  done
  
  function run() {
-  echo "$@"
+  #echo "$@"
   "$@"  # This should *not* be exec, because an SFX needs to clean itself up
   return $?
  }
