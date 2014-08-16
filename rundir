@@ -36,6 +36,7 @@
 #  RUNDIR_SFX_EXTRACT=<dirname>:  extract to <dirname>
 #  RUNDIR_SFX_LIST=1|true:  list the archive's contents
 #  RUNDIR_SFX_CAT=1|true:  dump the archive to stdout
+#  RUNDIR_SFX_HELP=1|true:  print this usage message
 #  RUNDIR_SFX_USAGE=1|true:  print this usage message
 # 
 # The SFX archives are shell scripts with a GZIP-compressed TAR archive
@@ -58,7 +59,7 @@ main() {
  if [ $DASH_DASH -eq 0 -a $IS_SFX -eq 0 ]; then
   if [ "$1" = "--make-sfx" ]; then
    shift
-   make-sfx "$@"
+   make_sfx "$@"
   elif [ "$1" = "--help" -o "$1" = "-h" ]; then
    shift
    usage "$@"
@@ -83,7 +84,9 @@ usage() {
   echo
   echo "SFX environment variables (these cancel the default behavior):"
   echo " RUNDIR_SFX_EXTRACT=<dirname>:  extract to <dirname>"
+  echo " RUNDIR_SFX_LIST=1|true:  list the archive's contents"
   echo " RUNDIR_SFX_CAT=1|true:  dump the archive to stdout"
+  echo " RUNDIR_SFX_HELP=1|true:  print this usage message"
   echo " RUNDIR_SFX_USAGE=1|true:  print this usage message"
  else
   echo "Usage: $SCRIPT <directory> [args [...]]"
@@ -159,11 +162,11 @@ run() {
   else
    target=default
   fi
-  PATH=$path make -B -f "$run" "$target" "${ARGS[@]}"
+  PATH=$path make -B -f "$run" "$target" "$@"
  fi
 }
 
-make-sfx() {
+make_sfx() {
  if [ -z "$1" -o -z "$2" ]; then
   echo "Usage: $SCRIPT --$0 <directory> <output-file>"
   return 2
@@ -180,13 +183,13 @@ make-sfx() {
  
  cat "$0" \
   | sed -e 's/^IS_SFX=0$/IS_SFX=1/g' \
-        -e 's/^main "\$@"$/sfx-entry "run.me" "$@"  # changed by make-sfx()/g' \
+        -e 's/^main "\$@"$/sfx_entry "run.me" "$@"  # changed by make_sfx()/g' \
   > "$OUT_FILE"
  tar -cz -C "$IN_DIR" . >> "$OUT_FILE"
  chmod +x "$OUT_FILE"
 }
 
-sfx-entry() {
+sfx_entry() {
  local DIR=$1
  shift
  
@@ -196,15 +199,16 @@ sfx-entry() {
  
  # Extract, cat, or print help, and then exit, if requested
  if [ -n "$RUNDIR_SFX_EXTRACT" ]; then
-  sfx-extract $SKIP "$RUNDIR_SFX_EXTRACT"
+  sfx_extract $SKIP "$RUNDIR_SFX_EXTRACT"
   return $?
  elif [ "$RUNDIR_SFX_LIST" = "1" -o "$RUNDIR_SFX_LIST" = "true" ]; then
-  sfx-cat $SKIP | tar tz
+  sfx_cat $SKIP | tar tz
   return $?
  elif [ "$RUNDIR_SFX_CAT" = "1" -o "$RUNDIR_SFX_CAT" = "true" ]; then
-  sfx-cat $SKIP
+  sfx_cat $SKIP
   return $?
- elif [ "$RUNDIR_SFX_HELP" = "1" -o "$RUNDIR_SFX_HELP" ]; then
+ elif [ "$RUNDIR_SFX_HELP"  = "1" -o "$RUNDIR_SFX_HELP" = "true" -o \
+        "$RUNDIR_SFX_USAGE" = "1" -o "$RUNDIR_SFX_USAGE" = "true" ]; then
   usage "$@"
   return $?
  fi
@@ -213,10 +217,10 @@ sfx-entry() {
  local SFX_TMP="/tmp/rundir-sfx-$$"
  mkdir "$SFX_TMP"
  mkdir "$SFX_TMP/$DIR"
- sfx-extract $SKIP "$SFX_TMP/$DIR"
+ sfx_extract $SKIP "$SFX_TMP/$DIR"
 
  # Allow us to clean up on Ctrl-C
- trap true SIGINT
+ trap true INT
  
  main "$SFX_TMP/$DIR" "$@"
  local RET=$?
@@ -227,32 +231,32 @@ sfx-entry() {
  return $RET
 }
 
-sfx-extract() {
+sfx_extract() {
  # The archive's offset is really the first argument, but we hide that
  # from the user
- local DIR=$1
+ local skip=$1
  shift
  
  if [ -z "$1" ]; then
-  echo "Usage: $SCRIPT <output-directory>"
+  echo "Usage: RUNDIR_SFX_EXTRACT=1|true $SCRIPT <output-directory>"
   return 2
  fi
  
  local OUT=$1
  mkdir -p "$OUT"
- sfx-cat | tar xz -C "$OUT"
+ sfx_cat "$skip" | tar xz -C "$OUT"
 }
 
-sfx-cat() {
+sfx_cat() {
  # The archive's offset is really the first argument, but we hide that
  # from the user
- local DIR=$1
+ local skip=$1
  shift
  
- tail -n +$SKIP "$SCRIPT"
+ tail -n +$skip "$SCRIPT"
 }
 
-# Do not change this line (without changing make-sfx() as well):
+# Do not change this line (without changing make_sfx() as well):
 main "$@"
 
 # Exit so that, if this is an SFX, the archive isn't treated as code
