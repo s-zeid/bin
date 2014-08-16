@@ -11,30 +11,51 @@
 # Application directory structure:
 # app-dir/
 #  bin/ - (optional) this is prepended to the PATH used when running rundir.mk
-#  rundir.mk - a Makefile (default rule is "default") that should do stuff
+#  run-here, run, run-here.mk, or run.mk - this is what's actually executed
 #  <anything else you want to include>
 # 
-# The application directory will be the working directory in which rundir.mk
-# is run, and bin/ will be prepended to its PATH if bin/ exists.
+# The file to be run will be run-here, run, run-here.mk, or run.mk, in that
+# order (only one will be run).  The -here variants will be executed in the
+# application directory; the other ones will be run in the original working
+# directory.  The .mk variants will be treated as makefiles, with the default
+# target being "default" instead of all (only the first argument is looked at
+# for a target name).  Make will also be passed the -B (--always-make) option.
+# <application-directory>/bin, if it exists, will be prepended to the PATH
+# passed to the script/makefile.  Only the non-makefile variants need to have
+# their executable bits set, and only one variant needs to exist.  If multiple
+# variants exist, only the first one in the order listed above will be run.
+#
+# Except for determining the make target name for run*.mk files, arguments are
+# not treated specially.
+# 
+# This is also capable of producing self-extracting archives.  The default
+# behavior of these archives is to extract them to a temporary directory,
+# run their contents, and then delete the temporary directory.  They accept
+# a few environment variables that will cancel the default behavior:
+#
+#  RUNDIR_SFX_EXTRACT=<dirname>:  extract to <dirname>
+#  RUNDIR_SFX_LIST=1|true:  list the archive's contents
+#  RUNDIR_SFX_CAT=1|true:  dump the archive to stdout
+#  RUNDIR_SFX_USAGE=1|true:  print this usage message
+# 
+# The SFX archives are shell scripts with a GZIP-compressed TAR archive
+# appended after a marker line (__ARCHIVE_FOLLOWS_IF_SFX__).
 # 
 # Run `rundir --help` for command-line usage information that should now be
 # self-explanatory.
-# 
-# At the moment, this obviously requires Make, and that should maybe be fixed
-# at some point.
 
 SCRIPT=$0
 IS_SFX=0
 
-if [ "$1" = "--" ]; then
+if [ $IS_SFX -eq 0 -a "$1" = "--" ]; then
  shift
  DASH_DASH=1
 else
  DASH_DASH=0
 fi
 
-function main() {
- if [ $DASH_DASH -eq 0 ]; then
+main() {
+ if [ $DASH_DASH -eq 0 -a $IS_SFX -eq 0 ]; then
   if [ "$1" = "--make-sfx" ]; then
    shift
    make-sfx "$@"
@@ -49,24 +70,31 @@ function main() {
  fi
 }
 
-function usage() {
+usage() {
  if [ $IS_SFX -eq 1 ]; then
   DIR_ARG=''
  else
   DIR_ARG='<directory> '
  fi
- echo "Usage: $SCRIPT $DIR_ARG[target] [--<var>=<value> ...]"
- echo "       $SCRIPT --make-sfx <directory> <output-file>"
  if [ $IS_SFX -eq 1 ]; then
-  echo "       $SCRIPT -x|--extract <output-directory>"
-  echo "       $SCRIPT -c|--cat"
+  echo "Usage: $SCRIPT [args [...]]"
+  echo "The default behavior is to extract this archive to a temporary directory,"
+  echo "run its contents, and then delete the temporary directory."
+  echo
+  echo "SFX environment variables (these cancel the default behavior):"
+  echo " RUNDIR_SFX_EXTRACT=<dirname>:  extract to <dirname>"
+  echo " RUNDIR_SFX_CAT=1|true:  dump the archive to stdout"
+  echo " RUNDIR_SFX_USAGE=1|true:  print this usage message"
+ else
+  echo "Usage: $SCRIPT <directory> [args [...]]"
+  echo "       $SCRIPT --make-sfx <directory> <output-file>"
+  echo "       $SCRIPT -h|--help"
  fi
- echo "       $SCRIPT -h|--help"
 }
 
-function default() {
+default() {
  if [ -n "$1" ]; then
-  DIR=$1
+  local dir=$1
   shift
   #if grep -q -v -e '/' <<< "$DIR"; then
   # DIR=./"$DIR"
@@ -76,67 +104,66 @@ function default() {
   return 2
  fi
  
- if [ -n "$1" -a "$(grep -v -e '^--' <<< "$1")" ]; then
-  target=$1
-  shift
- else
-  target=default
- fi
- 
- ARGS=()
- for i in $(seq 1 $#); do
-  if grep -q -e '=' <<< "${!i}"; then
-   k=$(grep -o -e '^[^=]*=' <<< "${!i}")
-   v=$(sed -e 's/^[^=]*=//g' <<< "${!i}")
-  else
-   k="${!i}="
-   v=1
-  fi
-  k=$(sed -e 's/^--//g' -e 's/-/_/g' <<< "$k")
-  if grep -q -e '^~/' <<< "$v"; then
-   ARGS[$i]="$k$HOME/$(sed -e 's@^~/@@g' <<< "$v")"
-  elif grep -q -e '^/' <<< "$v"; then
-   ARGS[$i]="$k$v"
-  elif grep -q -e '/' <<< "$v"; then
-   ARGS[$i]="${k}../../$v"
-  else
-   ARGS[$i]="$k$v"
-  fi
- done
- 
- function run() {
-  #echo "$@"
-  "$@"  # This should *not* be exec, because an SFX needs to clean itself up
-  return $?
- }
- 
- #cd "$(dirname "$0")"
- #export PATH="$(pwd)/bin:$PATH"
- #cd ..
- cd "$DIR"
- if [ $? -ne 0 ]; then
-  echo "$0: error: could not enter $DIR" >&2
-  return 127
- fi
- 
- if [ -d "$(pwd)/bin" ]; then
-  export PATH="$(pwd)/bin:$PATH"
- fi
- 
- if [ -e "rundir.mk" ]; then
-  MK=rundir.mk
- elif [ -e "machine.mk" ]; then
-  # backwards compatibility
-  MK=machine.mk
- else
-  echo "$0: error: no rundir.mk in $DIR" >&2
-  return 127
- fi
- 
- run make -f "$MK" "$target" "${ARGS[@]}"
+ run "$dir" "$@"
 }
 
-function make-sfx() {
+run() {
+ local dir=$1
+ shift
+ 
+ cd "$dir"
+ if [ $? -ne 0 ]; then
+  echo "$0: error: could not enter $dir" >&2
+  return 127
+ fi
+ 
+ local path=$PATH
+ if [ -d "$(pwd)/bin" ]; then
+  path="$(pwd)/bin:$PATH"
+ fi
+ 
+ local use_make=0
+ local run=
+ local wd=
+ if [ -e "$(realpath "run-here")" ]; then
+  run="run-here"
+  wd=$(pwd)
+ elif [ -e "$(realpath "run")" ]; then
+  run="run"
+ elif [ -e "$(realpath "run-here.mk")" ]; then
+  run="run-here.mk"
+  wd=$(pwd)
+  use_make=1
+ elif [ -e "$(realpath "run.mk")" ]; then
+  run="run.mk"
+  use_make=1
+ else
+  echo "$SCRIPT: no run-here, run, run-here.mk, or run.mk in $dir" >&2
+  return 127
+ fi
+ run=$(pwd)/"$run"
+ 
+ if [ -z "$wd" ]; then
+  cd "$OLDPWD"
+ fi
+ 
+ if [ $use_make -eq 0 ]; then
+  PATH=$path "$run" "$@"
+ else
+  local target=
+  if [ -n "$1" \
+       -a -n "$(printf '%s' "$1" | grep -v -e '^-')" \
+       -a -n "$(printf '%s' "$1" | grep -v -e '=')" ]; then
+   target=$1
+   shift
+  else
+   target=default
+  fi
+  PATH=$path make -B -f "$run" "$target" "${ARGS[@]}"
+ fi
+}
+
+make-sfx() {
  if [ -z "$1" -o -z "$2" ]; then
   echo "Usage: $SCRIPT --$0 <directory> <output-file>"
   return 2
@@ -159,7 +186,7 @@ function make-sfx() {
  chmod +x "$OUT_FILE"
 }
 
-function sfx-entry() {
+sfx-entry() {
  local DIR=$1
  shift
  
@@ -168,20 +195,18 @@ function sfx-entry() {
  local SKIP=`awk '/^__ARCHIVE_FOLLOWS_IF_SFX__/ { print NR + 1; exit 0; }' \$0`
  
  # Extract, cat, or print help, and then exit, if requested
- if [ $DASH_DASH -eq 0 ]; then
-  if [ "$1" = "--extract" -o "$1" = "-x" ]; then
-   shift
-   sfx-extract $SKIP "$@"
-   return $?
-  elif [ "$1" = "--cat" -o "$1" = "-c" ]; then
-   shift
-   sfx-cat $SKIP "$@"
-   return $?
-  elif [ "$1" = "--help" -o "$1" = "-h" ]; then
-   shift
-   usage "$@"
-   return $?
-  fi
+ if [ -n "$RUNDIR_SFX_EXTRACT" ]; then
+  sfx-extract $SKIP "$RUNDIR_SFX_EXTRACT"
+  return $?
+ elif [ "$RUNDIR_SFX_LIST" = "1" -o "$RUNDIR_SFX_LIST" = "true" ]; then
+  sfx-cat $SKIP | tar tz
+  return $?
+ elif [ "$RUNDIR_SFX_CAT" = "1" -o "$RUNDIR_SFX_CAT" = "true" ]; then
+  sfx-cat $SKIP
+  return $?
+ elif [ "$RUNDIR_SFX_HELP" = "1" -o "$RUNDIR_SFX_HELP" ]; then
+  usage "$@"
+  return $?
  fi
  
  # Extract temporary files
@@ -202,7 +227,7 @@ function sfx-entry() {
  return $RET
 }
 
-function sfx-extract() {
+sfx-extract() {
  # The archive's offset is really the first argument, but we hide that
  # from the user
  local DIR=$1
@@ -218,7 +243,7 @@ function sfx-extract() {
  sfx-cat | tar xz -C "$OUT"
 }
 
-function sfx-cat() {
+sfx-cat() {
  # The archive's offset is really the first argument, but we hide that
  # from the user
  local DIR=$1
