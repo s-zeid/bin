@@ -99,9 +99,6 @@ default() {
  if [ -n "$1" ]; then
   local dir=$1
   shift
-  #if grep -q -v -e '/' <<< "$DIR"; then
-  # DIR=./"$DIR"
-  #fi
  else
   usage >&2
   return 2
@@ -172,40 +169,40 @@ make_sfx() {
   return 2
  fi
  
- IN_DIR=$1
- IN_NAME=$(basename "$IN_DIR")
- OUT_FILE=$2
+ local in_dir=$1
+ local in_name=$(basename "$in_dir")
+ local out_file=$2
  
- if [ ! -d "$(realpath "$IN_DIR")" ]; then
-  echo "$0: error: $IN_DIR is not a directory or a link to one" >&2
+ if [ ! -d "$(realpath "$in_dir")" ]; then
+  echo "$0: error: $in_dir is not a directory or a link to one" >&2
   return 2
  fi
  
  cat "$0" \
   | sed -e 's/^IS_SFX=0$/IS_SFX=1/g' \
         -e 's/^main "\$@"$/sfx_entry "run.me" "$@"  # changed by make_sfx()/g' \
-  > "$OUT_FILE"
- tar -cz -C "$IN_DIR" . >> "$OUT_FILE"
- chmod +x "$OUT_FILE"
+  > "$out_file"
+ tar cz -C "$in_dir" . >> "$out_file"
+ chmod +x "$out_file"
 }
 
 sfx_entry() {
- local DIR=$1
+ local dir=$1
  shift
  
  # The tar archive starts after the __ARCHIVE_FOLLOWS_IF_SFX__ line in the
  # compiled SFX
- local SKIP=`awk '/^__ARCHIVE_FOLLOWS_IF_SFX__/ { print NR + 1; exit 0; }' \$0`
+ local skip=`awk '/^__ARCHIVE_FOLLOWS_IF_SFX__/ { print NR + 1; exit 0; }' \$0`
  
  # Extract, cat, or print help, and then exit, if requested
  if [ -n "$RUNDIR_SFX_EXTRACT" ]; then
-  sfx_extract $SKIP "$RUNDIR_SFX_EXTRACT"
+  sfx_extract "$skip" "$RUNDIR_SFX_EXTRACT"
   return $?
  elif [ "$RUNDIR_SFX_LIST" = "1" -o "$RUNDIR_SFX_LIST" = "true" ]; then
-  sfx_cat $SKIP | tar tz
+  sfx_cat "$skip" | tar tz
   return $?
  elif [ "$RUNDIR_SFX_CAT" = "1" -o "$RUNDIR_SFX_CAT" = "true" ]; then
-  sfx_cat $SKIP
+  sfx_cat "$skip"
   return $?
  elif [ "$RUNDIR_SFX_HELP"  = "1" -o "$RUNDIR_SFX_HELP" = "true" -o \
         "$RUNDIR_SFX_USAGE" = "1" -o "$RUNDIR_SFX_USAGE" = "true" ]; then
@@ -214,21 +211,21 @@ sfx_entry() {
  fi
  
  # Extract temporary files
- local SFX_TMP="/tmp/rundir-sfx-$$"
- mkdir "$SFX_TMP"
- mkdir "$SFX_TMP/$DIR"
- sfx_extract $SKIP "$SFX_TMP/$DIR"
+ local sfx_tmp="/tmp/rundir-sfx-$$"
+ mkdir "$sfx_tmp"
+ mkdir "$sfx_tmp/$dir"
+ sfx_extract "$skip" "$sfx_tmp/$dir"
 
  # Allow us to clean up on Ctrl-C
  trap true INT
  
- main "$SFX_TMP/$DIR" "$@"
- local RET=$?
+ main "$sfx_tmp/$dir" "$@"
+ local ret=$?
  
  # Remove temporary files
- rm -r "$SFX_TMP"
+ rm -r "$sfx_tmp"
 
- return $RET
+ return $ret
 }
 
 sfx_extract() {
@@ -242,9 +239,9 @@ sfx_extract() {
   return 2
  fi
  
- local OUT=$1
- mkdir -p "$OUT"
- sfx_cat "$skip" | tar xz -C "$OUT"
+ local out=$1
+ mkdir -p "$out"
+ sfx_cat "$skip" | tar xz -C "$out"
 }
 
 sfx_cat() {
@@ -253,7 +250,7 @@ sfx_cat() {
  local skip=$1
  shift
  
- tail -n +$skip "$SCRIPT"
+ tail -n "+$skip" "$SCRIPT"
 }
 
 # Do not change this line (without changing make_sfx() as well):
