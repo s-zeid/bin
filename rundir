@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # rundir
 # An application directory <https://en.wikipedia.org/wiki/Application_directory>
