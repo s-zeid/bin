@@ -33,11 +33,15 @@
 # run their contents, and then delete the temporary directory.  They accept
 # a few environment variables that will cancel the default behavior:
 #
-#  RUNDIR_SFX_EXTRACT=<dirname>:  extract to <dirname>
+#  RUNDIR_SFX_EXTRACT=<dirname>:  extract to <directory
 #  RUNDIR_SFX_LIST=1|true:  list the archive's contents
 #  RUNDIR_SFX_CAT=1|true:  dump the archive to stdout
 #  RUNDIR_SFX_HELP=1|true:  print this usage message
 #  RUNDIR_SFX_USAGE=1|true:  print this usage message
+# 
+# and one that doesn't:
+# 
+#  RUNDIR_SFX_TMP=<directory>:  use <directory> instead of /tmp
 # 
 # The SFX archives are shell scripts with a GZIP-compressed TAR archive
 # appended after a marker line (__ARCHIVE_FOLLOWS_IF_SFX__).
@@ -82,12 +86,15 @@ usage() {
   echo "The default behavior is to extract this archive to a temporary directory,"
   echo "run its contents, and then delete the temporary directory."
   echo
-  echo "SFX environment variables (these cancel the default behavior):"
-  echo " RUNDIR_SFX_EXTRACT=<dirname>:  extract to <dirname>"
-  echo " RUNDIR_SFX_LIST=1|true:  list the archive's contents"
-  echo " RUNDIR_SFX_CAT=1|true:  dump the archive to stdout"
-  echo " RUNDIR_SFX_HELP=1|true:  print this usage message"
-  echo " RUNDIR_SFX_USAGE=1|true:  print this usage message"
+  echo "SFX environment variables..."
+  echo " ... that cancel the default behavior:"
+  echo "  RUNDIR_SFX_EXTRACT=<directory>:  extract to <directory>"
+  echo "  RUNDIR_SFX_LIST=1|true:  list the archive's contents"
+  echo "  RUNDIR_SFX_CAT=1|true:  dump the archive to stdout"
+  echo "  RUNDIR_SFX_HELP=1|true:  print this usage message"
+  echo "  RUNDIR_SFX_USAGE=1|true:  print this usage message"
+  echo " ... that don't cancel the default behavior:"
+  echo "  RUNDIR_SFX_TMP=<directory>:  use <directory> instead of /tmp"
  else
   echo "Usage: $SCRIPT <directory> [args [...]]"
   echo "       $SCRIPT --make-sfx <directory> <output-file>"
@@ -210,8 +217,16 @@ sfx_entry() {
   return $?
  fi
  
+ # Determine where to put the temporary directory
+ local tmp="/tmp"
+ if [ -n "$RUNDIR_SFX_TMP" ]; then
+  cd "$RUNDIR_SFX_TMP"
+  tmp=$(pwd)
+  cd "$OLDPWD"
+ fi
+ 
  # Extract temporary files
- local sfx_tmp="/tmp/rundir-sfx-$$"
+ local sfx_tmp="$tmp/rundir-sfx-$$"
  mkdir "$sfx_tmp"
  mkdir "$sfx_tmp/$dir"
  sfx_extract "$skip" "$sfx_tmp/$dir"
