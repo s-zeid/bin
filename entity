@@ -39,9 +39,13 @@ def main(argv):
  if args.code_point:
   if mode == char2entity:
    result = input_
-  print "U+" + re.sub(r"^0x", "", hex(ord(result)))
+  sys.stdout.write("U+" + re.sub(r"^0x", "", hex(ord(result))))
  else:
-  print result.encode("utf-8")
+  sys.stdout.write(result.encode("utf-8"))
+ 
+ if sys.stdout.isatty():
+  print
+ 
  return 0
 
 if __name__ == "__main__":
