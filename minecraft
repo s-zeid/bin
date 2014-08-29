@@ -61,6 +61,13 @@ string, then it is just the executable.  `args` can be used with either form;
 arguments in `args` are added to the end of the command.  This must be
 specified as part of a launcher.
 
+(optional) `expand-args` is a boolean that lets you disable tilde expansion
+of the command's arguments.  Normally, a leading `~/` on the executable path
+or any argument will be expanded to the home directory; with this option set
+to `True`, only a leading `~/` on the executable path will be expanded.  This
+option does not affect the parsing of any argument other than `cmd` in a
+launcher.
+
 (optional) `cwd` lets you specify a directory to change into before running
 a launcher.  It may be specified either as part of a launcher or globally.  If
 defined inside a launcher, it will override the global `cwd` and be evaluated
@@ -288,6 +295,10 @@ def process_launcher_entry(name, launchers, config):
     return False
    # Expand first argument of the command (the path to the executable)
    cmd[0] = os.path.expanduser(cmd[0])
+   # Expand other arguments if this isn't disabled for the launcher
+   if l.get("expand-args", True):
+    for i in xrange(1, len(cmd)):
+     cmd[i] = os.path.expanduser(cmd[i])
    # Save result
    l["cmd"] = cmd
   # Normalize arguments
