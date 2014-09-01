@@ -1,4 +1,5 @@
 #!/bin/sh
+# vim: set fdm=marker:
 
 # rundir
 # An application directory <https://en.wikipedia.org/wiki/Application_directory>
@@ -49,6 +50,8 @@
 # Run `rundir --help` for command-line usage information that should now be
 # self-explanatory.
 
+#### Plumbing
+
 SCRIPT=$0
 IS_SFX=0
 
@@ -58,6 +61,8 @@ if [ $IS_SFX -eq 0 -a "$1" = "--" ]; then
 else
  DASH_DASH=0
 fi
+
+# Entry point (when IS_SFX=0) {{{1
 
 main() {
  if [ $DASH_DASH -eq 0 -a $IS_SFX -eq 0 ]; then
@@ -77,6 +82,20 @@ main() {
   default "$@"
  fi
 }
+
+default() {
+ if [ -n "$1" ]; then
+  local dir=$1
+  shift
+ else
+  usage >&2
+  return 2
+ fi
+ 
+ run "$dir" "$@"
+}
+
+# Usage {{{1
 
 usage() {
  if [ $IS_SFX -eq 1 ]; then
@@ -106,17 +125,7 @@ usage() {
  fi
 }
 
-default() {
- if [ -n "$1" ]; then
-  local dir=$1
-  shift
- else
-  usage >&2
-  return 2
- fi
- 
- run "$dir" "$@"
-}
+# Running directories {{{1
 
 run() {
  local dir=$1
@@ -228,6 +237,8 @@ resolve_path() {
  return 1
 }
 
+# SFX stuffs {{{1
+
 make_sfx() {
  if [ -z "$1" -o -z "$2" ]; then
   echo "Usage: $SCRIPT --$0 <directory> <output-file>"
@@ -245,7 +256,6 @@ make_sfx() {
  
  cat "$0" \
   | sed -e 's/^IS_SFX=0$/IS_SFX=1/g' \
-        -e 's/^main "\$@"$/sfx_entry "run.me" "$@"  # changed by make_sfx()/g' \
   > "$out_file"
  tar cz -C "$in_dir" . >> "$out_file"
  chmod +x "$out_file"
@@ -326,8 +336,13 @@ sfx_cat() {
  tail -n "+$skip" "$SCRIPT"
 }
 
-# Do not change this line (without changing make_sfx() as well):
-main "$@"
+#}}}
+
+if [ $IS_SFX -eq 0 ]; then
+ main "$@"
+else
+ sfx_entry "run.me" "$@"
+fi
 
 # Exit so that, if this is an SFX, the archive isn't treated as code
 exit $?
