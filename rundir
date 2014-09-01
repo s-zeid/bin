@@ -132,16 +132,16 @@ run() {
  local use_make=0
  local run=
  local wd=
- if [ -e "$(realpath "run-here")" ]; then
+ if [ -e "run-here" ]; then
   run="run-here"
   wd=$(pwd)
- elif [ -e "$(realpath "run")" ]; then
+ elif [ -e "run" ]; then
   run="run"
- elif [ -e "$(realpath "run-here.mk")" ]; then
+ elif [ -e "run-here.mk" ]; then
   run="run-here.mk"
   wd=$(pwd)
   use_make=1
- elif [ -e "$(realpath "run.mk")" ]; then
+ elif [ -e "run.mk" ]; then
   run="run.mk"
   use_make=1
  else
@@ -180,7 +180,7 @@ make_sfx() {
  local in_name=$(basename "$in_dir")
  local out_file=$2
  
- if [ ! -d "$(realpath "$in_dir")" ]; then
+ if [ ! -d "$in_dir" ]; then
   echo "$0: error: $in_dir is not a directory or a link to one" >&2
   return 2
  fi
