@@ -61,7 +61,10 @@ fi
 
 main() {
  if [ $DASH_DASH -eq 0 -a $IS_SFX -eq 0 ]; then
-  if [ "$1" = "--make-sfx" ]; then
+  if [ "$1" = "--search-path" -o "$1" = "-p" ]; then
+   shift
+   run_in_path "$@"
+  elif [ "$1" = "--make-sfx" ]; then
    shift
    make_sfx "$@"
   elif [ "$1" = "--help" -o "$1" = "-h" ]; then
@@ -97,6 +100,7 @@ usage() {
   echo "  RUNDIR_SFX_TMP=<directory>:  use <directory> instead of /tmp"
  else
   echo "Usage: $SCRIPT <directory> [args [...]]"
+  echo "       $SCRIPT -p|--search-path <directory-in-path> [args [...]]"
   echo "       $SCRIPT --make-sfx <directory> <output-file>"
   echo "       $SCRIPT -h|--help"
  fi
@@ -168,6 +172,60 @@ run() {
   fi
   PATH=$path make -B -f "$run" "$target" "$@"
  fi
+}
+
+is_runnable() {
+ if [ -z "$1" ]; then
+  echo "$SCRIPT:is_runnable: first argument must be the directory" >&2
+  return 127
+ fi
+ 
+ local dir=$1
+ shift
+ 
+ #cd "$dir" &>/dev/null
+ #[ $? -ne 0 ] && return 1
+ #cd "$OLDPWD"
+ [ ! -d "$dir" ] && return 1
+ [ -x "$dir/run-here" ] && return 0
+ [ -x "$dir/run" ] && return 0
+ [ -f "$dir/run-here.mk" ] && return 0
+ [ -f "$dir/run.mk" ] && return 0
+ return 1
+}
+
+run_in_path() {
+ local dir=$1
+ shift
+ 
+ local resolved=$(resolve_path "$dir")
+ if [ -n "$resolved" ]; then
+  run "$resolved" "$@"
+ else
+  echo "$SCRIPT: no runnable $dir in $PATH" >&2
+  return 127
+ fi
+}
+
+resolve_path() {
+ local dir=$(basename "$1")
+ shift
+ 
+ #local search=$PATH:
+ #while [ -n "$search" ]; do
+ # local i=${search%%:*}
+ # local search=${search#*:}
+ local oldifs=$IFS
+ IFS=:
+ for i in $PATH; do
+  if is_runnable "$i/$dir"; then
+   echo "$i/$dir"
+   IFS=$oldifs
+   return 0
+  fi
+ done
+ IFS=$oldifs
+ return 1
 }
 
 make_sfx() {
