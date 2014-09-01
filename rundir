@@ -137,14 +137,12 @@ run() {
   return 127
  fi
  
- local path=$PATH
- if [ -d "$(pwd)/bin" ]; then
-  path="$(pwd)/bin:$PATH"
- fi
- 
  local use_make=0
+ local add_path=1
+ local path=$PATH
  local run=
  local wd=
+ 
  if [ -e "run-here" ]; then
   run="run-here"
   wd=$(pwd)
@@ -157,11 +155,18 @@ run() {
  elif [ -e "run.mk" ]; then
   run="run.mk"
   use_make=1
+ elif [ -e "AppRun" ]; then
+  run="AppRun"
+  add_path=0
  else
   echo "$SCRIPT: no run-here, run, run-here.mk, or run.mk in $dir" >&2
   return 127
  fi
  run=$(pwd)/"$run"
+ 
+ if [ $add_path -ne 0 -a -d "$(pwd)/bin" ]; then
+  path="$(pwd)/bin:$PATH"
+ fi
  
  if [ -z "$wd" ]; then
   cd "$OLDPWD"
