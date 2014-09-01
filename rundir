@@ -2,6 +2,8 @@
 # vim: set fdm=marker:
 
 # rundir
+# ======
+# 
 # An application directory <https://en.wikipedia.org/wiki/Application_directory>
 # implementation that also allows for creating self-running archives of
 # application directories.
@@ -10,42 +12,61 @@
 # Released under the X11 License:  <https://tldrlegal.com/license/x11-license>
 # 
 # Application directory structure:
-# app-dir/
-#  bin/ - (optional) this is prepended to the PATH used when running rundir.mk
-#  run-here, run, run-here.mk, or run.mk - this is what's actually executed
-#  <anything else you want to include>
 # 
-# The file to be run will be run-here, run, run-here.mk, or run.mk, in that
-# order (only one will be run).  The -here variants will be executed in the
-# application directory; the other ones will be run in the original working
-# directory.  The .mk variants will be treated as makefiles, with the default
-# target being "default" instead of all (only the first argument is looked at
-# for a target name).  Make will also be passed the -B (--always-make) option.
-# <application-directory>/bin, if it exists, will be prepended to the PATH
-# passed to the script/makefile.  Only the non-makefile variants need to have
-# their executable bits set, and only one variant needs to exist.  If multiple
-# variants exist, only the first one in the order listed above will be run.
+# - app-dir/
+#     - `bin/` - (optional) this is prepended to the executable's $PATH
+#     - `<the actual executable; see below for valid filenames>`
+#     - `<anything else you want to include>`
+# 
+# The file to be run will be the first one of the following, in the order
+# listed, that is found to exist:
+# 
+# - `run-here`
+# - `run`
+# - `run-here.mk`
+# - `run.mk`
+# - `AppRun` (for ROX compatibility) ($PATH will not be modified)
+# 
+# The `-here` variants will be executed in the application directory; the other
+# ones will be run in the original working directory.
+# 
+# The `.mk` variants will be treated as makefiles, with the default target
+# being `default` instead of `all` (only the first argument is looked at for
+# a target name).  Make will also be passed the `-B` (`--always-make`) option.
+# 
+# Unless otherwise noted, `<application-directory>/bin`, if it exists, will be
+# prepended to the $PATH passed to the script/makefile.
+# 
+# Only the non-makefile variants need to have their executable bits set, and
+# only one variant needs to exist.  If multiple variants exist, only the first
+# one in the order listed above will be run.
 #
-# Except for determining the make target name for run*.mk files, arguments are
-# not treated specially.
+# Except for determining the make target name for `run*.mk` files, arguments
+# are not treated specially.
+# 
+# Self-extracting archives
+# ------------------------
 # 
 # This is also capable of producing self-extracting archives.  The default
 # behavior of these archives is to extract them to a temporary directory,
 # run their contents, and then delete the temporary directory.  They accept
 # a few environment variables that will cancel the default behavior:
 #
-#  RUNDIR_SFX_EXTRACT=<dirname>:  extract to <directory
-#  RUNDIR_SFX_LIST=1|true:  list the archive's contents
-#  RUNDIR_SFX_CAT=1|true:  dump the archive to stdout
-#  RUNDIR_SFX_HELP=1|true:  print this usage message
-#  RUNDIR_SFX_USAGE=1|true:  print this usage message
+# - `RUNDIR_SFX_EXTRACT=<dirname>`:  extract to `<directory>`
+# - `RUNDIR_SFX_LIST=1|true`:  list the archive's contents
+# - `RUNDIR_SFX_CAT=1|true`:  dump the archive to stdout
+# - `RUNDIR_SFX_HELP=1|true`:  print this usage message
+# - `RUNDIR_SFX_USAGE=1|true`:  print this usage message
 # 
 # and one that doesn't:
 # 
-#  RUNDIR_SFX_TMP=<directory>:  use <directory> instead of /tmp
+# - RUNDIR_SFX_TMP=<directory>:  use `<directory>` instead of `/tmp`
 # 
 # The SFX archives are shell scripts with a GZIP-compressed TAR archive
-# appended after a marker line (__ARCHIVE_FOLLOWS_IF_SFX__).
+# appended after a marker line (`__ARCHIVE_FOLLOWS_IF_SFX__`).
+# 
+# Usage
+# -----
 # 
 # Run `rundir --help` for command-line usage information that should now be
 # self-explanatory.
