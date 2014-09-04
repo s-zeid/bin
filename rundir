@@ -44,6 +44,17 @@
 # Except for determining the make target name for `run*.mk` files, arguments
 # are not treated specially.
 # 
+# `rundir` will fail if the executable file or makefile's owner is not the
+# same as the directory's owner, or (if it is a directory) `<dir>/bin`'s
+# owner is not the same as the directory's owner.  This prevents attacks
+# such as dropping a `run.mk` file in `/tmp` and then tricking a system
+# administrator to run `rundir /tmp` as root (e.g. by making a symlink to
+# `/tmp` with an innocuous-looking name), or tricking any user to run
+# `/tmp` in a file browser that supports using rundir to run runnable
+# directories.  In this example, `/tmp` is an arbitrary, but world-writable,
+# directory.  (When checking the owners of symlinks, rundir looks at the
+# owners of the symlinks themselves, not those of their targets.)
+# 
 # 
 # Self-extracting archives
 # ------------------------
@@ -177,6 +188,18 @@ run() {
  local dir=$1
  shift
  
+ local dir_name=$dir
+ 
+ local dir_uid=$(get_uid "$dir")
+ local run_uid=
+ local bin_uid=
+ 
+ # The directory's UID needs to be known for security reasons
+ if [ -z "$dir_uid" ]; then
+  echo "$SCRIPT: error: could not get $dir's owner"
+  return 127
+ fi
+ 
  cd "$dir"
  if [ $? -ne 0 ]; then
   echo "$0: error: could not enter $dir" >&2
@@ -186,32 +209,56 @@ run() {
  local use_make=0
  local add_path=1
  local path=$PATH
+ local run_name=
  local run=
+ local bin=
  local wd=
  
  if [ -e "run-here" ]; then
-  run="run-here"
+  run_name="run-here"
   wd=$(pwd)
  elif [ -e "run" ]; then
-  run="run"
+  run_name="run"
  elif [ -e "run-here.mk" ]; then
-  run="run-here.mk"
+  run_name="run-here.mk"
   wd=$(pwd)
   use_make=1
  elif [ -e "run.mk" ]; then
-  run="run.mk"
+  run_name="run.mk"
   use_make=1
  elif [ -e "AppRun" ]; then
-  run="AppRun"
+  run_name="AppRun"
   add_path=0
  else
-  echo "$SCRIPT: no run-here, run, run-here.mk, or run.mk in $dir" >&2
+  echo "$SCRIPT: no run-here, run, run-here.mk, run.mk, or AppRun in $dir" >&2
   return 127
  fi
- run=$(pwd)/"$run"
+ run="$(pwd)/$run_name"
+ # $run's owner must match that of $dir for security reasons
+ run_uid=$(get_uid "$run")
+ if [ -z "$run_uid" ]; then
+  echo "$SCRIPT: error: could not get $dir_name/$run_name's owner" >&2
+  return 127
+ elif [ $run_uid -ne $dir_uid ]; then
+  echo "$SCRIPT: error: $dir_name/$run_name's owner does not match" \
+       "that of $dir_name" >&2
+  return 127
+ fi
  
- if [ $add_path -ne 0 -a -d "$(pwd)/bin" ]; then
-  path="$(pwd)/bin:$PATH"
+ bin="$(pwd)/bin"
+ if [ $add_path -ne 0 -a -d "$bin" ]; then
+  # $bin's owner must match that of $dir for security reasons
+  bin_uid=$(get_uid "$bin")
+  if [ -z "$bin_uid" ]; then
+   echo "$SCRIPT: error: could not get $dir_name/bin's owner" >&2
+   return 127
+  elif [ $bin_uid -ne $dir_uid ]; then
+   echo "$SCRIPT: error: $dir_name/bin's owner does not match" \
+        "that of $dir_name" >&2
+   return 127
+  else
+   path="$(pwd)/bin:$PATH"
+  fi
  fi
  
  if [ -z "$wd" ]; then
@@ -385,6 +432,42 @@ sfx_cat() {
  shift
  
  tail -n "+$skip" "$SCRIPT"
+}
+
+# Utilities {{{1
+
+# This (obviously) gets the user ID of the given file/directory's owner.
+# For symlinks, it looks at the owner of the symlink itself.
+# Unfortunately, in order to be portable, this has to parse the output of
+# `ls -d -n "$file"`, but the format of `ls -n` (like `ls -l`, but prints
+# numeric IDs instead of names) is defined by POSIX, so we rely on the
+# implementation being conformant.
+get_uid() {
+ if [ -z "$1" ]; then
+  echo "$SCRIPT:get_uid: first argument must be a path" >&2
+  return 127
+ fi
+ 
+ local file=$1
+ shift
+ 
+ # Try to ensure `ls` will succeed
+ ls -d -n "$file" >/dev/null
+ if [ $? -ne 0 ]; then
+  echo "$SCRIPT:get_uid: could not get information for $file" &>2
+  return 127
+ fi
+ 
+ local uid=$(ls -d -n "$file" | sed -e "s/\t/ /g" | cut -d ' ' -f 3)
+ 
+ # The UID should be an integer; otherwise, we've failed
+ echo "x$uid" | grep -v '^x[0-9][0-9]*$' &>/dev/null
+ if [ $? -eq 0 ]; then
+  echo "$SCRIPT:get_uid: could not determine the owner's UID for $file" >&2
+  return 127
+ fi
+ 
+ echo "$uid"
 }
 
 #}}}
