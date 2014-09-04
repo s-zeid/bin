@@ -298,6 +298,7 @@ is_runnable() {
  [ -x "$dir/run" ] && return 0
  [ -f "$dir/run-here.mk" ] && return 0
  [ -f "$dir/run.mk" ] && return 0
+ [ -x "$dir/AppRun" ] && return 0
  return 1
 }
 
