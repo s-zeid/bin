@@ -40,9 +40,10 @@
 # Only the non-makefile variants need to have their executable bits set, and
 # only one variant needs to exist.  If multiple variants exist, only the first
 # one in the order listed above will be run.
-#
+# 
 # Except for determining the make target name for `run*.mk` files, arguments
 # are not treated specially.
+# 
 # 
 # Self-extracting archives
 # ------------------------
@@ -51,7 +52,7 @@
 # behavior of these archives is to extract them to a temporary directory,
 # run their contents, and then delete the temporary directory.  They accept
 # a few environment variables that will cancel the default behavior:
-#
+# 
 # - `RUNDIR_SFX_EXTRACT=<dirname>`:  extract to `<directory>`
 # - `RUNDIR_SFX_LIST=1|true`:  list the archive's contents
 # - `RUNDIR_SFX_CAT=1|true`:  dump the archive to stdout
@@ -65,11 +66,35 @@
 # The SFX archives are shell scripts with a GZIP-compressed TAR archive
 # appended after a marker line (`__ARCHIVE_FOLLOWS_IF_SFX__`).
 # 
+# 
 # Usage
 # -----
 # 
 # Run `rundir --help` for command-line usage information that should now be
 # self-explanatory.
+# 
+# 
+# Portability
+# -----------
+# 
+# This script is intended to be as portable between *nix systems as possible.
+# Therefore, an effort has been made to only use POSIX-defined commands,
+# POSIX-defined arguments to those commands, and POSIX-defined shell features.
+# The only exception is `tar`, but that is only used in the self-extracting
+# archive code.
+# 
+# Contributions to this script are welcome if and only if they meet those
+# criteria.
+# 
+# Also, this is written as a shell script and not in C/C++ because it is
+# intended to be portable across processor architectures *without* the need
+# to compile code.
+# 
+# Although this script is written to be portable, the same, however, is not
+# necessarily true for runnable directories themselves, obviously.  Authors
+# of runnable directories should take care to account for differences between
+# *nix systems and processor architectures.
+
 
 #### Plumbing
 
