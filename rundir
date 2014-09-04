@@ -393,7 +393,7 @@ sfx_entry() {
  fi
  
  # Extract temporary files
- local sfx_tmp="$tmp/rundir-sfx-$$"
+ local sfx_tmp="$tmp/rundir-sfx-$$"  # this is an implementation detail
  mkdir "$sfx_tmp"
  mkdir "$sfx_tmp/$dir"
  sfx_extract "$skip" "$sfx_tmp/$dir"
