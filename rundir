@@ -149,7 +149,7 @@ default() {
   return 2
  fi
  
- run "$dir" "$@"
+ run_dir "$dir" "$@"
 }
 
 # Usage {{{1
@@ -184,7 +184,7 @@ usage() {
 
 # Running directories {{{1
 
-run() {
+run_dir() {
  local dir=$1
  shift
  
@@ -281,9 +281,9 @@ run() {
  fi
 }
 
-is_runnable() {
+is_runnable_dir() {
  if [ -z "$1" ]; then
-  echo "$SCRIPT:is_runnable: first argument must be the directory" >&2
+  echo "$SCRIPT:is_runnable_dir: first argument must be the directory" >&2
   return 127
  fi
  
@@ -308,7 +308,7 @@ run_in_path() {
  
  local resolved=$(resolve_path "$dir")
  if [ -n "$resolved" ]; then
-  run "$resolved" "$@"
+  run_dir "$resolved" "$@"
  else
   echo "$SCRIPT: no runnable $dir in $PATH" >&2
   return 127
@@ -326,7 +326,7 @@ resolve_path() {
  local oldifs=$IFS
  IFS=:
  for i in $PATH; do
-  if is_runnable "$i/$dir"; then
+  if is_runnable_dir "$i/$dir"; then
    echo "$i/$dir"
    IFS=$oldifs
    return 0
