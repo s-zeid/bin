@@ -366,7 +366,7 @@ sfx_entry() {
  
  # The tar archive starts after the __ARCHIVE_FOLLOWS_IF_SFX__ line in the
  # compiled SFX
- local skip=`awk '/^__ARCHIVE_FOLLOWS_IF_SFX__/ { print NR + 1; exit 0; }' \$0`
+ local skip=`awk '/^__ARCHIVE_FOLLOWS_IF_SFX__/ { print NR + 1; exit 0; }' "$0"`
  
  # Extract, cat, or print help, and then exit, if requested
  if [ -n "$RUNDIR_SFX_EXTRACT" ]; then
