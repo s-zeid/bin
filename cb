@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# CraftBukkit console client
+# Minecraft server console client
 # Copyright (C) 2012-2013 Scott Zeid.  X11 License.
 
 # With no arguments, attaches to the screen/tmux instance on which the
@@ -10,8 +10,9 @@
 #  * If the first argument is one of:
 #     start, stop, restart, status, show
 #    systemctl is invoked with that command on the appropriate unit file
-#    if you have configured this script (and CraftBukkit) to use systemd.
-#    Otherwise, it is passed to the script specified below as $SCRIPT.
+#    if you have configured this script (and the Minecraft server) to use
+#    systemd.  Otherwise, it is passed to the script specified below as
+#    $SCRIPT.
 #  * If the first argument is systemctl or sc:
 #    The second argument is treated as a systemctl command, the next
 #    argument to systemctl is the unit file, and subsequent arguments to
@@ -23,23 +24,23 @@
 #  * If the first argument is --script:
 #    All subsequent arguments will be passed to the script specified in
 #    $SCRIPT.
-#  * Otherwise, it is passed to the CraftBukkit console as a command to
-#    run, and output is printed to standard output 1/4 of a second after
-#    the command is run.  Output is read from the log file and may be
-#    slightly different from what you would see in the console.
+#  * Otherwise, it is passed to the Minecraft server console as a command
+#    to run, and output is printed to standard output 1/4 of a second
+#    after the command is run.  Output is read from the log file and
+#    may be slightly different from what you would see in the console.
 
 # Settings ################################################################
 
 # General #########################
 
-# Script to use to start, stop, and manage CraftBukkit
-SCRIPT=~/opt/minecraft-servers/craftbukkit/systemd/craftbukkit.sh
-# Log file to read command output from
+# Script to use to start, stop, and manage the Minecraft server
+SCRIPT=~/opt/minecraft-servers/craftbukkit/manager/manager.sh
+# Log file from which to read command output
 LOG_FILE=~/opt/minecraft-servers/craftbukkit/logs/latest.log
 
 # Systemd #########################
 
-# Is CraftBukkit running from systemd?  (true/1/false/0)
+# Is the Minecraft server running from systemd?  (true/1/false/0)
 USE_SYSTEMD=1
 # The name of the systemd unit file
 SYSTEMD_UNIT=craftbukkit.service
