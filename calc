@@ -1,4 +1,38 @@
-#!/bin/bash
+#!/bin/sh
 
-EXPR=$@
-`which zsh &>/dev/null && echo zsh || echo bash` -c 'echo $(('"$EXPR"'))'
+main() {
+ if exists bc; then
+  bc_calc "$@"
+ elif exists zsh -c 'true'; then
+  zsh_calc "$@"
+ else
+  eval_calc "$@"
+ fi
+}
+
+exists() {
+ printf '%s\n' '0' | "$@" >/dev/null 2>&1
+}
+
+bc_calc() {
+ local expr=$@
+ local r=`printf 'scale=17\n%s\n' "$expr" | bc`
+ if (printf '%s' "$r" | grep -q -e '\.'); then
+  # remove trailing .'s and 0's in decimal part, and change leading `.` to `0.`
+  printf '%s\n' "$r" | sed -e 's/0*$//g;s/\.$//g;s/^\./0./g'
+ else
+  printf '%s\n' "$r"
+ fi
+}
+
+zsh_calc() {
+ local expr=$@
+ zsh -c 'printf "%s\\n" "$(('"$expr"'))"'
+}
+
+eval_calc() {
+ local expr=$@
+ eval 'printf "%s\\n" "$(('"$expr"'))"'
+}
+
+main "$@"
