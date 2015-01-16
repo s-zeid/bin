@@ -45,7 +45,7 @@ class PowerHandler(SocketServer.BaseRequestHandler):
   self.request.close()
 
 class PowerServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
- pass
+ allow_reuse_address = True
 
 def daemon(host=None, port=None):
  server = PowerServer((host or DEFAULT_HOST, port or DEFAULT_PORT), PowerHandler)
