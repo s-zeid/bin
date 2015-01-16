@@ -151,10 +151,12 @@ def power_local(root=None):
  if battery_status != "":
   if status["status"].lower() == "charged":
    status["human"] = status["status"]
-  else:
+  elif status["remaining"] is not None:
    time_type = "until charged" if status["status"].lower() == "charging" else "remaining"
    status["human"] = "%s, %s%%, %s %s" % (status["status"], status["percent"],
                                           status["remaining"], time_type)
+  else:
+   status["human"] = "%s, %s%%" % (status["status"], status["percent"])
  else:
   status["human"] = status["status"]
  
