@@ -19,6 +19,6 @@ fi
 TMP_NAME=/sdcard/.install-apk.tmp.apk
 
 echo ssh "$DEVICE" pm install -r "$@" "$TMP_NAME"
-scp -p "$APK" "$DEVICE":"$TMP_NAME"
-[ $? -eq 0 ] && ssh "$DEVICE" pm install -r "$@" "$TMP_NAME"
-[ $? -eq 0 ] && ssh "$DEVICE" rm -f "$TMP_NAME"
+scp "$APK" "$DEVICE":"$TMP_NAME"
+[ $? -eq 0 ] && ssh "$DEVICE" su root pm install -r "$@" "$TMP_NAME"
+[ $? -eq 0 ] && ssh "$DEVICE" su root rm -f "$TMP_NAME"
