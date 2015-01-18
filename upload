@@ -4,6 +4,11 @@ HOST=s.zeid.me
 PORT=22
 DEST=~/uploads
 
+if [ x"$1" = x"" ]; then
+ echo "Usage: $0 file [upload-name]" >&2
+ exit 2
+fi
+
 # add a trailing slash to DEST if it is non-empty and doesn't already have one
 if [ x"$DEST" != x"" ] && (printf '%s' "$DEST" | grep -q -v -e '/$'); then
  DEST=$DEST/
