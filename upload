@@ -1,11 +1,20 @@
 #!/bin/sh
 
+HOST=s.zeid.me
+PORT=22
+DEST=~/uploads
+
+# add a trailing slash to DEST if it is non-empty and doesn't already have one
+if [ x"$DEST" != x"" ] && (printf '%s' "$DEST" | grep -q -v -e '/$'); then
+ DEST=$DEST/
+fi
+
 if [ x"$IPV6" != x"0" ]; then
  IPV6=1
 fi
 
 if [ $IPV6 -ne 0 ]; then
- scp -pr "$1" s.zeid.me:~/uploads/"$2"
+ scp    -P "$PORT" -pr "$1" "$HOST":"$DEST""$2"
 else
- scp -4 -pr "$1" s.zeid.me:~/uploads/"$2"
+ scp -4 -P "$PORT" -pr "$1" "$HOST":"$DEST""$2"
 fi
