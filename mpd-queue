@@ -10,6 +10,9 @@ else
 fi
 
 prefix=$1
+
+# add a trailing slash to the prefix if it is non-empty and doesn't already
+# have one
 if [ x"$prefix" != x"" ] && (printf '%s' "$prefix" | grep -q -v -e '/$'); then
  prefix=$prefix/
 fi
