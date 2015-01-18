@@ -1,0 +1,19 @@
+#!/bin/sh
+
+if [ x"$1" = x"--" ]; then
+ shift
+else
+ if [ x"$1" = x"--help" ] || [ x"$1" = x"-h" ]; then
+  echo "Usage: $0 [--] [prefix]" >&2
+  exit 0
+ fi
+fi
+
+prefix=$1
+if [ x"$prefix" != x"" ] && (printf '%s' "$prefix" | grep -q -v -e '/$'); then
+ prefix=$prefix/
+fi
+
+# Per the mpc(1) man page, use the `MPD_HOST` and `MPD_PORT` variables to
+# change the host and/or port number, respectively.
+mpc playlist -f '%file%' | awk -v prepend="$prefix" '{ print prepend $0 }'
