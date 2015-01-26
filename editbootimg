@@ -1,0 +1,188 @@
+#!/usr/bin/env python2
+
+# Copyright (c) 2014 Scott Zeid <s@zeid.me>.
+# Released under the X11 License <https://tldrlegal.com/license/x11-license>.
+
+"""Modifies the ramdisk in an Android boot image.
+
+Requires `mkbootimg` and `unpackbootimg` to be present on the PATH.
+`mkbootimg` is from AOSP, and `unpackbootimg` is apparently by Koush.
+A standalone Git repository with these utilities is available at
+ <https://github.com/osm0sis/mkbootimg.git>.
+
+Also requires the `cpio` utility to be present on the PATH.  Most Linux
+distributions, as well as OS X, satisfy this requirement out of the box.
+
+"""
+
+import argparse
+import gzip
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+from collections import OrderedDict
+
+BUFFER_LIMIT = 1024 * 1024 * 32
+PIPE = subprocess.PIPE
+
+def main(argv):
+ usage  = "Usage: %s\n"
+ usage += "       -i|--input <in-file>\n"
+ usage += "       <replace-file> <with-file> [...]\n"
+ usage += "       [-o|--output <out-file> (defaults to <in-file>.new)"
+ 
+ in_file = None
+ out_file = None
+ replacements = OrderedDict()
+ try:
+  skip_next = False
+  for i in xrange(1, len(argv)):
+   if skip_next:
+    skip_next = False
+    continue
+   arg = argv[i]
+   flag = None
+   need = "value"
+   if arg in ("-i", "--input"):
+    flag = "-i|--input"
+    in_file = argv[i + 1]
+    skip_next = True
+   elif arg in ("-o", "--output"):
+    flag = "-o|--output"
+    out_file = argv[i + 1]
+    skip_next = True
+   else:
+    need = "replacement"
+    original = flag = argv[i]
+    replacement = argv[i + 1]
+    replacements[original] = replacement
+    skip_next = True
+ except IndexError:
+  print >> sys.stderr, "%s: error: %s requires a %s" % (argv[0], flag, need)
+  return 2
+ if not in_file or not replacements:
+  print >> sys.stderr, usage % argv[0]
+  return 2
+ if not out_file:
+  out_file = in_file + ".new"
+ 
+ return editbootimg(in_file, out_file, replacements)
+
+def helpers(in_file, tmp):
+ base = os.path.join(tmp, os.path.basename(in_file))
+ def arg(what):
+  with open(filename(what), "rb") as f:
+   return f.read().rstrip("\r\n")
+ def filename(what):
+  return ("%s-%s" % (base, what)) if what else base
+ return (arg, filename)
+
+def walk(dirname):
+ names = []
+ oldcwd = os.getcwd()
+ try:
+  os.chdir(dirname)
+  for root, dirs, files in os.walk(".", topdown=False):
+   for i in dirs:
+    names += [os.path.join(root, i)]
+   for i in files:
+    names += [os.path.join(root, i)]
+  names.sort()
+  return names
+ finally:
+  os.chdir(oldcwd)
+
+def editbootimg(in_file, out_file, replacements):
+ tmp = tempfile.mkdtemp()
+ try:
+  arg, filename = helpers(in_file, tmp)
+  
+  if not os.path.isfile(in_file):
+   print >> sys.stderr, "error: `%s` is not a regular file" % in_file
+   return 1
+  unpackbootimg(in_file, tmp)
+  
+  ramdisk_dir = os.path.join(tmp, "ramdisk")
+  os.mkdir(ramdisk_dir)
+  
+  with gzip.open(filename("ramdisk.gz"), "rb") as f:
+   p = subprocess.Popen(["cpio", "-i"],
+                        cwd=ramdisk_dir, stdin=PIPE)
+   while True:
+    buf = f.read(BUFFER_LIMIT)
+    if not buf:
+     break
+    p.stdin.write(buf)
+   p.stdin.flush()
+   p.stdin.close()
+  
+  for original in replacements:
+   replacement = replacements[original]
+   tmp_path = original.lstrip(os.path.sep + (os.path.altsep or ""))
+   tmp_path = os.path.join(ramdisk_dir, tmp_path)
+   shutil.copy2(replacement, tmp_path)
+  
+  with gzip.open(filename("ramdisk.gz"), "wb", 6) as f:
+   p = subprocess.Popen(["cpio", "-o", "-H", "newc"],
+                        cwd=ramdisk_dir, stdin=PIPE, stdout=PIPE)
+   names = walk(ramdisk_dir)
+   for name in names:
+    p.stdin.write(name + "\n")
+   p.stdin.flush()
+   p.stdin.close()
+   while True:
+    buf = p.stdout.read(BUFFER_LIMIT)
+    if not buf:
+     break
+    f.write(buf)
+  
+  return mkbootimg(in_file, tmp, out_file)
+ finally:
+  shutil.rmtree(tmp)
+
+def unpackbootimg(in_file, tmp):
+ return subprocess.call([
+  "unpackbootimg",
+  "--input", in_file,
+  "--output", tmp
+ ])
+
+def mkbootimg(in_file, tmp, out_file):
+ arg, filename = helpers(in_file, tmp)
+ 
+ mkbootimg = [
+  "mkbootimg",
+  "--kernel", filename("zImage"),
+  "--ramdisk", filename("ramdisk.gz"),
+  "--cmdline", arg("cmdline"),
+  "--board", arg("board"),
+  "--base", arg("base"),
+  "--pagesize", arg("pagesize"),
+  "--kernel_offset", arg("kerneloff"),
+  "--ramdisk_offset", arg("ramdiskoff"),
+  "--tags_offset", arg("tagsoff"),
+  "--output", out_file
+ ]
+ 
+ if os.path.exists(filename("second")):
+  mkbootimg[-1:-1] = [
+   "--second", filename("second"),
+   "--second_offset", arg("secondoff")
+  ]
+ 
+ if os.path.exists(filename("dtb")):
+  mkbootimg[-1:-1] = [
+   "--dt", filename("dtb")
+  ]
+ 
+ return subprocess.call(mkbootimg)
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
