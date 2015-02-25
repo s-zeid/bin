@@ -21,13 +21,11 @@
 # The file to be run will be the first one of the following, in the order
 # listed, that is found to exist:
 # 
-# - `run-here`
 # - `run`
-# - `run-here.mk`
 # - `run.mk`
 # - `AppRun` (for ROX compatibility) ($PATH will not be modified)
 # 
-# The `-here` variants will be executed in the application directory; the other
+# Makefile runfiles will be executed in the application directory; the other
 # ones will be run in the original working directory.
 # 
 # The `.mk` variants will be treated as makefiles, with the default target
@@ -41,7 +39,7 @@
 # only one variant needs to exist.  If multiple variants exist, only the first
 # one in the order listed above will be run.
 # 
-# Except for determining the make target name for `run*.mk` files, arguments
+# Except for determining the make target name for makefile runfiles, arguments
 # are not treated specially.
 # 
 # `rundir` will fail if the executable file or makefile's owner is not the
@@ -214,23 +212,17 @@ run_dir() {
  local bin=
  local wd=
  
- if [ -e "run-here" ]; then
-  run_name="run-here"
-  wd=$(pwd)
- elif [ -e "run" ]; then
+ if [ -e "run" ]; then
   run_name="run"
- elif [ -e "run-here.mk" ]; then
-  run_name="run-here.mk"
-  wd=$(pwd)
-  use_make=1
  elif [ -e "run.mk" ]; then
   run_name="run.mk"
+  wd=$(pwd)
   use_make=1
  elif [ -e "AppRun" ]; then
   run_name="AppRun"
   add_path=0
  else
-  echo "$SCRIPT: no run-here, run, run-here.mk, run.mk, or AppRun in $dir" >&2
+  echo "$SCRIPT: no run, run.mk, or AppRun in $dir" >&2
   return 127
  fi
  run="$(pwd)/$run_name"
@@ -294,9 +286,7 @@ is_runnable_dir() {
  #[ $? -ne 0 ] && return 1
  #cd "$OLDPWD"
  [ ! -d "$dir" ] && return 1
- [ -x "$dir/run-here" ] && return 0
  [ -x "$dir/run" ] && return 0
- [ -f "$dir/run-here.mk" ] && return 0
  [ -f "$dir/run.mk" ] && return 0
  [ -x "$dir/AppRun" ] && return 0
  return 1
