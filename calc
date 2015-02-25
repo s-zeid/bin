@@ -1,17 +1,47 @@
 #!/bin/sh
 
 main() {
- if exists bc; then
+ # allow the interpreter to be specified using "--<interpreter>" as 1st argument
+ local use=
+ if (printf '%s' "$1" | grep -q -e '^--[a-zA-Z]'); then
+  use=`printf '%s' "$1" | sed -e 's/^--//g' | tr '[A-Z]' '[a-z]'`
+  shift
+ fi
+ 
+ # `should "$use" ____` -> use if user specified it; else check if it exists
+ if    should "$use" bc   test:stdin '0'; then
+  echo 'bc' "$use"
   bc_calc "$@"
- elif exists zsh -c 'true'; then
+ elif  should "$use" zsh  test:args  -c 'true'; then
+  echo 'zsh' "$use"
   zsh_calc "$@"
- else
+ elif  should "$use" eval test:stdin 'true'; then
+  echo 'eval' "$use"
   eval_calc "$@"
+ else
+  echo "$0: error: invalid calculator \"$use\""
  fi
 }
 
-exists() {
- printf '%s\n' '0' | "$@" >/dev/null 2>&1
+should() {
+ # * $1->$use, $2->$cmd
+ # * Iff $use is non-empty:  true iff $use == $cmd
+ # * Iff $use is empty:  true iff $cmd succeeds with input as follows:
+ #   * 3rd argument == 'test:stdin':  subsequent arguments sent to stdin
+ #   * 3rd argument == 'test:args':  subsequent arguments passed as args as-is
+ #   * Otherwise, no arguments and no stdin
+ local use=$1; local cmd=$2; shift 2
+ if [ -n "$use" ]; then
+  [ "$use" = "$cmd" ]
+ else
+  if [ "$1" = "test:stdin" ]; then
+   shift; printf '%s\n' "$@" | "$cmd" >/dev/null 2>&1
+  elif [ "$1" = "test:args" ]; then
+   shift; "$cmd" "$@" >/dev/null 2>&1
+  else
+   "$cmd" >/dev/null 2>&1
+  fi
+ fi
 }
 
 bc_calc() {
