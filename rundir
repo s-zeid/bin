@@ -72,7 +72,7 @@
 # 
 # and one that doesn't:
 # 
-# - RUNDIR_SFX_TMP=<directory>:  use `<directory>` instead of `/tmp`
+# - `RUNDIR_SFX_TMP=<directory>`:  use `<directory>` instead of `/tmp`
 # 
 # The SFX archives are shell scripts with a GZIP-compressed TAR archive
 # appended after a marker line (`__ARCHIVE_FOLLOWS_IF_SFX__`).
@@ -88,7 +88,7 @@
 # Portability
 # -----------
 # 
-# This script is intended to be as portable between *nix systems as possible.
+# This script is intended to be as portable between \*nix systems as possible.
 # Therefore, an effort has been made to only use POSIX-defined commands,
 # POSIX-defined arguments to those commands, and POSIX-defined shell features.
 # The only exception is `tar`, but that is only used in the self-extracting
@@ -104,7 +104,7 @@
 # Although this script is written to be portable, the same, however, is not
 # necessarily true for runnable directories themselves, obviously.  Authors
 # of runnable directories should take care to account for differences between
-# *nix systems and processor architectures.
+# \*nix systems and processor architectures.
 
 
 #### Plumbing
