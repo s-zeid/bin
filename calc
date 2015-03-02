@@ -10,13 +10,13 @@ main() {
  
  # `should "$use" ____` -> use if user specified it; else check if it exists
  if    should "$use" bc   test:stdin '0'; then
-  echo 'bc' "$use"
+  #echo 'bc' "$use" >&2
   bc_calc "$@"
  elif  should "$use" zsh  test:args  -c 'true'; then
-  echo 'zsh' "$use"
+  #echo 'zsh' "$use" >&2
   zsh_calc "$@"
  elif  should "$use" eval test:stdin 'true'; then
-  echo 'eval' "$use"
+  #echo 'eval' "$use" >&2
   eval_calc "$@"
  else
   echo "$0: error: invalid calculator \"$use\""
