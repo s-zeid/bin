@@ -34,16 +34,16 @@
 # General #########################
 
 # Script to use to start, stop, and manage the Minecraft server
-SCRIPT=~/opt/minecraft-servers/craftbukkit/manager/manager.sh
+SCRIPT=~/srv/minecraft/craftbnay/manager/manager.sh
 # Log file from which to read command output
-LOG_FILE=~/opt/minecraft-servers/craftbukkit/logs/latest.log
+LOG_FILE=~/srv/minecraft/craftbnay/logs/latest.log
 
 # Systemd #########################
 
 # Is the Minecraft server running from systemd?  (true/1/false/0)
 USE_SYSTEMD=1
 # The name of the systemd unit file
-SYSTEMD_UNIT=craftbukkit.service
+SYSTEMD_UNIT=minecraft@craftbnay.service
 # Are you using a user instance of systemd?  (true/1/false/0)
 SYSTEMD_USER=1
 
