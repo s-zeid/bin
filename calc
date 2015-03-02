@@ -9,15 +9,18 @@ main() {
  fi
  
  # `should "$use" ____` -> use if user specified it; else check if it exists
- if    should "$use" bc   test:stdin '0'; then
+ if   should "$use" bc     test:stdin '0'; then
   #echo 'bc' "$use" >&2
   bc_calc "$@"
- elif  should "$use" zsh  test:args  -c 'true'; then
+ elif should "$use" zsh    test:args  -c 'true'; then
   #echo 'zsh' "$use" >&2
   zsh_calc "$@"
- elif  should "$use" eval test:stdin 'true'; then
+ elif should "$use" eval   test:stdin 'true'; then
   #echo 'eval' "$use" >&2
   eval_calc "$@"
+ elif should "$use" orwell false; then
+  #echo 'orwell' "$use" >&2
+  orwell_calc "$@"
  else
   echo "$0: error: invalid calculator \"$use\""
  fi
@@ -29,6 +32,7 @@ should() {
  # * Iff $use is empty:  true iff $cmd succeeds with input as follows:
  #   * 3rd argument == 'test:stdin':  subsequent arguments sent to stdin
  #   * 3rd argument == 'test:args':  subsequent arguments passed as args as-is
+ #   * 3rd argument = 'true' or 'false': run 3rd argument instead of command
  #   * Otherwise, no arguments and no stdin
  local use=$1; local cmd=$2; shift 2
  if [ -n "$use" ]; then
@@ -38,6 +42,10 @@ should() {
    shift; printf '%s\n' "$@" | "$cmd" >/dev/null 2>&1
   elif [ "$1" = "test:args" ]; then
    shift; "$cmd" "$@" >/dev/null 2>&1
+  elif [ x"$1" = x"true" ]; then
+   true
+  elif [ x"$1" = x"false" ]; then
+   false
   else
    "$cmd" >/dev/null 2>&1
   fi
@@ -63,6 +71,15 @@ zsh_calc() {
 eval_calc() {
  local expr=$@
  eval 'printf "%s\\n" "$(('"$expr"'))"'
+}
+
+orwell_calc() {
+ local expr=$@
+ if [ x"$(printf '%s' "$expr" | sed -e 's/\( \|\.00*\)//g')" = x"2+2" ]; then
+  echo 5
+ else
+  main "$@"
+ fi
 }
 
 main "$@"
