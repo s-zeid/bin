@@ -10,7 +10,7 @@ usage() {
  echo "  ls                    Lists attributes (the default if no command is"
  echo "                        given)."
  echo "  get                   Gets the attribute's value."
- echo "  set [value]           Sets the attribute to the given value, or the"
+ echo "  set/= [value]         Sets the attribute to the given value, or the"
  echo "                        contents of standard input if no value is given."
  echo "  rm                    Removes the attribute."
 }
@@ -34,6 +34,8 @@ main() {
   cmd=ls
  elif [ x"$cmd" = x"" ]; then
   cmd=get
+ elif [ x"$cmd" = x"=" ]; then
+  cmd=set
  fi
  case "$cmd" in
   ls)
