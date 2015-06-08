@@ -3,7 +3,7 @@ NOTE:  Some files here were made by other people, and this license and
        for copyright and license information.  (They are all Free Software.)  
    
 
-Copyright (c) Scott Zeid.  <http://s.zeid.me/>
+Copyright (c) Scott Zeid.  <https://s.zeid.me/>
 
 ```
 Permission is hereby granted, free of charge, to any person obtaining a copy
