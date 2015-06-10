@@ -32,7 +32,7 @@ def main(argv):
  usage  = "Usage: %s\n"
  usage += "       -i|--input <in-file>\n"
  usage += "       <replace-file> <with-file> [...]\n"
- usage += "       [-o|--output <out-file> (defaults to <in-file>.new)"
+ usage += "       [-o|--output <out-file> (defaults to <in-file>.new)]"
  
  in_file = None
  out_file = None
