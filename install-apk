@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# Copyright (c) 2014-2015 Scott Zeid.
+# Released under the X11 License:  <https://tldrlegal.com/l/x11>
+
 DEFAULT_USER=root
 
 if [ -z "$1" -o -z "$2" ]; then
