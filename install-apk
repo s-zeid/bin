@@ -6,7 +6,8 @@
 DEFAULT_USER=root
 
 if [ -z "$1" -o -z "$2" ]; then
- echo "Usage: $0 apk [username@]device-address[:port] [pm options [...]]" >&2
+ echo "Usage: $0 \\" >&2
+ echo "         <apk> [<username>@]<device address>[:<port>] [<pm options> [...]]" >&2
  echo "(username defaults to $DEFAULT_USER)" >&2
  exit 2
 fi
