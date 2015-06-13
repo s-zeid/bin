@@ -6,7 +6,7 @@
 DEFAULT_USER=root
 
 if [ -z "$1" -o -z "$2" ]; then
- echo "Usage: $0 apk [username@]device-address [pm options [...]]" >&2
+ echo "Usage: $0 apk [username@]device-address[:port] [pm options [...]]" >&2
  echo "(username defaults to $DEFAULT_USER)" >&2
  exit 2
 fi
@@ -14,6 +14,16 @@ fi
 APK="$1"
 DEVICE="$2"
 shift 2
+
+if (printf '%s' "$DEVICE" | grep -q -e ':'); then
+ PORT=$(printf '%s' "$DEVICE" | sed -e 's/[^:]*://g')
+ DEVICE=$(printf '%s' "$DEVICE" | sed -e 's/:.*$//g')
+else
+ PORT=
+fi
+
+SCP_PORT=$([ x"$PORT" = x"" ] && true || printf '%s' "-P $PORT")
+SSH_PORT=$([ x"$PORT" = x"" ] && true || printf '%s' "-p $PORT")
 
 if (printf '%s' "$DEVICE" | grep -v -q -e '@'); then
  DEVICE="$DEFAULT_USER@$DEVICE"
@@ -23,6 +33,6 @@ TMP_NAME=/sdcard/.install-apk.tmp.apk
 
 echo_run() { echo '+' "$@"; "$@"; }
 
-echo_run scp "$APK" "$DEVICE":"$TMP_NAME"
-[ $? -eq 0 ] && echo_run ssh "$DEVICE" su root pm install -r "$@" "$TMP_NAME"
-[ $? -eq 0 ] && echo_run ssh "$DEVICE" su root rm -f "$TMP_NAME"
+echo_run scp $SCP_PORT "$APK" "$DEVICE":"$TMP_NAME"
+[ $? -eq 0 ] && echo_run ssh $SSH_PORT "$DEVICE" su root pm install -r "$@" "$TMP_NAME"
+[ $? -eq 0 ] && echo_run ssh $SSH_PORT "$DEVICE" su root rm -f "$TMP_NAME"
