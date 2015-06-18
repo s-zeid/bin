@@ -1,0 +1,151 @@
+#!/bin/sh
+
+# BnayStream
+# Transcode, resize, and stream over HTTP arbitrary video content.
+# 
+# Copyright (c) 2015 Scott Zeid.
+# Released under the X11 License:  <https://tldrlegal.com/l/x11>
+# 
+# Requires FFmpeg and VLC (a command-line version of VLC is available as
+# `vlc-core` in RPMFusion).  FFmpeg 2.4.7 or later and VLC 2.2.0 or later
+# are recommended.
+# 
+# Example usage:
+# 
+#     $ livestreamer -p bnaystream twitch.tv/trihex source
+# 
+# Then access the stream via http://127.0.0.1:26290/
+# (or also /bnaystream/ or /.bnaystream/ with the default settings).
+# 
+# An input file or URL supported by ffmpeg is taken as the last argument
+# to bnaystream.  The other arguments are given to ffmpeg to be applied
+# to the input.
+# 
+# The listen address, port number, HTTP paths, and other settings can
+# be changed in a ~/.bnaystreamrc file that follows a simple `name=value`
+# syntax, one option per line.  Valid option names and their default values
+# may be found at the top of the script.
+
+
+cache=1000
+
+vcodec=libx264
+vb=800k
+vr=30
+width=720
+
+acodec=libmp3lame
+ab=96k
+ar=44100
+volume=4.0
+
+mux=mpegts
+
+mime=video/mpeg
+host=127.0.0.1
+port=26290
+paths="
+ /
+ /bnaystream/
+ /.bnaystream/
+"
+
+config_file=~/.bnaystreamrc
+
+
+main() {
+ local resync_hack=0
+ if [ x"$1" = x"--resync-hack" ]; then
+  resync_hack=1
+  shift
+ fi
+ 
+ if [ $# -lt 1 ]; then
+  echo "Usage: bnaystream [<ffmpeg input args> [...]] <input file or URL>" >&2
+  return 2
+ fi
+ 
+ # set `input` to the value of the last argument
+ eval "local input=\"\$$#\""
+ 
+ # remove the last argument
+ local set_cmd="set --"
+ for i in `seq 1 $#`; do
+  if [ $i -lt $# ]; then
+   set_cmd="$set_cmd \"\$$i\""
+  fi
+ done
+ eval "$set_cmd"
+ 
+ if [ -e "$config_file" ]; then
+  eval `configbnay local < "$config_file"`
+ fi
+ 
+ local dsts=""
+ for i in $(strip_newlines `printf '%s' "$paths" | sed -e 's/,/ /g'`); do
+  dsts="${dsts},dst=std{access=http{mime=$mime},mux=ffmpeg{mux=$mux},dst=$i}"
+ done
+ dsts=`printf '%s' "$dsts" | sed -e 's/^,//g'`
+ 
+ local spec="$(strip_whitespace "
+  #duplicate{
+   $dsts
+  }
+ ")"
+ 
+ # https://stackoverflow.com/a/20848224/4339587
+ local fix_size=
+ if [ x"$vcodec" = x"libx264" ]; then
+  fix_size=',scale=trunc(iw/2)*2:trunc(ih/2)*2'
+ fi
+ 
+ ffmpeg `[ $resync_hack -ne 0 ] && printf '%s' "-resync_size 1048576" || true` \
+        -max_delay 0 "$@" -i "$input" \
+        -c:v "$vcodec" -b:v "$vb" -r:v "$vr" -filter:v "scale=$width:-1$fix_size" \
+	-minrate "$vb" -maxrate "$vb" -bufsize 1835k \
+        `[ x"$vcodec" = x"libx264" ] && printf '%s' "-profile:v baseline" || true` \
+        -c:a "$acodec" -b:a "$ab" -r:a "$ar" -filter:a "volume=$volume" \
+        -f "$mux" -muxpreload 0 -muxdelay 0 - \
+  | cvlc - --file-caching="$cache" \
+         --http-host "$host" --http-port="$port" --sout "$spec"
+}
+
+
+strip_whitespace() {
+ printf '%s' `strip_newlines "$@"`
+}
+
+
+strip_newlines() {
+ printf '%s ' `printf '%s ' "$@"`
+}
+
+
+configbnay() {
+ # Takes a `name=value...` format config file from standard input and
+ # converts it into a shell script that securely sets variables with the
+ # given names to their respective values.  An optional prefix (e.g.
+ # "local") for each assignment may be given as the first argument.
+ local prefix=
+ if [ x"$1" != x"" ]; then
+  prefix="$1 "
+ fi
+ local conf="`cat`"
+ conf=`printf '%s' "$conf" \
+        | sed -e 's/^[ \t]\([a-zA-Z_][a-zA-Z0-9_]*\)[ \t]*=[ \t]*/\1=/g' \
+        | grep '='`
+ local OIFS=$IFS
+ IFS='
+'
+ local name value value_esc
+ for i in $conf; do
+  name=`printf '%s' "$i" | sed -e 's/=.*$//g'`
+  value=`printf '%s' "$i" | sed -e 's/[^=][^=]*=//g'`
+  value_esc=\'`printf '%s' "$value" | sed -e "s/'/'\\\\\\''/g"`\'
+  printf '%s' "$prefix$name=$value_esc"; echo
+ done
+ IFS=$OIFS
+}
+
+
+main "$@"
