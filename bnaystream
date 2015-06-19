@@ -113,6 +113,7 @@ main() {
  fi
  
  if [ $transcode -ne 0 ]; then
+  echo_run \
   ffmpeg `[ $resync_hack -ne 0 ] && printf '%s' "-resync_size 1048576" || true` \
          -max_delay 0 "$@" \
          -c:v "$vcodec" -b:v "$vb" -r:v "$vr" -filter:v "scale=$width:-1$fix_size" \
@@ -120,14 +121,17 @@ main() {
          `[ x"$vcodec" = x"libx264" ] && printf '%s' "-profile:v baseline" || true` \
          -c:a "$acodec" -b:a "$ab" -r:a "$ar" -filter:a "volume=$volume" \
          -f "$mux" -muxpreload 0 -muxdelay 0 - \
-   | cvlc - --file-caching="$cache" \
+   | echo_run \
+     cvlc - --file-caching="$cache" \
           --http-host "$host" --http-port="$port" --sout "$spec" vlc://quit
  else
+  echo_run \
   ffmpeg `[ $resync_hack -ne 0 ] && printf '%s' "-resync_size 1048576" || true` \
          -max_delay 0 "$@" \
          -c:v copy -c:a copy \
          -f "$mux" -muxpreload 0 -muxdelay 0 - \
-   | cvlc - --file-caching="$cache" \
+   | echo_run \
+     cvlc - --file-caching="$cache" \
           --http-host "$host" --http-port="$port" --sout "$spec" vlc://quit
  fi
 }
@@ -140,6 +144,12 @@ strip_whitespace() {
 
 strip_newlines() {
  printf '%s ' `printf '%s ' "$@"`
+}
+
+
+echo_run() {
+ echo '+' "$@" >&2
+ "$@"
 }
 
 
