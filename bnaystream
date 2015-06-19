@@ -37,7 +37,7 @@ width=720
 acodec=libmp3lame
 ab=96k
 ar=44100
-volume=4.0
+volume=1.0
 
 mux=mpegts
 
