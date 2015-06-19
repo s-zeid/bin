@@ -56,6 +56,12 @@ config_file=~/.bnaystreamrc
 
 
 main() {
+ local transcode=1
+ if [ x"$1" = x"--no-transcode" ] || [ x"$1" = x"--copy" ]; then
+  transcode=0
+  shift
+ fi
+ 
  local resync_hack=0
  if [ x"$1" = x"--resync-hack" ]; then
   resync_hack=1
@@ -105,15 +111,24 @@ main() {
   fix_size=',scale=trunc(iw/2)*2:trunc(ih/2)*2'
  fi
  
- ffmpeg `[ $resync_hack -ne 0 ] && printf '%s' "-resync_size 1048576" || true` \
-        -max_delay 0 "$@" \
-        -c:v "$vcodec" -b:v "$vb" -r:v "$vr" -filter:v "scale=$width:-1$fix_size" \
-        -minrate "$vb" -maxrate "$vb" -bufsize 1835k \
-        `[ x"$vcodec" = x"libx264" ] && printf '%s' "-profile:v baseline" || true` \
-        -c:a "$acodec" -b:a "$ab" -r:a "$ar" -filter:a "volume=$volume" \
-        -f "$mux" -muxpreload 0 -muxdelay 0 - \
-  | cvlc - --file-caching="$cache" \
-         --http-host "$host" --http-port="$port" --sout "$spec"
+ if [ $transcode -ne 0 ]; then
+  ffmpeg `[ $resync_hack -ne 0 ] && printf '%s' "-resync_size 1048576" || true` \
+         -max_delay 0 "$@" \
+         -c:v "$vcodec" -b:v "$vb" -r:v "$vr" -filter:v "scale=$width:-1$fix_size" \
+         -minrate "$vb" -maxrate "$vb" -bufsize 1835k \
+         `[ x"$vcodec" = x"libx264" ] && printf '%s' "-profile:v baseline" || true` \
+         -c:a "$acodec" -b:a "$ab" -r:a "$ar" -filter:a "volume=$volume" \
+         -f "$mux" -muxpreload 0 -muxdelay 0 - \
+   | cvlc - --file-caching="$cache" \
+          --http-host "$host" --http-port="$port" --sout "$spec"
+ else
+  ffmpeg `[ $resync_hack -ne 0 ] && printf '%s' "-resync_size 1048576" || true` \
+         -max_delay 0 "$@" \
+	 -c:v copy -c:a copy \
+         -f "$mux" -muxpreload 0 -muxdelay 0 - \
+   | cvlc - --file-caching="$cache" \
+          --http-host "$host" --http-port="$port" --sout "$spec"
+ fi
 }
 
 
