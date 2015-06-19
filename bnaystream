@@ -17,9 +17,11 @@
 # Then access the stream via http://127.0.0.1:26290/
 # (or also /bnaystream/ or /.bnaystream/ with the default settings).
 # 
-# An input file or URL supported by ffmpeg is taken as the last argument
-# to bnaystream.  The other arguments are given to ffmpeg to be applied
-# to the input.
+# An input file or URL supported by ffmpeg is taken as the first argument
+# to bnaystream that does not start with a hyphen.  The other arguments
+# are given to ffmpeg:  arguments that come before the input file or URL
+# are applied to the input, and arguments that come after the input file
+# or URL are applied to the output.
 # 
 # The listen address, port number, HTTP paths, and other settings can
 # be changed in a ~/.bnaystreamrc file that follows a simple `name=value`
@@ -61,17 +63,21 @@ main() {
  fi
  
  if [ $# -lt 1 ]; then
-  echo "Usage: bnaystream [<ffmpeg input args> [...]] <input file or URL>" >&2
+  echo "Usage: bnaystream [<ffmpeg input args> [...]] <input file or URL>" \
+                         "[<ffmpeg output args> [...]]" >&2
   return 2
  fi
  
- # set `input` to the value of the last argument
- eval "local input=\"\$$#\""
- 
- # remove the last argument
+ # inject '-i' before the first argument that doesn't start with a hyphen
  local set_cmd="set --"
+ local injected=0
+ local arg=
  for i in `seq 1 $#`; do
-  if [ $i -lt $# ]; then
+  eval "arg=\$$i"
+  if [ $injected -eq 0 ] && (printf '%s' "$arg" | grep -q -v -e '^-'); then
+   set_cmd="$set_cmd -i \"\$$i\""
+   injected=1
+  else
    set_cmd="$set_cmd \"\$$i\""
   fi
  done
@@ -100,9 +106,9 @@ main() {
  fi
  
  ffmpeg `[ $resync_hack -ne 0 ] && printf '%s' "-resync_size 1048576" || true` \
-        -max_delay 0 "$@" -i "$input" \
+        -max_delay 0 "$@" \
         -c:v "$vcodec" -b:v "$vb" -r:v "$vr" -filter:v "scale=$width:-1$fix_size" \
-	-minrate "$vb" -maxrate "$vb" -bufsize 1835k \
+        -minrate "$vb" -maxrate "$vb" -bufsize 1835k \
         `[ x"$vcodec" = x"libx264" ] && printf '%s' "-profile:v baseline" || true` \
         -c:a "$acodec" -b:a "$ab" -r:a "$ar" -filter:a "volume=$volume" \
         -f "$mux" -muxpreload 0 -muxdelay 0 - \
