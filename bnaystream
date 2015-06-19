@@ -18,10 +18,11 @@
 # (or also /bnaystream/ or /.bnaystream/ with the default settings).
 # 
 # An input file or URL supported by ffmpeg is taken as the first argument
-# to bnaystream that does not start with a hyphen.  The other arguments
-# are given to ffmpeg:  arguments that come before the input file or URL
-# are applied to the input, and arguments that come after the input file
-# or URL are applied to the output.
+# to bnaystream that either does not start with a hyphen or is only a
+# hyphen (the latter case means to read from standard input).  The other
+# arguments are given to ffmpeg:  arguments that come before the input
+# file or URL are applied to the input, and arguments that come after the
+# input file or URL are applied to the output.
 # 
 # The listen address, port number, HTTP paths, and other settings can
 # be changed in a ~/.bnaystreamrc file that follows a simple `name=value`
@@ -75,7 +76,7 @@ main() {
  fi
  
  # inject '-i' before the first argument that doesn't start with a hyphen
- # and isn't only a hyphen
+ # or is only a hyphen
  local set_cmd="set --"
  local injected=0
  local arg=
