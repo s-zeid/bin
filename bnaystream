@@ -26,8 +26,12 @@
 # 
 # The listen address, port number, HTTP paths, and other settings can
 # be changed in a ~/.bnaystreamrc file that follows a simple `name=value`
-# syntax, one option per line.  Valid option names and their default values
-# may be found at the top of the script.
+# syntax, one option per line.  Options may also be set at any point on
+# the command line using the syntax `--<name>=<value>`.  (FFmpeg options
+# always start with one hyphen.)  Options given on the command line take
+# precedence over those given in the config file, and config options take
+# precedence over FFmpeg arguments.  Valid option names and their default
+# values may be found at the top of the script.
 
 
 cache=1000
@@ -70,32 +74,40 @@ main() {
  fi
  
  if [ $# -lt 1 ]; then
-  echo "Usage: bnaystream [<ffmpeg input args> [...]] <input file or URL>" \
-                         "[<ffmpeg output args> [...]]" >&2
+  echo "Usage: bnaystream [--<bnaystream option name>=<value> [...]] \\" >&2
+  echo "                  [<ffmpeg input args> [...]] <input file or URL> \\" >&2
+  echo "                  [<ffmpeg output args> [...]]" >&2
   return 2
  fi
  
- # inject '-i' before the first argument that doesn't start with a hyphen
- # or is only a hyphen
+ if [ -e "$config_file" ]; then
+  eval `configbnay local < "$config_file"`
+ fi
+ 
+ # Filter the arguments list ($@) according to the comments in the if/elif/else
+ # block.  The new value of $@ will be passed to FFmpeg.
  local set_cmd="set --"
  local injected=0
  local arg=
  local i=1
  while [ $i -le $# ]; do
   eval "arg=\$$i"
-  if [ $injected -eq 0 ] && (printf '%s' "$arg" | grep -q -v -e '^-.'); then
+  if (printf '%s' "$arg" | grep -q -e '^--.'); then
+   # remove arguments that start with 2 hyphens and treat them as bnaystream
+   # config options
+   eval `printf '%s' "$arg" | head -n 1 | sed -e 's/^--//g' | configbnay local`
+  elif [ $injected -eq 0 ] && (printf '%s' "$arg" | grep -q -v -e '^-.'); then
+   # inject '-i' before the first argument that doesn't start with a hyphen
+   # or is only a hyphen
    set_cmd="$set_cmd -i \"\$$i\""
    injected=1
   else
+   # other arguments are passed to FFmpeg as-is
    set_cmd="$set_cmd \"\$$i\""
   fi
   i=$(($i + 1))
  done
  eval "$set_cmd"
- 
- if [ -e "$config_file" ]; then
-  eval `configbnay local < "$config_file"`
- fi
  
  local dsts=""
  for i in $(strip_newlines `printf '%s' "$paths" | sed -e 's/,/ /g'`); do
