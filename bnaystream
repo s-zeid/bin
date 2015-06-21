@@ -40,11 +40,13 @@ vcodec=libx264
 vb=800k
 vr=30
 width=720
+vfilter=
 
 acodec=libmp3lame
 ab=96k
 ar=44100
 volume=1.0
+afilter=
 
 mux=mpegts
 
@@ -127,14 +129,24 @@ main() {
   fix_size=',scale=trunc(iw/2)*2:trunc(ih/2)*2'
  fi
  
+ if [ x"$vfilter" != x"" ]; then
+  vfilter=",$vfilter"
+ fi
+ vfilter="scale=$width:-1$fix_size$vfilter"
+ 
+ if [ x"$afilter" != x"" ]; then
+  afilter=",$afilter"
+ fi
+ afilter="volume=$volume$afilter"
+ 
  if [ $transcode -ne 0 ]; then
   echo_run \
   ffmpeg `[ $resync_hack -ne 0 ] && printf '%s' "-resync_size 1048576" || true` \
          -max_delay 0 "$@" \
-         -c:v "$vcodec" -b:v "$vb" -r:v "$vr" -filter:v "scale=$width:-1$fix_size" \
+         -c:v "$vcodec" -b:v "$vb" -r:v "$vr" -filter:v "$vfilter" \
          -minrate "$vb" -maxrate "$vb" -bufsize 1835k \
          `[ x"$vcodec" = x"libx264" ] && printf '%s' "-profile:v baseline" || true` \
-         -c:a "$acodec" -b:a "$ab" -r:a "$ar" -filter:a "volume=$volume" \
+         -c:a "$acodec" -b:a "$ab" -r:a "$ar" -filter:a "$afilter" \
          -f "$mux" -muxpreload 0 -muxdelay 0 - \
    | echo_run \
      cvlc - --file-caching="$cache" \
