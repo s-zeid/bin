@@ -191,20 +191,22 @@ configbnay() {
  # converts it into a shell script that securely sets variables with the
  # given names to their respective values.  An optional prefix (e.g.
  # "local") for each assignment may be given as the first argument.
+ # Option names that contain hyphens will have the hyphens replaced with
+ # underscores.
  local prefix=
  if [ x"$1" != x"" ]; then
   prefix="$1 "
  fi
  local conf="`cat`"
  conf=`printf '%s' "$conf" \
-        | sed -e 's/^[ \t]\([a-zA-Z_][a-zA-Z0-9_]*\)[ \t]*=[ \t]*/\1=/g' \
+        | sed -e 's/^[ \t]\([a-zA-Z_-][a-zA-Z0-9_-]*\)[ \t]*=[ \t]*/\1=/g' \
         | grep '='`
  local OIFS=$IFS
  IFS='
 '
  local name value value_esc
  for i in $conf; do
-  name=`printf '%s' "$i" | sed -e 's/=.*$//g'`
+  name=`printf '%s' "$i" | sed -e 's/=.*$//g' | sed -e 's/-/_/g'`
   value=`printf '%s' "$i" | sed -e 's/^[^=][^=]*=//g'`
   value_esc=\'`printf '%s' "$value" | sed -e "s/'/'\\\\\\''/g"`\'
   printf '%s' "$prefix$name=$value_esc"; echo
