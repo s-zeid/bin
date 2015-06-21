@@ -187,7 +187,7 @@ configbnay() {
  local name value value_esc
  for i in $conf; do
   name=`printf '%s' "$i" | sed -e 's/=.*$//g'`
-  value=`printf '%s' "$i" | sed -e 's/[^=][^=]*=//g'`
+  value=`printf '%s' "$i" | sed -e 's/^[^=][^=]*=//g'`
   value_esc=\'`printf '%s' "$value" | sed -e "s/'/'\\\\\\''/g"`\'
   printf '%s' "$prefix$name=$value_esc"; echo
  done
