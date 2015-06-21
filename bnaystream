@@ -152,6 +152,7 @@ main() {
          -c:v "$vcodec" -b:v "$vb" -r:v "$vr" -filter:v "$vfilter" \
          -minrate "$vb" -maxrate "$vb" -bufsize 1835k \
          `[ x"$vcodec" = x"libx264" ] && printf '%s' "-profile:v baseline" || true` \
+         `[ x"$vcodec" = x"libx264" ] && printf '%s' "-tune:v zerolatency" || true` \
          -c:a "$acodec" -b:a "$ab" -r:a "$ar" -filter:a "$afilter" \
          -f "$mux" -muxpreload 0 -muxdelay 0 - \
    | echo_run \
