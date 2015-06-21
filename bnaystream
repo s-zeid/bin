@@ -17,12 +17,13 @@
 # Then access the stream via http://127.0.0.1:26290/
 # (or also /bnaystream/ or /.bnaystream/ with the default settings).
 # 
-# An input file or URL supported by ffmpeg is taken as the first argument
-# to bnaystream that either does not start with a hyphen or is only a
-# hyphen (the latter case means to read from standard input).  The other
-# arguments are given to ffmpeg:  arguments that come before the input
-# file or URL are applied to the input, and arguments that come after the
-# input file or URL are applied to the output.
+# An input file or URL supported by FFmpeg is given with the normal `-i`
+# flag, except the `-i` may be omitted if the first argument to bnaystream
+# that does not start with two hyphens either does not start with a hyphen
+# or is only a hyphen (the latter case means to read from standard input).
+# The other arguments are given to ffmpeg:  arguments that come before the
+# input file or URL are applied to the input, and arguments that come after
+# the input file or URL are applied to the output.
 # 
 # The listen address, port number, HTTP paths, and other settings can
 # be changed in a ~/.bnaystreamrc file that follows a simple `name=value`
@@ -77,7 +78,7 @@ main() {
  
  if [ $# -lt 1 ]; then
   echo "Usage: bnaystream [--<bnaystream option name>=<value> [...]] \\" >&2
-  echo "                  [<ffmpeg input args> [...]] <input file or URL> \\" >&2
+  echo "                  [<ffmpeg input args> [...] -i] <input file or URL> \\" >&2
   echo "                  [<ffmpeg output args> [...]]" >&2
   return 2
  fi
@@ -98,10 +99,15 @@ main() {
    # remove arguments that start with 2 hyphens and treat them as bnaystream
    # config options
    eval `printf '%s' "$arg" | head -n 1 | sed -e 's/^--//g' | configbnay local`
-  elif [ $injected -eq 0 ] && (printf '%s' "$arg" | grep -q -v -e '^-.'); then
-   # inject '-i' before the first argument that doesn't start with a hyphen
-   # or is only a hyphen
-   set_cmd="$set_cmd -i \"\$$i\""
+  elif [ $injected -eq 0 ]; then
+   if (printf '%s' "$arg" | grep -q -v -e '^-.'); then
+    # inject '-i' before the first non-config option argument if it doesn't
+    # start with a hyphen or if it is only a hyphen
+    set_cmd="$set_cmd -i \"\$$i\""
+   else
+    # otherwise, pass to FFmpeg as-is
+    set_cmd="$set_cmd \"\$$i\""
+   fi
    injected=1
   else
    # other arguments are passed to FFmpeg as-is
