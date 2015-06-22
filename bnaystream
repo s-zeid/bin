@@ -63,16 +63,21 @@ paths="
 config_file=~/.bnaystreamrc
 
 
+usage() {
+  echo "Usage: bnaystream [--<bnaystream option name>=<value> [...]] \\"
+  echo "                  [<ffmpeg input args> [...] -i] <input file or URL> \\"
+  echo "                  [<ffmpeg output args> [...]]"
+}
+
+
 main() {
- local transcode=1
- local resync_hack=0
- 
  if [ $# -lt 1 ]; then
-  echo "Usage: bnaystream [--<bnaystream option name>=<value> [...]] \\" >&2
-  echo "                  [<ffmpeg input args> [...] -i] <input file or URL> \\" >&2
-  echo "                  [<ffmpeg output args> [...]]" >&2
+  usage >&2
   return 2
  fi
+ 
+ local transcode=1
+ local resync_hack=0
  
  if [ -e "$config_file" ]; then
   eval `configbnay local < "$config_file"`
