@@ -86,6 +86,8 @@ main() {
  # Filter the arguments list ($@) according to the comments in the if/elif/else
  # block.  The new value of $@ will be passed to FFmpeg.
  local set_cmd="set --"
+ local have_dash_i=0
+ local have_input=0
  local injected=0
  local arg=
  local i=1
@@ -97,9 +99,11 @@ main() {
    eval `printf '%s' "$arg" | head -n 1 | sed -e 's/^--//g' | configbnay local`
   elif [ $injected -eq 0 ]; then
    if (printf '%s' "$arg" | grep -q -v -e '^-.'); then
-    # inject '-i' before the first non-config option argument if it doesn't
+    # inject `-i` before the first non-config option argument if it doesn't
     # start with a hyphen or if it is only a hyphen
     set_cmd="$set_cmd -i \"\$$i\""
+    have_dash_i=1
+    have_input=1
    else
     # otherwise, pass to FFmpeg as-is
     set_cmd="$set_cmd \"\$$i\""
@@ -109,8 +113,25 @@ main() {
    # other arguments are passed to FFmpeg as-is
    set_cmd="$set_cmd \"\$$i\""
   fi
+  if [ $have_dash_i -ne 0 ]; then
+   # keep track of whether we've seen `-i` followed by an appropriate value
+   if (printf '%s' "$arg" | grep -q -v -e '^-.'); then
+    have_input=1
+   else
+    have_dash_i=0
+   fi
+  fi
+  if [ x"$arg" = x"-i" ]; then
+   # keep track of whether we've seen `-i`
+   have_dash_i=1
+  fi
   i=$(($i + 1))
  done
+ if [ $have_input -eq 0 ]; then
+  # if we haven't seen an input argument, then we print usage and exit
+  usage >&2
+  return 2
+ fi
  eval "$set_cmd"
  
  if [ x"$copy" != x"" ] && [ x"$copy" != x"0" ]; then
