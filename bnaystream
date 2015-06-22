@@ -65,16 +65,7 @@ config_file=~/.bnaystreamrc
 
 main() {
  local transcode=1
- if [ x"$1" = x"--no-transcode" ] || [ x"$1" = x"--copy" ]; then
-  transcode=0
-  shift
- fi
- 
  local resync_hack=0
- if [ x"$1" = x"--resync-hack" ]; then
-  resync_hack=1
-  shift
- fi
  
  if [ $# -lt 1 ]; then
   echo "Usage: bnaystream [--<bnaystream option name>=<value> [...]] \\" >&2
@@ -116,6 +107,10 @@ main() {
   i=$(($i + 1))
  done
  eval "$set_cmd"
+ 
+ if [ x"$copy" != x"" ] && [ x"$copy" != x"0" ]; then
+  transcode=0
+ fi
  
  local dsts=""
  for i in $(strip_newlines `printf '%s' "$paths" | sed -e 's/,/ /g'`); do
