@@ -35,7 +35,7 @@
 # values may be found at the top of the script.
 
 
-cache=1000
+cache=0
 
 vcodec=libx264
 vb=800k
