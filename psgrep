@@ -1,14 +1,14 @@
-#!/bin/bash
+#!/bin/sh
 
-function psgrep() {
- if [ -z "$1" ]; then
+psgrep() {
+ if [ x"$1" = x"" ]; then
   echo "Usage: $0 pattern"
   return 1
  fi
- heading="`ps aux | head -n1`"
- echo -e '\x1b[1m'"$heading"'\x1b[0m'
- processes="`ps aux`"
- grep "$@" <<< "$processes" | egrep -v "^$USER\\s+$$\s"
+ local header="`ps aux | head -n1`"
+ printf '\x1b[1m%s\x1b[0m\n' "$header"
+ local processes="`ps aux`"
+ printf '%s' "$processes" | grep "$@" | egrep -v "^$USER\\s+$$\s"
 }
 
 psgrep "$@"
