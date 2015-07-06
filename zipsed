@@ -35,7 +35,7 @@ def zipsed(in_file, search, replace, exact=False, regex=False):
 def main(argv):
  parser = argparse.ArgumentParser(
   description="Rename files in a ZIP archive.",
-  epilog="If neither --regex nor --string are set, then search and replace are"
+  epilog="If neither --regex nor --search are set, then search and replace are"
          " treated as exact file names, including path components."
  )
  parser.add_argument("--regex", "-r", default=False, action="store_true",
