@@ -3,7 +3,7 @@
 psgrep() {
  if [ x"$1" = x"" ]; then
   echo "Usage: $0 pattern"
-  return 1
+  return 2
  fi
  local header="`ps aux | head -n1`"
  printf '\x1b[1m%s\x1b[0m\n' "$header"
