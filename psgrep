@@ -8,7 +8,7 @@ psgrep() {
  local header="`ps aux | head -n1`"
  printf '\x1b[1m%s\x1b[0m\n' "$header"
  local processes="`ps aux`"
- printf '%s' "$processes" | grep "$@" | egrep -v "^$USER\\s+$$\s"
+ printf '%s' "$processes" | grep "$@" | egrep -v "^$USER\\s+$$\\s"
 }
 
 psgrep "$@"
