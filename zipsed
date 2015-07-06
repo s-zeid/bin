@@ -1,5 +1,7 @@
 #!/usr/bin/env python2
 
+"Rename files in a ZIP archive."
+
 import argparse
 import os
 import re
