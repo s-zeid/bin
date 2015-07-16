@@ -1,14 +1,28 @@
 #!/bin/sh
 
 psgrep() {
+ local hide_parent=0
+ if [ x"$1" = x"-p" ] || [ x"$1" = x"--hide-parent" ]; then
+  hide_parent=1
+  shift
+ elif [ x"$1" = x"--" ]; then
+  shift
+ fi
  if [ x"$1" = x"" ]; then
-  echo "Usage: $0 pattern"
+  echo "Usage: $0 [-p|--hide-parent|--] pattern"
   return 2
  fi
+ 
  local header="`ps aux | head -n1`"
  printf '\x1b[1m%s\x1b[0m\n' "$header"
  local processes="`ps aux`"
- printf '%s' "$processes" | grep "$@" | egrep -v "^$USER\\s+$$\\s"
+ if [ $hide_parent -ne 0 ]; then
+  printf '%s' "$processes" | grep "$@" \
+   | egrep -v "^$USER\\s+$$\\s" | egrep -v "^\\S+\\s+$PPID\\s"
+ else
+  printf '%s' "$processes" | grep "$@" \
+   | egrep -v "^$USER\\s+$$\\s"
+ fi
 }
 
 psgrep "$@"
