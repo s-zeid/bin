@@ -1,13 +1,21 @@
-#!/bin/bash
+#!/bin/sh
 
 # My (Scott Zeid) script to start Firefox
 
+
 # Distribution version
-FIREFOX_CMD=/usr/bin/firefox
+distribution=/usr/bin/firefox
 
 # Custom install
-#if [ -x ~/opt/firefox-beta/firefox ]; then
-# FIREFOX_CMD=~/opt/firefox-beta/firefox
-#fi
+custom=~/opt/firefox
 
-exec $FIREFOX_CMD $@
+
+if [ -d "$custom" ] && [ -x "$custom/run" ]; then
+ cmd="rundir $custom"
+elif [ -x "$custom" ]; then
+ cmd=$custom
+else
+ cmd=$distribution
+fi
+
+exec $cmd $@
