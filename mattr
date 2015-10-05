@@ -69,8 +69,9 @@ attr_get() {
 attr_set() {
  local file=$1
  local attr=$2
- local value=$3
- if [ x"$value" != x"" ]; then
+ shift 2
+ if [ $# -ne 0 ]; then
+  local value=$@
   attr -q -s "$attr" -V "$value" "$file"
  else
   attr -q -s "$attr" "$file"
