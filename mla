@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # XXX: Currently does not work
 
@@ -15,13 +15,32 @@ else
  PREVIEW=0
 fi
 
-IN="${@:(-2):1}"
-BIB="${!#}"
-TEX="/tmp/`sed -r "s/(\.[^.]+)?$/.tex/" <<< "$(basename "$IN")"`"
-OUT="`sed -r "s/(\.[^.]+)?$/.pdf/" <<< "$IN"`"
+IN=
+BIB=
+set_cmd='set --'
+n=1
+for i; do
+ # sort through remaining arguments
+ if [ $n -eq `expr $# - 1` ]; then
+  # second to last argument
+  IN=$i
+ elif [ $n -eq $# ]; then
+  # last argument
+  BIB=$i
+ else
+  # for other arguments, add ` "$n"` to $set_cmd, where n is the argument
+  # number; this allows us to rearrange the argument list with a secure
+  # eval expression
+  set_cmd="$set_cmd \"\$$n\""
+ fi
+ n=`expr $n + 1`
+done
+eval "$set_cmd"
+TEX="/tmp/$(printf '%s' "$(basename "$IN")" | sed -r 's/(\.[^.]+)?$/.tex/')"
+OUT=`printf '%s' "$IN" | sed -r 's/(\.[^.]+)?$/.pdf/'`
 
-pandoc -t mla-paper --csl=mla-url "${@:1:$(($#-1))}" --bibliography="$BIB" -o "$TEX"
-#pandoc --template=mla-paper --csl=mla-url "${@:1:$(($#-1))}" -o "$OUT"
-pandoc "${@:1:$(($#-1))}" "$TEX" -o "$OUT"
+pandoc -t mla-paper --csl=mla-url "$@" "$IN" --bibliography="$BIB" -o "$TEX"
+#pandoc --template=mla-paper --csl=mla-url "$@" "$IN" -o "$OUT"
+pandoc "$@" "$TEX" -o "$OUT"
 
 if [ $PREVIEW -eq 1 ]; then xdg-open "$OUT"; fi
