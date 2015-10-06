@@ -1,11 +1,11 @@
-#!/bin/bash
+#!/bin/sh
 
-function rot13() {
+rot13() {
  tr 'A-Za-z' 'N-ZA-Mn-za-m'
 }
 
 if [ $# -gt 0 ]; then
- rot13 <<< "$@"
+ printf '%s\n' "$*" | rot13
  exit $?
 fi
 

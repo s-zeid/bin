@@ -1,11 +1,11 @@
-#!/bin/bash
+#!/bin/sh
 
-function rot13plus5() {
+rot13plus5() {
  tr 'A-Za-z0-9' 'N-ZA-Mn-za-m5-90-4'
 }
 
 if [ $# -gt 0 ]; then
- rot13plus5 <<< "$@"
+ printf '%s\n' "$*" | rot13plus5
  exit $?
 fi
 

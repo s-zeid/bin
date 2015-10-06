@@ -1,11 +1,11 @@
-#!/bin/bash
+#!/bin/sh
 
-function rot5() {
+rot5() {
  tr '0-9' '5-90-4'
 }
 
 if [ $# -gt 0 ]; then
- rot5 <<< "$@"
+ printf '%s\n' "$*" | rot5
  exit $?
 fi
 

@@ -1,11 +1,11 @@
-#!/bin/bash
+#!/bin/sh
 
-function rot47() {
+rot47() {
  tr '\!-~' 'P-~\!-O'
 }
 
 if [ $# -gt 0 ]; then
- rot47 <<< "$@"
+ printf '%s\n' "$*" | rot47
  exit $?
 fi
 
