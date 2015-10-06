@@ -27,9 +27,19 @@ main() {
  fi
  
  local file=$1
- local attr=$2
- local cmd=$3
- shift 3
+ shift
+ if [ $# -ge 1 ]; then
+  local attr=$1
+  shift
+ else
+  local attr=
+ fi
+ if [ $# -ge 1 ]; then
+  local cmd=$1
+  shift
+ else
+  local cmd=
+ fi
  if [ x"$attr" = x"" ]; then
   cmd=ls
  elif [ x"$cmd" = x"" ]; then
@@ -53,7 +63,7 @@ main() {
  
 attr_ls() {
  local file=$1
- if [ x"`uname -s`" = x"Linux" ] && (which semanage &>/dev/null); then
+ if [ x"`uname -s`" = x"Linux" ] && (which semanage >/dev/null 2>&1); then
   attr -q -l "$1" | grep -v '^selinux$'
  else
   attr -q -l "$1"
