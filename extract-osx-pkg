@@ -24,9 +24,9 @@ if [ -z "$OUT_DIR" ]; then
  OUT_DIR=$(printf '%s' "$PKG_BASE" | sed -e 's/\.pkg$//g')
 fi
 
-mkdir -p "$OUT_DIR"
+mkdir -p "$OUT_DIR" || exit $?
 cd "$OUT_DIR"
-mkdir -p "$TMP_DIR"
+mkdir -p "$TMP_DIR" || exit $?
 cd "$TMP_DIR"
 xar -xf "$PKG_ABS" Payload
 cd ..
