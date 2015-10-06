@@ -39,7 +39,7 @@ SCRIPT=~/srv/minecraft/craftbnay/manager/manager.sh
 # Log file from which to read command output
 LOG_FILE=~/srv/minecraft/craftbnay/logs/latest.log
 
-# Systemd #########################
+# systemd #########################
 
 # Is the Minecraft server running from systemd?  (true/1/false/0)
 USE_SYSTEMD=1
