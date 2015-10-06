@@ -28,4 +28,5 @@ URL="http://placehold.it/$SIZE"
 TITLE="$SIZE Placeholder"
 
 shift
-([ "$QUIET" -eq 1 ] && curl -s "$URL" || curl "$URL") | display -title "$TITLE" "$@" -
+([ "$QUIET" -eq 1 ] && curl -s -L "$URL" || curl -L "$URL") \
+ | display -title "$TITLE" "$@" -
