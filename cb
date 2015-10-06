@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/bin/sh
 
 # Minecraft server console client
-# Copyright (C) 2012-2013 Scott Zeid.  X11 License.
+# Copyright (C) 2012-2015 Scott Zeid.
+# Released under the X11 License (https://tldrlegal.com/l/x11).
 
 # With no arguments, attaches to the screen/tmux instance on which the
 # server is running.
@@ -57,11 +58,17 @@ SYSTEMD_USER=1
 #  - "[HH:MM:SS message type (if present)] "
 RE="^(\[?([0-9]{4}-[0-9]{2}-[0-9]{2} )?[0-9]{2}:[0-9]{2}:[0-9]{2}\]?( \[?[^]]+\]?)?\]?:? )"
 
-function bool() {
- [ "$1" = "true" -o $1 -gt 0 ]
+bool() {
+ if [ "$1" = "true" ]; then
+  return 0
+ elif (printf '%s' "$1" | grep -q -e '^[0-9][0-9]*$') && [ $1 -gt 0 ]; then
+  return 0
+ else
+  return 1
+ fi
 }
 
-function systemctl_cmd() {
+systemctl_cmd() {
  CMD="$1"
  shift
  if bool "$USE_SYSTEMD"; then
@@ -110,10 +117,13 @@ else
    ARGS=$@   # so we can quote the whole string without splitting on spaces
    START=$((`wc -l "$LOG_FILE" | cut -d' ' -f1` + 1))   # output starts here
    "$SCRIPT" cmd "$CMD" "$ARGS"
-   sleep 0.25
+   sleep "0.25" >/dev/null 2>&1 || sleep 1  # float is in quotes to trick checkbashisms(1)
    OUT="`tail -n +$START "$LOG_FILE" | sed -r -e "s/$RE//"`" # read and remove prefix
    if [ "$CMD" = "sl" ]; then
-    which sl &>/dev/null && egrep -q "^Unknown command\." <<< "$OUT" && sl "$ARGS"
+    if which sl >/dev/null 2>&1 && \
+       (printf '%s' "$OUT" | grep -q -e '^Unknown command\.'); then
+     sl "$ARGS"
+    fi
    fi
    echo "$OUT"
  esac
