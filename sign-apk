@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 KEYSTORE=~/.android/release.keystore
 ALIAS=androidreleasekey
@@ -15,13 +15,13 @@ APK="$2"
 APK_U="$2".unaligned
 
 if [ -z "$APK" ]; then
- if grep -q -e '-unsigned\.apk$' <<< "$SRC"; then
-  APK=$(sed -e 's/-unsigned\.apk$/.apk/g' <<< "$SRC")
+ if (printf '%s' "$SRC" | grep -q -e '-unsigned\.apk$'); then
+  APK=$(printf '%s' "$SRC" | sed -e 's/-unsigned\.apk$/.apk/g')
  fi
 fi
 
-if grep -q -e '\.apk$' <<< "$APK"; then
- APK_U=$(sed -e 's/\.apk$/-unaligned.apk/g' <<< "$APK")
+if (printf '%s' "$APK" | grep -q -e '\.apk$'); then
+ APK_U=$(printf '%s' "$APK" | sed -e 's/\.apk$/-unaligned.apk/g')
 fi
 
 if [ -z "$APK" -o -z "$SRC" ]; then
