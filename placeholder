@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Displays a placeholder window with the specified size.
 # The window border is not included in the window's size.
@@ -14,13 +14,13 @@ if [ -z "$1" ]; then
 fi
 
 QUIET=0
-if egrep -qe "^(-q|--?quiet|-s|--?silent)$" <<< "$1"; then
+if (printf '%s' "$1" | egrep -qe "^(-q|--?quiet|-s|--?silent)$"); then
  QUIET=1
  shift
 fi
 
 SIZE="$1"
-if grep -q -v "x" <<< "$SIZE"; then
+if (printf '%s' "$SIZE" | grep -q -v "x"); then
  SIZE="$1x$1"
 fi
 
