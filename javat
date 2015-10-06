@@ -10,8 +10,8 @@ if [ -z "$1" ]; then
  exit 1
 fi
 
-SRC="`sed 's/\.class$/.java/g' <<< "$1"`"
-CLS="`sed 's/\.java$/.class/g' <<< "$SRC"`"
+SRC=`printf '%s' "$1" | sed 's/\.class$/.java/g'`
+CLS=`printf '%s' "$SRC" | sed 's/\.java$/.class/g'`
 
 shift
 
