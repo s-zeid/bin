@@ -36,7 +36,7 @@ for i; do
  n=`expr $n + 1`
 done
 eval "$set_cmd"
-TEX="/tmp/$(printf '%s' "$(basename "$IN")" | sed -r 's/(\.[^.]+)?$/.tex/')"
+TEX="/tmp/$$-$(printf '%s' "$(basename "$IN")" | sed -r 's/(\.[^.]+)?$/.tex/')"
 OUT=`printf '%s' "$IN" | sed -r 's/(\.[^.]+)?$/.pdf/'`
 
 pandoc -t mla-paper --csl=mla-url "$@" "$IN" --bibliography="$BIB" -o "$TEX"
