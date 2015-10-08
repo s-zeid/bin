@@ -9,7 +9,7 @@ from collections import OrderedDict
 
 POWER_SUPPLY_ROOT = "/sys/class/power_supply"
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8888
+DEFAULT_PORT = 33579
 
 def main(argv):
  if ((len(argv) > 3 and argv[1]     in ("-d", "--daemon")) or
