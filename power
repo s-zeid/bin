@@ -26,7 +26,7 @@ def main(argv):
  for k in make_status_dict():
   fg.add_argument("--" + k.replace("_", "-"), dest="only_fields", 
                  action="append_const", const=k,
-                 help="show the %s field" % k)
+                 help="show the `%s` field" % k)
  fg.add_argument("--all", "-a", dest="all_fields", action="store_true",
                  help="show all fields")
  p.add_argument("hostport", nargs="?", default="",
