@@ -74,7 +74,7 @@ def main(argv):
 
 class PowerHandler(SocketServer.BaseRequestHandler):
  def handle(self):
-  self.request.send(format_power(power()))
+  self.request.send(format_power(power()) + "\n")
   self.request.shutdown(socket.SHUT_RDWR)
   self.request.close()
 
@@ -89,10 +89,7 @@ def daemon(host=None, port=None):
   server.shutdown()
 
 def format_power(power):
- r = ""
- for k in power:
-  r += "%s=%s\n" % (k, power[k])
- return r
+ return "\n".join(["%s=%s" % (k, power[k]) for k in power])
 
 def power(root=None, host=None, port=None):
  if host or port:
