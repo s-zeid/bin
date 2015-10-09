@@ -1,5 +1,6 @@
 #!/usr/bin/env python2
 
+import argparse
 import os
 import socket
 import SocketServer
@@ -12,33 +13,64 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 33579
 
 def main(argv):
- if ((len(argv) > 3 and argv[1]     in ("-d", "--daemon")) or
-     (len(argv) > 2 and argv[1] not in ("-d", "--daemon")) or
-     (len(argv) > 1 and argv[1]     in ("-h", "--help"))):
-  print >> sys.stderr, "Usage: %s [{-d|--daemon}] [host][:port]" % argv[0]
-  print >> sys.stderr, "(daemon listens on %s:%d by default)" \
-                       % (DEFAULT_HOST, DEFAULT_PORT)
-  return 2
+ p = argparse.ArgumentParser(description="Display or serve power status.")
+ p.add_argument("--daemon", "-d", dest="daemon", action="store_true",
+                help="run as a daemon")
+ fg = p.add_argument_group("optional field arguments",
+                           "If more than one field name is given, each field"
+                           " will be printed on a separate line, and each line"
+                           " will be prefixed with the name of the field and an"
+                           " equals sign.  If no field names are given, then"
+                           " only the `human` field will be shown.")
+ for k in make_status_dict():
+  fg.add_argument("--" + k.replace("_", "-"), dest="only_fields", 
+                 action="append_const", const=k,
+                 help="show the %s field" % k)
+ fg.add_argument("--all", "-a", dest="all_fields", action="store_true",
+                 help="show all fields")
+ p.add_argument("hostport", nargs="?", default="",
+                help="the host and port number to connect or bind to"
+                     " (defaults to %s:%d)" % (DEFAULT_HOST, DEFAULT_PORT))
+ 
+ # Make it say "[host][:port]" for hostport in the help and usage text
+ # Trying to do it with metavar causes an AssertionError
+ def fixup(s):
+  s = s.replace("[hostport]", "hostport")
+  s = s.replace("hostport     ", "hostport")
+  s = s.replace("hostport", "[host][:port]")
+  return s
+ __format_help = p.format_help
+ p.format_help = lambda: fixup(__format_help())
+ __format_usage = p.format_usage
+ p.format_usage = lambda: fixup(__format_usage())
+ 
+ try:
+  args = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
  
  host = port = root = None
- if len(argv) > 1:
-  if argv[1] in ("-d", "--daemon"):
-   # TODO: background
-   args = {}
-   if len(argv) > 2:
-    hostport = argv[2]
-    if ":" not in hostport:
-     hostport += ":"
-    host, port = hostport.split(":")
-   daemon(host=host, port=int(port) if port else None)
-   return 0
-  else:
-   hostport = argv[1]
-   if ":" not in hostport:
-    hostport += ":"
-   host, port = hostport.split(":")
+ hostport = args.hostport
+ if ":" not in hostport:
+  hostport += ":"
+ host, port = hostport.split(":")
  
- print format_power(power(root=root, host=host, port=int(port) if port else None))
+ if args.daemon:
+  # TODO: background
+  daemon(host=host, port=int(port) if port else None)
+  return 0
+ else:
+  status = power(root=root, host=host, port=int(port) if port else None)
+  if args.all_fields:
+   print format_power(status)
+  else:
+   only_fields = args.only_fields or ["human"]
+   for k in only_fields:
+    out = ""
+    if len(only_fields) != 1:
+     out += k + "="
+    out += str(status[k])
+    print out
 
 class PowerHandler(SocketServer.BaseRequestHandler):
  def handle(self):
