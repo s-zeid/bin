@@ -20,8 +20,9 @@ def main(argv):
                            "If more than one field name is given, each field"
                            " will be printed on a separate line, and each line"
                            " will be prefixed with the name of the field and an"
-                           " equals sign.  If no field names are given, then"
-                           " only the `human` field will be shown.")
+                           " equals sign.  Fields will be printed in the order"
+                           " given.  If no field names are given, then only the"
+                           " `human` field will be shown.")
  for k in make_status_dict():
   fg.add_argument("--" + k.replace("_", "-"), dest="only_fields", 
                  action="append_const", const=k,
