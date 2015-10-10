@@ -23,12 +23,15 @@ def main(argv):
                            " equals sign.  Fields will be printed in the order"
                            " given.  If no field names are given, then only the"
                            " `human` field will be shown.")
- for k in make_status_dict():
+ fields = make_status_dict(help_text=True)
+ for k in fields:
   fg.add_argument("--" + k.replace("_", "-"), dest="only_fields", 
                  action="append_const", const=k,
-                 help="show the `%s` field" % k)
+                 help="show " + fields[k])
  fg.add_argument("--all", "-a", dest="all_fields", action="store_true",
                  help="show all fields")
+ p.add_argument("--hep", dest="_hep_easter_egg", action="store_true",
+                help=argparse.SUPPRESS)
  p.add_argument("hostport", nargs="?", default="",
                 help="the host and port number to connect or bind to"
                      " (defaults to %s:%d)" % (DEFAULT_HOST, DEFAULT_PORT))
@@ -56,7 +59,11 @@ def main(argv):
   hostport += ":"
  host, port = hostport.split(":")
  
- if args.daemon:
+ if args._hep_easter_egg:
+  print "Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes."
+  print "--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s"
+  return 0
+ elif args.daemon:
   # TODO: background
   daemon(host=host, port=int(port) if port else None)
   return 0
@@ -116,17 +123,20 @@ def power_remote(host=None, port=None):
   r[key] = value
  return r
 
-def make_status_dict():
+def make_status_dict(help_text=False):
+ def help(s):
+  return s if help_text else None
  d = OrderedDict()
- d["human"]         = None
- d["supply"]        = None
- d["status"]        = None
- d["percent"]       = None
- d["remaining"]     = None
- d["hours"]         = None
- d["minutes"]       = None
- d["seconds"]       = None
- d["total_seconds"] = None
+ d["human"]         = help("human-readable status")
+ d["supply"]        = help("the power supply source")
+ d["status"]        = help("the general state of the power supply")
+ d["percent"]       = help("the percentage of power available")
+ d["remaining"]     = help("how much time is remaining to charge or discharge"
+                           " in H:MM:SS format")
+ d["hours"]         = help("the hours component of the time remaining")
+ d["minutes"]       = help("the minutes component of the time remaining")
+ d["seconds"]       = help("the seconds component of the time remaining")
+ d["total_seconds"] = help("how much time is remaining in seconds")
  return d
 
 def power_local(root=None):
