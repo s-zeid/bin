@@ -14,7 +14,7 @@ psgrep() {
  fi
  
  local header="`ps aux | head -n1`"
- printf '\x1b[1m%s\x1b[0m\n' "$header"
+ printf '\033[1m%s\033[0m\n' "$header"
  local processes="`ps aux`"
  if [ $hide_parent -ne 0 ]; then
   printf '%s' "$processes" | grep "$@" \
