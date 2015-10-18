@@ -18,10 +18,10 @@ psgrep() {
  local processes="`ps aux`"
  if [ $hide_parent -ne 0 ]; then
   printf '%s' "$processes" | grep "$@" \
-   | egrep -v "^$USER\\s+$$\\s" | egrep -v "^\\S+\\s+$PPID\\s"
+   | egrep -v "^\\S+\\s+$$\\s" | egrep -v "^\\S+\\s+$PPID\\s"
  else
   printf '%s' "$processes" | grep "$@" \
-   | egrep -v "^$USER\\s+$$\\s"
+   | egrep -v "^\\S+\\s+$$\\s"
  fi
 }
 
