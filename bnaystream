@@ -61,6 +61,8 @@ paths="
  /.bnaystream/
 "
 
+verbose=0
+
 config_file=~/.bnaystreamrc
 
 
@@ -169,7 +171,8 @@ main() {
  
  if [ $transcode -ne 0 ]; then
   echo_run \
-  ffmpeg `[ $resync_hack -ne 0 ] && printf '%s' "-resync_size 1048576" || true` \
+  ffmpeg `[ $verbose -eq 0 ] && printf '%s' "-loglevel fatal" || true` \
+         `[ $resync_hack -ne 0 ] && printf '%s' "-resync_size 1048576" || true` \
          -max_delay 0 "$@" \
          -c:v "$vcodec" -b:v "$vb" -r:v "$vr" -filter:v "$vfilter" \
          -minrate "$vb" -maxrate "$vb" -bufsize 1835k \
@@ -178,16 +181,19 @@ main() {
          -c:a "$acodec" -b:a "$ab" -r:a "$ar" -filter:a "$afilter" \
          -f "$mux" -muxpreload 0 -muxdelay 0 - \
    | echo_run \
-     cvlc - --file-caching="$cache" \
+     cvlc `[ $verbose -eq 0 ] && printf '%s' "--quiet" || true` \
+          - --file-caching="$cache" \
           --http-host "$host" --http-port="$port" --sout "$spec" vlc://quit
  else
   echo_run \
-  ffmpeg `[ $resync_hack -ne 0 ] && printf '%s' "-resync_size 1048576" || true` \
+  ffmpeg `[ $verbose -eq 0 ] && printf '%s' "-loglevel fatal" || true` \
+         `[ $resync_hack -ne 0 ] && printf '%s' "-resync_size 1048576" || true` \
          -max_delay 0 "$@" \
          -c:v copy -c:a copy \
          -f "$mux" -muxpreload 0 -muxdelay 0 - \
    | echo_run \
-     cvlc - --file-caching="$cache" \
+     cvlc `[ $verbose -eq 0 ] && printf '%s' "--quiet" || true` \
+          - --file-caching="$cache" \
           --http-host "$host" --http-port="$port" --sout "$spec" vlc://quit
  fi
 }
