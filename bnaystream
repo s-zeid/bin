@@ -166,7 +166,8 @@ main() {
    input_prog=youtube-dl
   fi
   if [ x"$input_prog" = x"youtube-dl" ]; then
-   input=$(youtube-dl -f "$input_quality" -g "$input")
+   input=$(youtube-dl -f "$input_quality" -g "$input" \
+           `[ $verbose -eq 0 ] && printf '%s' "--no-warnings"`)
   fi
  fi
  # rewrite $@
