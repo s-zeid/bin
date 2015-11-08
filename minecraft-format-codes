@@ -326,7 +326,7 @@ def test_main(fmt):
 
 def main(argv):
  usage_prefix = "Usage: %s" % argv[0]
- usage_suffix = "[text (default: from stdin)]"
+ usage_suffix = "[-e|--escape] [text (default: from stdin)]"
  
  usage_generic = "%s --<format> %s" % (usage_prefix, usage_suffix)
  usage_format  = "%s %s" % (usage_prefix, usage_suffix)
@@ -367,12 +367,22 @@ def main(argv):
    print usage_generic if generic else usage_format
    return 0
  
+ escape = False
+ if args[0] in ("-e", "--escape"):
+  escape = True
+  args = args[1:]
+ 
  text = " ".join(args)
  if not text:
   text = sys.stdin.read()
   if sys.stdin.isatty():
    print >> sys.stderr
- print to_x(text, fmt=fmt)
+ 
+ result = to_x(text, fmt=fmt)
+ if escape and fmt == ANSI:
+  print result.replace("\033", "\\033")
+ else:
+  print result
 
 
 if __name__ == "__main__":
