@@ -168,6 +168,11 @@ main() {
   if [ x"$input_prog" = x"youtube-dl" ]; then
    input=$(youtube-dl -f "$input_quality" -g "$input" \
            `[ $verbose -eq 0 ] && printf '%s' "--no-warnings"`)
+   local r=$?
+   if [ $r -ne 0 ]; then
+    echo "error: could not get input URL" >&2
+    return $r
+   fi
   fi
  fi
  # rewrite $@
