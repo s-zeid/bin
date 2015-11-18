@@ -99,6 +99,7 @@ main() {
  # Filter the arguments list ($@) according to the comments in the code below.
  # The new value of $@ will be passed to FFmpeg.
  local set_cmd="set --"
+ local append=""
  local have_dash_i=0
  local have_input=0
  local injected=0
@@ -116,19 +117,19 @@ main() {
    if (printf '%s' "$arg" | grep -q -v -e '^-.'); then
     # inject `-i` before the first non-config option argument if it doesn't
     # start with a hyphen or if it is only a hyphen
-    set_cmd="$set_cmd -i \"\$input\""
+    set_cmd="$set_cmd -i"
     have_dash_i=1
     have_input=1
     # save the input argument number
     input_pos=$i
    else
     # otherwise, pass to FFmpeg as-is
-    set_cmd="$set_cmd \"\$$i\""
+    append="\"\$$i\""
    fi
    injected=1
   else
    # other arguments are passed to FFmpeg as-is
-   set_cmd="$set_cmd \"\$$i\""
+   append="\"\$$i\""
   fi
   if [ $have_dash_i -ne 0 ]; then
    # keep track of whether we've seen `-i` followed by an appropriate value
@@ -136,6 +137,8 @@ main() {
     have_input=1
     # save the input argument number
     input_pos=$i
+    # make sure the input argument gets set to our input variable
+    append="\"\$input\""
    else
     have_dash_i=0
    fi
@@ -143,6 +146,11 @@ main() {
   if [ x"$arg" = x"-i" ]; then
    # keep track of whether we've seen `-i`
    have_dash_i=1
+  fi
+  # deferred append to set_cmd
+  if [ x"$append" != x"" ]; then
+   set_cmd="$set_cmd $append"
+   append=""
   fi
   i=$(($i + 1))
  done
