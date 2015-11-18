@@ -76,7 +76,8 @@ The MIME type is determined as follows:
      mime = "image/jpeg"
    else:
     mime = "image/jpeg"
- id3.add(APIC(type=3, mime=mime, data=data, encoding=3, desc=filename))
+ desc = os.path.basename(filename)
+ id3.add(APIC(type=3, mime=mime, data=data, encoding=3, desc=desc))
  id3.save()
 
 def main(argv):
