@@ -1,7 +1,7 @@
 Assorted scripts and stuff
 ==========================
 Copyright (c) 2008– Scott Zeid  
-<http://code.s.zeid.me/bin>
+<https://code.s.zeid.me/bin>
 
 This is the (abridged) contents of my personal `bin` directory on my personal
 computers.
