@@ -39,10 +39,10 @@
 #     main = <main domain to be named in the certificate; this ensures a
 #             consistent filename for the resulting certificate>
 #     base = <directory to scan for domains>
-#     www  # (boolean, default True)
-#          # if True, then `www.<domain>` will also be included unless
-#          # overridden for a domain, but not for subdomains unless told
-#          # otherwise
+#     www  ; (boolean, default True)
+#          ; if True, then `www.<domain>` will also be included unless
+#          ; overridden for a domain, but not for subdomains unless told
+#          ; otherwise
 #     
 #     [domain-or-glob (subdirectory of base; basename is used as the domain)]
 #      subdomains = <(optional) a glob to match subdirectories of each directory
@@ -50,17 +50,17 @@
 #                    subdirectory matched is treated as (just) a subdomain.  If
 #                    this option is given as a boolean (i.e. no glob is given),
 #                    then `*` will be used as the glob.>
-#      www  # (boolean, default: top-level `www` value)
-#           # if True, then `www.<domain>` will also be included
-#           # for non-subdomains
-#      www-subdomains # (boolean, default: False)
-#                     # if True, then `www.<subdomain>` will also be included
-#      exclude  # if True, then any path matching the domain or glob will be
-#               # excluded from the certificate
+#      www  ; (boolean, default: top-level `www` value)
+#           ; if True, then `www.<domain>` will also be included
+#           ; for non-subdomains
+#      www-subdomains ; (boolean, default: False)
+#                     ; if True, then `www.<subdomain>` will also be included
+#      exclude  ; if True, then any path matching the domain or glob will be
+#               ; excluded from the certificate
 #     
 #     [...]
 #     
-#     [.letsencrypt]  # (optional)
+#     [.letsencrypt]  ; (optional)
 #      path = <(optional; default: "letsencrypt")
 #              path to letsencrypt executable or directory containing
 #              letsencrypt-auto; can also be the name of an executable on
