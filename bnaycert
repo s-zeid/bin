@@ -84,9 +84,9 @@
 # ACME server, however, will put the main domain first and include all other
 # domains in an arbitrary order.
 # 
-# Currently only the official Let's Encrypt client is supported, and it is
-# executed in cert-only webroot mode.  This program will do a few more things
-# with the final certificate:
+# Currently only the official Let's Encrypt client is supported, and by default
+# it is executed in cert-only webroot mode.  This program will do a few more
+# things with the final certificate:
 # 
 # * chmod 600 the private key file
 # * combine the certificate and private key files into a `cert+privkey.pem`
