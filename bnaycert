@@ -1,0 +1,404 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+
+# BnayCert
+# ========
+# Scans a directory for domains for which to generate TLS certificates
+# via the holy, blessèd Let's Encrypt service.
+# 
+# Copyright (c) 2015 Scott Zeid.  
+# Released under the X11 License:  <https://tldrlegal.com/l/x11>
+# 
+# BnayCert uses a configuration file.  Its syntax is similar to Windows INI
+# files and is documented at <https://docs.python.org/2/library/configparser.html>.
+# There are a few exceptions:
+# 
+#  * Boolean values may be set to True by having just "<option>" on the line.
+#  * Booleans may be set to False via "no-<option>" or "not-<option>".
+#  * Keys can be indented.
+#  * Backslashes at the end of lines can be used to merge lines together.  The
+#    RFC 822 long header syntax is not supported.
+# 
+# Each section that does not start with a `.` (\*) is a subdirectory of the
+# directory named in the `base` option or a shell wildcard expression that
+# matches one or more subdirectories.  The names of each matched subdirectory,
+# if they are valid domain names, will be included as subject alternate names in
+# the certificate.  If the section name does not exist as a subdirectory or if
+# no base directory is given, then the section name will be used as-is as a
+# domain.  There are also options to search for subdomains, also include or not
+# include domains with the "www." prefix added, or exclude domains from the
+# certificate.
+# 
+# (\*) If a domain or glob starts with a ., then the next character must be a
+#      forward slash or backslash; otherwise it will be treated as a "special"
+#      section (e.g. ".letsencrypt") that controls other settings.
+# 
+# The configuration file is structured as follows:
+# 
+#     main = <main domain to be named in the certificate; this ensures a
+#             consistent filename for the resulting certificate>
+#     base = <directory to scan for domains>
+#     www  # (boolean, default True)
+#          # if True, then `www.<domain>` will also be included unless
+#          # overridden for a domain, but not for subdomains unless told
+#          # otherwise
+#     
+#     [domain-or-glob (subdirectory of base; basename is used as the domain)]
+#      subdomains = <(optional) a glob to match subdirectories of each directory
+#                    matched by `domain-or-glob`; the basename of each
+#                    subdirectory matched is treated as (just) a subdomain.  If
+#                    this option is given as a boolean (i.e. no glob is given),
+#                    then `*` will be used as the glob.>
+#      www  # (boolean, default: top-level `www` value)
+#           # if True, then `www.<domain>` will also be included
+#           # for non-subdomains
+#      www-subdomains # (boolean, default: False)
+#                     # if True, then `www.<subdomain>` will also be included
+#      exclude  # if True, then any path matching the domain or glob will be
+#               # excluded from the certificate
+#     
+#     [...]
+#     
+#     [.letsencrypt]  # (optional)
+#      path = <(optional; default: "letsencrypt")
+#              path to letsencrypt executable or directory containing
+#              letsencrypt-auto; can also be the name of an executable on
+#              $PATH>
+#      args = <(optional; default: 'certonly --webroot -w "/var/www"')
+#              args to add to the letsencrypt command before the domains,
+#              in a simple POSIX-like shell syntax>
+# 
+# If `base` is omitted, then no directory will be searched, but domain names
+# can still be given as sections.  If directories are scanned and a domain or
+# glob does not match any subdirectories, then the domain or glob will be used
+# as a literal domain name.
+# 
+# Domains will be sorted as follows:  the main domain will go first, followed
+# by `www.<main-domain>` if it is included by any means, and finally the rest
+# of the domains, with components reversed, will be sorted lexicographically:
+# alphabetically by top-level domain, then for each TLD, alphabetically by
+# second-level domain, then for each second level, alphabetically by each
+# third-level domain, and so on.  As an exception, `www.` domains will appear
+# immediately after their non-www counterparts.  The official Let's Encrypt
+# ACME server, however, will put the main domain first and include all other
+# domains in an arbitrary order.
+# 
+# Currently only the official Let's Encrypt client is supported, and it is
+# executed in cert-only webroot mode.  This program will do a few more things
+# with the final certificate:
+# 
+# * chmod 600 the private key file
+# * combine the certificate and private key files into a `cert+privkey.pem`
+#   file for lighttpd, and chmod 600 that file
+# * print the paths to all certificate, chain, and private key files related to
+#   the certificate.
+# 
+# [Fuck Eddy Nigg!](https://code.s.zeid.me/un-startssl-ify)
+
+
+import ConfigParser
+import fnmatch
+import glob
+import io
+import os
+import re
+import shlex
+import sys
+import subprocess
+
+from collections import OrderedDict as odict
+
+
+class BnayCertError(Exception):
+ def __init__(self, message, code=None):
+  self.message = message
+  self.code = code
+
+
+def get_domains(config):
+ def has_bad_tld(domain):
+  BAD_TLDS = ["invalid", "example", "test", "local", "lan"]
+  for tld in BAD_TLDS:
+   if domain.lower().endswith("." + tld.lower()):
+    return True
+  return False
+ def is_valid(domain):
+  if re.search(r"[^.a-zA-Z0-9_-]", domain):
+   return False
+  if has_bad_tld(domain):
+   return False
+  return True
+ def normalize(domain):
+  return domain.strip().strip(".").lower()
+ 
+ domains = []  # also includes subdomains
+ subdomains = []
+ 
+ if not config[""].get("main"):
+  raise BnayCertError("no `main` key (main domain) set in config file", 2)
+ main_domain = normalize(config[""]["main"])
+ 
+ domains += [main_domain]
+ top_add_www = config[""].get("www", True)
+ main_domain_www = "www." + main_domain
+ if top_add_www:
+  domains += [main_domain_www]
+ 
+ excludes = []
+ base = config[""].get("base")
+ real_base = os.path.realpath(base) if base else None
+ search = odict([(sub, config[sub]) for sub in config if sub and sub != "."])
+ for filename_in_base in reversed(search.keys()):
+  # build exclusion list
+  options = search[filename_in_base]
+  if options.get("exclude"):
+   excludes += [filename_in_base]
+ for filename_in_base in reversed(search.keys()):
+  # build domain list
+  options = search[filename_in_base]
+  if not options.get("exclude"):
+   domain_add_www = options.get("www", top_add_www)
+   if base:
+    path_glob = os.path.abspath(os.path.join(base, filename_in_base))
+    paths = glob.glob(path_glob)
+    if not len(paths) and not re.search(r"[*?[\]]", path_glob):
+     paths += [path_glob]
+   else:
+    path_glob = None
+    paths = [filename_in_base]
+   for path in paths:
+    if not base or (os.path.isdir(path) or not os.path.exists(path)):
+     exclude = False
+     for pattern in excludes:
+      if (os.path.basename(path) == pattern or
+          fnmatch.fnmatch(path, os.path.join(base, pattern))):
+       exclude = True
+       break
+     if not exclude:
+      domain = normalize(os.path.basename(path))
+      added_domain = False
+      if domain not in domains and is_valid(domain):
+       domains += [domain]
+       added_domain = True
+      if domain_add_www and (added_domain or domain == main_domain):
+       domain_www = "www." + domain
+       if domain_www not in domains and is_valid(domain_www):
+        domains += [domain_www]
+      if added_domain:
+       # find subdomains
+       if base and options.get("subdomains"):
+        subdomain_add_www = options.get("www-subdomains", False)
+        if isinstance(options["subdomains"], bool):
+         subdomains_glob = "*"
+        else:
+         subdomains_glob = os.path.join(path, options["subdomains"])
+        subdomain_paths = glob.glob(subdomains_glob)
+        for subdomain_path in subdomain_paths:
+         if os.path.isdir(subdomain_path):
+          subdomain = normalize(os.path.basename(subdomain_path))
+          subdomain += "." + domain
+          exclude_subdomain = False
+          for pattern in excludes:
+           if (subdomain == pattern or
+               fnmatch.fnmatch(subdomain_path, os.path.join(base, pattern))):
+            exclude_subdomain = True
+            break
+          if not exclude_subdomain:
+           if subdomain not in domains and is_valid(subdomain):
+            domains += [subdomain]
+            if subdomain_add_www:
+             subdomain_www = "www." + subdomain
+             if subdomain_www not in domains and is_valid(subdomain_www):
+              domains += [subdomain_www]
+              subdomains += [subdomain_www]
+ 
+ # sort domains in alphabetical order by reversed components,
+ # with main domain first, removing duplicates
+ tmp = [domains[0]]  # main domain only
+ domains = list(list(domains[1:]))  # remove main domain and duplicates
+ domains = [list(reversed(domain.split("."))) for domain in domains]
+ domains.sort()
+ domains = [".".join(reversed(domain)) for domain in domains]
+ tmp += domains
+ domains = tmp
+ 
+ # move www's to immediately after their non-www counterparts
+ for domain_www in (domain for domain in domains if domain.startswith("www.")):
+  domain = domain_www[4:]
+  if domain in domains:
+   domains.remove(domain_www)
+   domain_i = domains.index(domain)
+   domain_www_i = domain_i + 1
+   domains[domain_www_i:domain_www_i] = [domain_www]
+ 
+ result = domains
+ return result
+
+
+def letsencrypt(domains, letsencrypt_bin, letsencrypt_args=None):
+ if os.path.isdir(letsencrypt_bin):
+  letsencrypt_bin = os.path.join(letsencrypt_bin, "letsencrypt-auto")
+ letsencrypt_args = list(letsencrypt_args or [])
+ cmd = [letsencrypt_bin] + letsencrypt_args
+ for domain in domains:
+  cmd += ["-d", domain]
+ 
+ le_r = subprocess.call(cmd)
+ post_r = post(domains[0])
+ if post_r != 0:
+  return post_r
+ return le_r
+
+
+def load_config(config):
+ config = config.splitlines()
+ i = 0
+ while i < len(config):
+  # remove leading whitespace to allow indenting config keys
+  config[i] = config[i].lstrip()
+  # allow backslashes at the end of a line to combine lines
+  if config[i].endswith("\\"):
+   config[i] = config[i][:-1]
+   if i + 1 < len(config):
+    config[i] += config[i + 1]
+    config.pop(i + 1)
+    i -= 1
+  i += 1
+ config = "\n".join(config)
+ 
+ BOOLEAN_KEYS = ["exclude", "www", "www-subdomains"]
+ TRUES = ("1", "true", "yes", "on")
+ FALSES = ("0", "false", "no", "off")
+ BOOLEANS = TRUES + FALSES
+ result = odict()
+ cp = ConfigParser.RawConfigParser(dict_type=odict, allow_no_value=True)
+ cp.readfp(io.BytesIO("[/]\n" + config))
+ sections = (["/"] + [i for i in cp.sections() if i != "/"])
+ spec_sections = []
+ special_sections = []
+ for section in sections:
+  if not section.startswith(".") or section[:2] in ("./", ".\\"):
+   spec_sections += [section]
+  else:
+   special_sections += [section]
+ for section in spec_sections:
+  for raw_key in BOOLEAN_KEYS:
+   for key in (raw_key, "no-" + raw_key, "not-" + raw_key):
+    if cp.has_option(section, key):
+     value = cp.get(section, key)
+     value = str(value).lower() if value is not None else None
+     if value in BOOLEANS:
+      value = value in TRUES
+     else:
+      value = True
+     if key == raw_key:  # value as-is
+      cp.set(section, raw_key, value)
+     else:               # value negated
+      cp.remove_option(section, key)
+      cp.set(section, raw_key, not value)
+  result[section if section != "/" else ""] = dict(cp.items(section))
+ result["."] = odict()
+ for section in special_sections:
+  result["."][section[1:]] = dict(cp.items(section))
+ return result
+
+
+def post(main_domain, from_main=False):
+ live_root = "/etc/letsencrypt/live"
+ if os.path.exists(live_root):
+  # change to root if necessary
+  if os.stat(live_root).st_uid != os.getuid():
+   # The Python command loads this file, executes it with a different module
+   # name to load the functions, and then calls the post function with the
+   # original main_domain argument and an extra flag to prevent infinite
+   # recursion.  The %s replacements are sent through repr(str(...)) first
+   # to ensure that they actually are Python string literals.
+   cmd = ["sudo", sys.executable, "-c",
+          ('__name__ = "not__main__"; import sys;'
+           'exec(compile(open(%s, "rb").read(), %s, "exec"));'
+           'sys.exit(catch_main_errors(post, %s, True))')
+          % (repr(str(__file__)), repr(str(__file__)), repr(str(main_domain)))]
+   return subprocess.call(cmd)
+  
+  cert_dir = os.path.join("/etc/letsencrypt/live", main_domain)
+  if os.path.exists(os.path.join(cert_dir, "cert.pem")):
+   # change permissions
+   os.chmod(os.path.realpath(os.path.join(cert_dir, "privkey.pem")), 0600)
+   
+   # concatenate certificate and private key for lighttpd
+   cert_plus_privkey = ""
+   with open(os.path.join(cert_dir, "cert.pem"), "rb") as f:
+    cert_plus_privkey += f.read()
+   cert_plus_privkey += "\n"
+   with open(os.path.join(cert_dir, "privkey.pem"), "rb") as f:
+    cert_plus_privkey += f.read()
+   with open(os.path.join(cert_dir, "cert+privkey.pem"), "wb") as f:
+    f.write(cert_plus_privkey)
+   os.chmod(os.path.join(cert_dir, "cert+privkey.pem"), 0600)
+   
+   # print useful paths
+   print cert_dir
+   for filename in ("cert", "cert+privkey", "chain", "fullchain", "privkey"):
+    print os.path.join(cert_dir, filename + ".pem")
+ 
+ return 0
+
+
+def catch_main_errors(fn, *args, **kwargs):
+ try:
+  return fn(*args, **kwargs)
+ except BnayCertError as exc:
+  print >> sys.stderr, "error:", exc.message
+  return exc.code if exc.code is not None else 127
+
+
+def main(argv, recurse=True):
+ if recurse:
+  return catch_main_errors(main, argv, False)
+ 
+ USAGE  = "Usage: %s [-l|--list|--] <config-file> [extra-letsencrypt-args [...]]"
+ USAGE %= argv[0]
+ 
+ ls = False
+ config_filename = None
+ extra_args = None
+ 
+ if len(argv) >= 2:
+  if argv[1] in ("-l", "--list"):
+   ls = True
+   argv.pop(1)
+  elif argv[1] == "--":
+   argv.pop(1)
+ if len(argv) < 2:
+  print >> sys.stderr, USAGE
+  return 2
+ 
+ config_filename = argv[1]
+ extra_args = argv[2:]
+ 
+ with open(config_filename, "rb") as f:
+  config = load_config(f.read())
+ 
+ for required in []:
+  if required not in config[""]:
+   raise BnayCertError("the `%s` key is missing from the config file"
+                       % required, 2)
+ 
+ domains = get_domains(config)
+ if ls:
+  for domain in domains:
+   print domain
+  return 0
+ else:
+  le_section = config["."].get("letsencrypt", {})
+  le_path = le_section.get("path", "letsencrypt")
+  le_args = le_section.get("args", 'certonly --webroot -w "/var/www"')
+  le_args = shlex.split(le_args)
+  return letsencrypt(domains, le_path, le_args + extra_args)
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
