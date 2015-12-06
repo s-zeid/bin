@@ -68,6 +68,10 @@
 #      args = <(optional; default: 'certonly --webroot -w "/var/www"')
 #              args to add to the letsencrypt command before the domains,
 #              in a simple POSIX-like shell syntax>
+#      config-dir = <(optional; default: "/etc/letsencrypt")
+#                   path to the Let's Encrypt configuration directory; it should
+#                   contain a subdirectory called "live" where live certificates
+#                   and keys are stored>
 # 
 # If `base` is omitted, then no directory will be searched, but domain names
 # can still be given as sections.  If directories are scanned and a domain or
@@ -236,16 +240,20 @@ def get_domains(config):
  return result
 
 
-def letsencrypt(domains, letsencrypt_bin, letsencrypt_args=None):
+def letsencrypt(domains, letsencrypt_bin, letsencrypt_args=None,
+                letsencrypt_config_dir=None):
  if os.path.isdir(letsencrypt_bin):
   letsencrypt_bin = os.path.join(letsencrypt_bin, "letsencrypt-auto")
  letsencrypt_args = list(letsencrypt_args or [])
+ if not letsencrypt_config_dir:
+  letsencrypt_config_dir = "/etc/letsencrypt"
+ 
  cmd = [letsencrypt_bin] + letsencrypt_args
  for domain in domains:
   cmd += ["-d", domain]
  
  le_r = subprocess.call(cmd)
- post_r = post(domains[0])
+ post_r = post(domains[0], letsencrypt_config_dir)
  if post_r != 0:
   return post_r
  return le_r
@@ -304,8 +312,8 @@ def load_config(config):
  return result
 
 
-def post(main_domain, recurse=True):
- live_root = "/etc/letsencrypt/live"
+def post(main_domain, letsencrypt_config_dir, recurse=True):
+ live_root = os.path.join(letsencrypt_config_dir, "live")
  if os.path.exists(live_root):
   # change to root if necessary
   if recurse and os.stat(live_root).st_uid != os.getuid():
@@ -317,8 +325,9 @@ def post(main_domain, recurse=True):
    cmd = ["sudo", sys.executable, "-c",
           ('__name__ = "not__main__"; import sys;'
            'exec(compile(open(%s, "rb").read(), %s, "exec"));'
-           'sys.exit(catch_main_errors(post, %s, False))')
-          % (repr(str(__file__)), repr(str(__file__)), repr(str(main_domain)))]
+           'sys.exit(catch_main_errors(post, %s, %s, False))')
+          % (repr(str(__file__)), repr(str(__file__)),
+             repr(str(main_domain)), repr(str(letsencrypt_config_dir)))]
    return subprocess.call(cmd)
   
   cert_dir = os.path.join("/etc/letsencrypt/live", main_domain)
@@ -395,7 +404,8 @@ def main(argv, recurse=True):
   le_path = le_section.get("path", "letsencrypt")
   le_args = le_section.get("args", 'certonly --webroot -w "/var/www"')
   le_args = shlex.split(le_args)
-  return letsencrypt(domains, le_path, le_args + extra_args)
+  le_config_dir = le_section.get("config-dir", None)
+  return letsencrypt(domains, le_path, le_args + extra_args, le_config_dir)
 
 
 if __name__ == "__main__":
