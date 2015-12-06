@@ -304,11 +304,11 @@ def load_config(config):
  return result
 
 
-def post(main_domain, from_main=False):
+def post(main_domain, recurse=True):
  live_root = "/etc/letsencrypt/live"
  if os.path.exists(live_root):
   # change to root if necessary
-  if os.stat(live_root).st_uid != os.getuid():
+  if recurse and os.stat(live_root).st_uid != os.getuid():
    # The Python command loads this file, executes it with a different module
    # name to load the functions, and then calls the post function with the
    # original main_domain argument and an extra flag to prevent infinite
@@ -317,7 +317,7 @@ def post(main_domain, from_main=False):
    cmd = ["sudo", sys.executable, "-c",
           ('__name__ = "not__main__"; import sys;'
            'exec(compile(open(%s, "rb").read(), %s, "exec"));'
-           'sys.exit(catch_main_errors(post, %s, True))')
+           'sys.exit(catch_main_errors(post, %s, False))')
           % (repr(str(__file__)), repr(str(__file__)), repr(str(main_domain)))]
    return subprocess.call(cmd)
   
