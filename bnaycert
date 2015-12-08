@@ -297,7 +297,7 @@ def load_config(config, path=""):
     if os.path.isdir(path):
      os.chdir(path)
     elif os.path.isdir(os.path.dirname(path) or "."):
-     os.chdir(os.path.dirname(path))
+     os.chdir(os.path.dirname(path) or ".")
    with open(include_file, "rb") as f:
     config[i:i + 1] = f.read().splitlines()
    os.chdir(old_wd)
