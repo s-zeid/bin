@@ -19,6 +19,14 @@
 #  * Keys can be indented.
 #  * Backslashes at the end of lines can be used to merge lines together.  The
 #    RFC 822 long header syntax is not supported.
+#  * Other files can be included by adding a line with the format
+#    `[.include <filename>]`.  The filename may be absolute or relative to the
+#    top-level configuration file.  The contents of the file will replace the
+#    include directive, and keys in the included file that don't belong to a
+#    section will appear in the section immediately above the include directive
+#    or no section, as applicable.  Nested includes are allowed, but relative
+#    filenames are always interpreted relative to the location of the top-level
+#    configuration file.
 # 
 # Each section that does not start with a `.` (\*) is a subdirectory of the
 # directory named in the `base` option or a shell wildcard expression that
@@ -259,7 +267,7 @@ def letsencrypt(domains, letsencrypt_bin, letsencrypt_args=None,
  return le_r
 
 
-def load_config(config):
+def load_config(config, path=""):
  config = config.splitlines()
  i = 0
  while i < len(config):
@@ -271,7 +279,21 @@ def load_config(config):
    if i + 1 < len(config):
     config[i] += config[i + 1]
     config.pop(i + 1)
-    i -= 1
+    continue  # re-parse line
+  # handle includes
+  include_match = re.match(r"^\[\.include\s+([^]]+)\]\s*(;.*)?$", config[i])
+  if include_match and len(include_match.groups()):
+   include_file = include_match.group(1)
+   old_wd = os.getcwd()
+   if path:
+    if os.path.isdir(path):
+     os.chdir(path)
+    elif os.path.isdir(os.path.dirname(path) or "."):
+     os.chdir(os.path.dirname(path))
+   with open(include_file, "rb") as f:
+    config[i:i + 1] = f.read().splitlines()
+   os.chdir(old_wd)
+   continue  # re-parse line
   i += 1
  config = "\n".join(config)
  
@@ -387,7 +409,7 @@ def main(argv, recurse=True):
  extra_args = argv[2:]
  
  with open(config_filename, "rb") as f:
-  config = load_config(f.read())
+  config = load_config(f.read(), config_filename)
  
  for required in []:
   if required not in config[""]:
