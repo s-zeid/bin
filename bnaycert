@@ -93,6 +93,9 @@
 # glob does not match any subdirectories, then the domain or glob will be used
 # as a literal domain name.
 # 
+# Examples of real-world BnayCert configuration files may be found at
+# <https://cert.bnay.me/>.
+# 
 # Domains will be sorted as follows:  the main domain will go first, followed
 # by `www.<main-domain>` if it is included by any means, and finally the rest
 # of the domains, with components reversed, will be sorted lexicographically:
