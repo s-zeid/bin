@@ -278,6 +278,18 @@ def letsencrypt(domains, letsencrypt_bin, letsencrypt_args=None,
 
 
 def load_config(config, path=""):
+ def load_include(filename):
+  old_wd = os.getcwd()
+  if path:
+   if os.path.isdir(path):
+    os.chdir(path)
+   elif os.path.isdir(os.path.dirname(path) or "."):
+    os.chdir(os.path.dirname(path) or ".")
+  with open(filename, "rb") as f:
+   result = f.read()
+  os.chdir(old_wd)
+  return result
+ 
  config = config.splitlines()
  excludes_from_files = []
  i = 0
@@ -295,30 +307,14 @@ def load_config(config, path=""):
   include_match = re.match(r"^\[\.include\s+([^]]+)\]\s*(;.*)?$", config[i])
   if include_match and len(include_match.groups()):
    include_file = include_match.group(1)
-   old_wd = os.getcwd()
-   if path:
-    if os.path.isdir(path):
-     os.chdir(path)
-    elif os.path.isdir(os.path.dirname(path) or "."):
-     os.chdir(os.path.dirname(path) or ".")
-   with open(include_file, "rb") as f:
-    config[i:i + 1] = f.read().splitlines()
-   os.chdir(old_wd)
+   config[i:i + 1] = load_include(include_file).splitlines()
    continue  # re-parse line
   # handle exclude files
   exclude_match = re.match(r"^\[\.exclude\s+([^]]+)\]\s*(;.*)?$", config[i])
   if exclude_match and len(exclude_match.groups()):
    exclude_file = exclude_match.group(1)
-   old_wd = os.getcwd()
-   if path:
-    if os.path.isdir(path):
-     os.chdir(path)
-    elif os.path.isdir(os.path.dirname(path) or "."):
-     os.chdir(os.path.dirname(path))
-   with open(exclude_file, "rb") as f:
-    exclude_config = load_config(f.read(), path)
-    excludes_from_files += get_domains(exclude_config)
-   os.chdir(old_wd)
+   exclude_config = load_config(load_include(exclude_file), path)
+   excludes_from_files += get_domains(exclude_config)
    config.pop(i)
    continue  # parse next line
   i += 1
