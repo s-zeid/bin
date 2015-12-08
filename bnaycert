@@ -66,6 +66,12 @@
 #      exclude  ; if True, then any path matching the domain or glob will be
 #               ; excluded from the certificate
 #     
+#     [.exclude <filename>]  ; (optional)
+#      ; causes all domains matched in the configuration file at <filename> to
+#      ; be excluded.  The filename may be absolute or relative to the top-level
+#      ; configuration file's location.  Exclusions of any kind specified in the
+#      ; other configuration file will be ignored.
+#     
 #     [...]
 #     
 #     [.letsencrypt]  ; (optional)
@@ -157,7 +163,7 @@ def get_domains(config):
  if top_add_www:
   domains += [main_domain_www]
  
- excludes = []
+ excludes = config["."]["exclude"]
  base = config[""].get("base")
  real_base = os.path.realpath(base) if base else None
  search = odict([(sub, config[sub]) for sub in config if sub and sub != "."])
@@ -269,6 +275,7 @@ def letsencrypt(domains, letsencrypt_bin, letsencrypt_args=None,
 
 def load_config(config, path=""):
  config = config.splitlines()
+ excludes_from_files = []
  i = 0
  while i < len(config):
   # remove leading whitespace to allow indenting config keys
@@ -294,6 +301,22 @@ def load_config(config, path=""):
     config[i:i + 1] = f.read().splitlines()
    os.chdir(old_wd)
    continue  # re-parse line
+  # handle exclude files
+  exclude_match = re.match(r"^\[\.exclude\s+([^]]+)\]\s*(;.*)?$", config[i])
+  if exclude_match and len(exclude_match.groups()):
+   exclude_file = exclude_match.group(1)
+   old_wd = os.getcwd()
+   if path:
+    if os.path.isdir(path):
+     os.chdir(path)
+    elif os.path.isdir(os.path.dirname(path) or "."):
+     os.chdir(os.path.dirname(path))
+   with open(exclude_file, "rb") as f:
+    exclude_config = load_config(f.read(), path)
+    excludes_from_files += get_domains(exclude_config)
+   os.chdir(old_wd)
+   config.pop(i)
+   continue  # parse next line
   i += 1
  config = "\n".join(config)
  
@@ -331,6 +354,7 @@ def load_config(config, path=""):
  result["."] = odict()
  for section in special_sections:
   result["."][section[1:]] = dict(cp.items(section))
+ result["."]["exclude"] = excludes_from_files
  return result
 
 
