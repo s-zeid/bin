@@ -70,7 +70,8 @@
 #      ; causes all domains matched in the configuration file at <filename> to
 #      ; be excluded.  The filename may be absolute or relative to the top-level
 #      ; configuration file's location.  Exclusions of any kind specified in the
-#      ; other configuration file will be ignored.
+#      ; other configuration file will be honored only in the context of that
+#      ; file.
 #     
 #     [...]
 #     
