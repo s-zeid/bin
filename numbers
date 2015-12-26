@@ -1,5 +1,7 @@
 #!/usr/bin/env python2
 
+# https://www.youtube.com/watch?v=bJFA7PPjkv0
+
 import sys
 
 STRINGS = dict(
@@ -26,6 +28,8 @@ def number(n):
    return STRINGS["tens"][(n / 10) - 2]
   return number(n / 10 * 10) + "-" + number(n % 10)
  if n < 1000:
+  if n % 100 == 0:
+   return number(n / 100) + " " + STRINGS["powers"][0]
   return number(n / 100) + " " + STRINGS["powers"][0] + " " + number(n % 100)
  for i in range(1, len(STRINGS["powers"])):
   power = i * 3
