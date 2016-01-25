@@ -73,7 +73,10 @@ attr_ls() {
 attr_get() {
  local file=$1
  local attr=$2
- attr -q -g "$attr" "$file" && echo
+ attr -q -g "$attr" "$file"
+ if [ $? -eq 0 ] && [ -t 1 ]; then
+  echo
+ fi
 }
 
 attr_set() {
