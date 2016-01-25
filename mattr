@@ -12,6 +12,8 @@ usage() {
  echo "  get                   Gets the attribute's value."
  echo "  set/= [value]         Sets the attribute to the given value, or the"
  echo "                        contents of standard input if no value is given."
+ echo "  cp <new-name>         Copies the attribute."
+ echo "  mv <new-name>         Moves the attribute."
  echo "  rm                    Removes the attribute."
 }
 
@@ -51,7 +53,7 @@ main() {
   ls)
    attr_"$cmd" "$file" "$@"
    ;;
-  get|set|rm)
+  get|set|cp|mv|rm)
    attr_"$cmd" "$file" "$attr" "$@"
    return $?
    ;;
@@ -89,6 +91,27 @@ attr_set() {
  else
   attr -q -s "$attr" "$file"
  fi
+}
+
+attr_cp() {
+ local file=$1
+ local old=$2
+ local new=$3
+ shift 3
+ attr_get "$file" "$old" | attr_set "$file" "$new"
+}
+
+attr_mv() {
+ local file=$1
+ local old=$2
+ local new=$3
+ shift 3
+ attr_cp "$file" "$old" "$new"
+ local r=$?
+ if [ $r -ne 0 ]; then
+  return r
+ fi
+ attr_rm "$file" "$old"
 }
 
 attr_rm() {
