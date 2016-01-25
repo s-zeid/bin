@@ -1,0 +1,100 @@
+#!/usr/bin/env python2
+
+"""Splits a media file according to a list of times."""
+
+import os
+import pipes
+import subprocess
+import sys
+
+
+class Split(object):
+ def __init__(self, start, name):
+  self.start = float(start)
+  self.name = name
+  
+  self.end = None
+ 
+ @property
+ def length(self):
+  return self.end - self.start if self.end is not None else None
+ 
+ def debug(self):
+  return "%s\n%s\nStart: %s\nEnd: %s\nLength: %s\n" % (
+   self.name, "-" * len(self.name), str(self.start), str(self.end), str(self.length)
+  )
+
+
+def main(argv):
+ USAGE = """
+Usage: %s <splits-file> <ffmpeg-args> [...]
+       %s <splits-file> --list
+
+Splits a media file according to a list of times.
+
+The splits file consists of one split per line, with each line containing a
+position in seconds from which to start, followed by a tab and the name of an
+output file (sans extension).  To reference the output filename in the FFmpeg
+command line, use `{}`.  The FFmpeg arguments used to specify the start and
+length will be inserted immediately before the first argument that references
+the split name.
+
+Example: %s splits.txt -i input.mp4 -vn -c:a flac {}.flac
+creates FLAC files for each split defined in the splits file.
+""".lstrip().replace("%s", argv[0])
+ if len(argv) < 3:
+  print >> sys.stderr, USAGE
+  return 2
+ 
+ splits_file = argv[1]
+ ffmpeg_args = argv[2:]
+ list_mode = ffmpeg_args[0] == "--list"
+ 
+ if list_mode and len(ffmpeg_args) != 1:
+  print >> sys.stderr, USAGE
+  return 2
+ 
+ with open(splits_file, "rb") as f:
+  splits_lines = f.read().splitlines()
+ 
+ splits = [Split(i[0], i[1]) for i in [j.split("\t", 2) for j in splits_lines]]
+ for i in xrange(len(splits)):
+  if i + 1 < len(splits):
+   splits[i].end = splits[i + 1].start
+ 
+ if list_mode:
+  for split in splits:
+   print split.debug()
+ else:
+  for split in splits:
+   name_pos = -1
+   for i in xrange(len(ffmpeg_args)):
+    arg = ffmpeg_args[i]
+    if "{}" in arg:
+     name_pos = i
+     break
+   
+   ffmpeg_args_filtered = [arg.replace("{}", split.name) for arg in ffmpeg_args]
+   
+   time_args = ["-ss", str(split.start)]
+   if split.length:
+    time_args += ["-t", str(split.length)]
+   
+   if name_pos > -1:
+    ffmpeg_args_filtered[name_pos:name_pos] = time_args
+   else:
+    ffmpeg_args_filtered += time_args
+   
+   cmd = ["ffmpeg"] + ffmpeg_args_filtered
+   cmd_str = " ".join([pipes.quote(arg) for arg in cmd])
+   print >> sys.stderr, "+ " + cmd_str
+   r = subprocess.call(cmd)
+   if r != 0:
+    return r
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
