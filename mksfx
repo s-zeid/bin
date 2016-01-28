@@ -1,0 +1,79 @@
+#!/bin/sh
+# vim: set ft=make fdm=marker:
+
+# mksfx
+# A self-extracting archive generator that can be executed as a shell script
+# or a Makefile.
+# 
+# When run as a shell script, it takes in as arguments the directory to archive
+# and the name of the output file, in that order.  When run as a Makefile, it
+# archives the current working directory, and by default it outputs the archive
+# to a file named '<dirname>.sfx', where `<dirname>` is the basename of the
+# directory with spaces changed to hyphens.  In Makefile mode, the name of the
+# archive can be changed by setting the `sfx` Make variable on the command line.
+# 
+# The archive is a GZIP-compressed TAR archive preceded by a public domain shell
+# script that takes an output directory as its argument and extracts the archive
+# to that directory.
+# 
+# Public domain via CC0:  <https://creativecommons.org/publicdomain/zero/1.0/>
+
+# Shell loader {{{1
+false make: all
+true shell:
+	main() {
+	 local dir=$1
+	 local sfx=$2
+	 if [ x"${dir}" = x"" ] || [ x"${sfx}" = x"" ]; then
+	  echo "Usage: $0 <directory> <output-sfx>" >&2
+	  exit 2
+	 fi
+	 if ! [ -d "${dir}" ]; then
+	  echo "error: ${dir} is not a directory" >&2
+	  exit 1
+	 fi
+	 
+	 run=$(abspath "$0")
+	 sfx=$(abspath "${sfx}")
+	 cd "${dir}"
+	 make -f "${run}" sfx="${sfx}"
+	}
+	abspath() {
+	 printf '%s\n' \
+	  "$(cd "$(dirname -- "$1")"; printf '%s' "$(pwd)")/$(basename -- "$1")"
+	}
+	main "$@"
+	exit $?
+# End shell loader }}}
+
+NAME=$(notdir $(shell pwd | sed -e 's/ /-/g'))
+sfx=${NAME}.sfx
+tmp=sfx_mk_tmp
+
+all: ${sfx}
+.PHONY: ${sfx} clean
+.ONESHELL:
+
+${sfx}:
+	@rm -f "${sfx}" "${tmp}"
+	cat > "${tmp}" <<"SH"
+	#!/bin/sh
+	# This extraction code is public domain via CC0:
+	# <https://creativecommons.org/publicdomain/zero/1.0/>
+	start=14
+	out=$$1
+	if [ x"$$out" = x"" ]; then
+	 echo "Usage: $$0 <output-directory>" >&2
+	 exit 2
+	fi
+	mkdir "$$out"; r=$$?; [ $$r -ne 0 ] && exit $$r
+	tail -n "+$$start" "$$0" | tar -xz -C "$$out"
+	exit $$?
+	# End of public domain extraction code; GZIP-compressed TAR archive follows
+	SH
+	tar -cz . --exclude='*.swp' --exclude="${tmp}" >> "${tmp}"
+	mv "${tmp}" "${sfx}"
+	chmod +x "${sfx}"
+
+clean:
+	rm -f "${sfx}" "${tmp}"
