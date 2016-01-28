@@ -13,7 +13,7 @@
 # hyphens.  In Makefile mode, the name of the archive can be changed by setting
 # the `sfx` Make variable on the command line.
 # 
-# The archive is a GZIP-compressed TAR archive preceded by a public domain shell
+# The archive is an uncompressed TAR archive preceded by a public domain shell
 # script that takes an output directory as its argument and extracts the archive
 # to that directory.
 # 
@@ -68,11 +68,11 @@ ${sfx}:
 	 exit 2
 	fi
 	mkdir "$$out"; r=$$?; [ $$r -ne 0 ] && exit $$r
-	tail -n "+$$start" "$$0" | tar -xz -C "$$out"
+	tail -n "+$$start" "$$0" | tar -x -C "$$out"
 	exit $$?
-	# End of public domain extraction code; GZIP-compressed TAR archive follows
+	# End of public domain extraction code; uncompressed TAR archive follows
 	SH
-	tar -cz . --exclude='*.swp' --exclude="${tmp}" >> "${tmp}"
+	tar -c . --exclude='*.swp' --exclude="${tmp}" >> "${tmp}"
 	mv "${tmp}" "${sfx}"
 	chmod +x "${sfx}"
 
