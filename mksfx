@@ -42,7 +42,9 @@ true shell:
 	 
 	 run=$(abspath "$0")
 	 sfx=$(abspath "${sfx}")
+	 
 	 cd "${dir}"
+	 unset MAKELEVEL MAKEFILES MAKEFLAGS MFLAGS GNUMAKEFLAGS
 	 make -f "${run}" sfx="${sfx}" postextract="${postextract}"
 	}
 	abspath() {
