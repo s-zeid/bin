@@ -13,6 +13,11 @@
 # hyphens.  In Makefile mode, the name of the archive can be changed by setting
 # the `sfx` Make variable on the command line.
 # 
+# Optionally, a script or other executable may be run after the archive is
+# extracted.  To enable this, pass the name of the executable to run, relative
+# to the archive root, as a third argument to the shell script or as the
+# `postextract` Make variable.  This feature is disabled by default.
+# 
 # The archive is an uncompressed TAR archive preceded by a public domain shell
 # script that takes an output directory as its argument and extracts the archive
 # to that directory.
@@ -25,8 +30,9 @@ true shell:
 	main() {
 	 local dir=$1
 	 local sfx=$2
+	 local postextract=$3
 	 if [ x"${dir}" = x"" ] || [ x"${sfx}" = x"" ]; then
-	  echo "Usage: $0 <directory> <output-sfx>" >&2
+	  echo "Usage: $0 <directory> <output-sfx> [postextract-executable]" >&2
 	  exit 2
 	 fi
 	 if ! [ -d "${dir}" ]; then
@@ -37,7 +43,7 @@ true shell:
 	 run=$(abspath "$0")
 	 sfx=$(abspath "${sfx}")
 	 cd "${dir}"
-	 make -f "${run}" sfx="${sfx}"
+	 make -f "${run}" sfx="${sfx}" postextract="${postextract}"
 	}
 	abspath() {
 	 printf '%s\n' \
@@ -50,6 +56,10 @@ true shell:
 NAME=$(notdir $(shell pwd | sed -e 's/ /-/g'))
 sfx=${NAME}.sfx
 tmp=sfx_mk_tmp
+postextract=
+
+apos='#'
+postextract_esc=$(subst ${apos},${apos}"${apos}"${apos},${postextract})
 
 all: ${sfx}
 .PHONY: ${sfx} clean
@@ -61,14 +71,23 @@ ${sfx}:
 	#!/bin/sh
 	# This extraction code is public domain via CC0:
 	# <https://creativecommons.org/publicdomain/zero/1.0/>
-	start=14
+	start=23
+	postextract='${postextract_esc}'
 	out=$$1
 	if [ x"$$out" = x"" ]; then
-	 echo "Usage: $$0 <output-directory>" >&2
+	 if [ x"$$postextract" != x"" ]; then
+	  echo "Usage: $$0 <output-directory> [postextract-arguments [...]]" >&2
+	 else
+	  echo "Usage: $$0 <output-directory>" >&2
+	 fi
 	 exit 2
 	fi
+	shift
 	mkdir "$$out"; r=$$?; [ $$r -ne 0 ] && exit $$r
 	tail -n "+$$start" "$$0" | tar -x -C "$$out"
+	if [ x"$$postextract" != x"" ]; then
+	 "$$out/$$postextract" "$$@"
+	fi
 	exit $$?
 	# End of public domain extraction code; uncompressed TAR archive follows
 	SH
