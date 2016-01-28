@@ -5,12 +5,13 @@
 # A self-extracting archive generator that can be executed as a shell script
 # or a Makefile.
 # 
-# When run as a shell script, it takes in as arguments the directory to archive
-# and the name of the output file, in that order.  When run as a Makefile, it
-# archives the current working directory, and by default it outputs the archive
-# to a file named '<dirname>.sfx', where `<dirname>` is the basename of the
-# directory with spaces changed to hyphens.  In Makefile mode, the name of the
-# archive can be changed by setting the `sfx` Make variable on the command line.
+# When run as a shell script, it takes in as arguments the directory whose
+# contents to archive and the name of the output file, in that order.  When run
+# as a Makefile, it archives the contents of the current working directory, and
+# by default it outputs the archive to a file named '<dirname>.sfx', where
+# `<dirname>` is the basename of the directory with spaces replaced with
+# hyphens.  In Makefile mode, the name of the archive can be changed by setting
+# the `sfx` Make variable on the command line.
 # 
 # The archive is a GZIP-compressed TAR archive preceded by a public domain shell
 # script that takes an output directory as its argument and extracts the archive
