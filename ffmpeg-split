@@ -10,7 +10,10 @@ import sys
 
 class Split(object):
  def __init__(self, start, name):
-  self.start = float(start)
+  try:
+   self.start = float(start)
+  except ValueError:
+   self.start = None
   self.name = name
   
   self.end = None
@@ -34,10 +37,13 @@ Splits a media file according to a list of times.
 
 The splits file consists of one split per line, with each line containing a
 position in seconds from which to start, followed by a tab and the name of an
-output file (sans extension).  To reference the output filename in the FFmpeg
-command line, use `{}`.  The FFmpeg arguments used to specify the start and
-length will be inserted immediately before the first argument that references
-the split name.
+output file (sans extension).  If a line contains a time but not a name, it
+will be treated as the end time of the previous split but not as a separate
+split.  If a line is missing a time, then it will be ignored.
+
+To reference the output filename in the FFmpeg command line, use `{}`.  The
+FFmpeg arguments used to specify the start and length will be inserted
+immediately before the first argument that references the split name.
 
 Example: %s splits.txt -i input.mp4 -vn -c:a flac {}.flac
 creates FLAC files for each split defined in the splits file.
@@ -57,10 +63,16 @@ creates FLAC files for each split defined in the splits file.
  with open(splits_file, "rb") as f:
   splits_lines = f.read().splitlines()
  
+ for i in xrange(len(splits_lines)):
+  if "\t" not in splits_lines[i]:
+   splits_lines[i] += "\t"
+ 
  splits = [Split(i[0], i[1]) for i in [j.split("\t", 2) for j in splits_lines]]
  for i in xrange(len(splits)):
   if i + 1 < len(splits):
    splits[i].end = splits[i + 1].start
+ 
+ splits = [i for i in splits if i.name and i.start is not None]
  
  if list_mode:
   for split in splits:
