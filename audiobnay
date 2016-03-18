@@ -64,12 +64,13 @@ MP3_VBR_QUALITIES = """\
 """
 
 def convert_to_mp3(in_file, out_file, ffmpeg_path, lame_path,
-                   constant_bitrate=None, vbr_quality=None):
- ffmpeg_cmd = [ffmpeg_path, "-i", in_file, "-vn", "-acodec", "pcm_s16le",
-               "-f", "wav", "-"]
+                   constant_bitrate=None, vbr_quality=None, sample_rate=None):
+ ffmpeg_cmd = [ffmpeg_path, "-i", in_file, "-vn", "-acodec", "pcm_s16le"]
+ ffmpeg_cmd += ["-f", "wav", "-"]
  lame_cmd   = [lame_path, "-m", "s", "--noreplaygain"]
  if vbr_quality != None: lame_cmd += ["-V", str(vbr_quality)]
  elif constant_bitrate: lame_cmd += ["-b", str(constant_bitrate)]
+ if sample_rate: lame_cmd += ["--resample", sample_rate]
  lame_cmd += ["-", out_file]
  ffmpeg_sp = subprocess.Popen(ffmpeg_cmd, shell=False, stdout=subprocess.PIPE)
  lame_sp = subprocess.Popen(lame_cmd, shell=False, stdin=ffmpeg_sp.stdout)
@@ -106,6 +107,7 @@ def main(argv):
               help="list LAME (MP3 encoder) VBR quality settings and exit")
  p.add_option("--quality", "-q", default=None, help="codec-specific VBR quality"
               " setting")
+ p.add_option("--sample-rate", "-s", default="", help="encode to this sample rate")
  options, args = p.parse_args()
  if options.list_lame_quality_settings:
   print MP3_VBR_QUALITIES
@@ -120,7 +122,7 @@ def main(argv):
    o = s[0] + ".mp3"
    print >> sys.stderr, "Converting %s..." % i
    convert_to_mp3(i, o, options.ffmpeg, options.lame,
-                  options.bitrate, options.quality)
+                  options.bitrate, options.quality, options.sample_rate)
  return 0
 
 if __name__ == "__main__":
