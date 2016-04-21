@@ -5,12 +5,19 @@
 
 DEFAULT_USER=root
 
+usage() {
+ echo "Usage: $0 \\"
+ echo "         <apk> [<user>@]<device address>[:<port>][,...] [-U] [<pm options> [...]]"
+ echo ""
+ echo "Notes:"
+ echo " * <user> defaults to \`$DEFAULT_USER\`)"
+ echo " * pm options that take values should be given after the device address"
+ echo " * \`-U\` means to uninstall first, DELETING the app's data and cache,"
+ echo "   and requires \`aapt\` to be on your \$PATH"
+}
+
 if [ -z "$1" -o -z "$2" ]; then
- echo "Usage: $0 \\" >&2
- echo "         <apk> [<user>@]<device address>[:<port>][,...] [<pm options> [...]]" >&2
- echo "Notes:" >&2
- echo " * <user> defaults to $DEFAULT_USER)" >&2
- echo " * pm options that take values should be given after the device address" >&2
+ usage >&2
  exit 2
 fi
 
@@ -44,6 +51,33 @@ APK="$1"
 DEVICE="$2"
 shift 2
 
+UNINSTALL_NAME=
+UNINSTALL_FIRST=0
+
+# extract -U flag
+PM_OPTIONS=
+n=1
+arg=
+while [ $n -le $# ]; do
+ eval "arg=\$$n"
+ if [ x"$arg" = x"-U" ]; then
+  UNINSTALL_FIRST=1
+ else
+  PM_OPTIONS="$PM_OPTIONS \"\$$n\""
+ fi
+ n=$((n + 1))
+done
+eval "set -- $PM_OPTIONS"
+
+if [ $UNINSTALL_FIRST -ne 0 ]; then
+ if (! which aapt >/dev/null 2>&1); then
+  echo "error: -U requires \`aapt\` to be on your \$PATH" >&2
+  exit 1
+ fi
+ UNINSTALL_NAME=$(aapt dump badging "$APK" \
+                   | grep -e '^package:' | grep -o "name='[^']*" | sed -e "s/name='//")
+fi
+
 if (printf '%s' "$DEVICE" | grep -q -e ','); then
  for i in $(printf '%s' "$DEVICE" | sed -e 's/,/ /g'); do
   "$0" "$APK" "$i" "$@"
@@ -70,5 +104,12 @@ TMP_NAME=/sdcard/.install-apk.tmp.apk
 echo_run() { echo '+' "$@"; "$@"; }
 
 echo_run scp $SCP_PORT "$APK" "$DEVICE":"$TMP_NAME"
+if [ $? -eq 0 ]; then
+ if [ $UNINSTALL_FIRST -ne 0 ]; then
+  echo_run ssh $SSH_PORT "$DEVICE" su root pm uninstall "$UNINSTALL_NAME"
+ else
+  true
+ fi
+fi
 [ $? -eq 0 ] && echo_run ssh $SSH_PORT "$DEVICE" su root pm install -r "$@" "$TMP_NAME"
 [ $? -eq 0 ] && echo_run ssh $SSH_PORT "$DEVICE" su root rm -f "$TMP_NAME"
