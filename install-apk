@@ -8,9 +8,37 @@ DEFAULT_USER=root
 if [ -z "$1" -o -z "$2" ]; then
  echo "Usage: $0 \\" >&2
  echo "         <apk> [<user>@]<device address>[:<port>][,...] [<pm options> [...]]" >&2
- echo "(user defaults to $DEFAULT_USER)" >&2
+ echo "Notes:" >&2
+ echo " * <user> defaults to $DEFAULT_USER)" >&2
+ echo " * pm options that take values should be given after the device address" >&2
  exit 2
 fi
+
+# Reorder arguments - public domain via CC0
+reorder_args_cmd() {
+ # if not 0, then excess positional arguments will be treated as flags
+ local positional_max=2
+ 
+ local positional=
+ local flags=
+ local n=1
+ local arg=
+ local n_positional=0
+ while [ $n -le $# ]; do
+  eval "arg=\$$n"
+  if ([ $positional_max -gt 0 ] && [ $n_positional -ge $positional_max ]) || \
+     (printf '%s' "$arg" | head -n 1 | grep -q -e '^-'); then
+   flags="$flags \"\$$n\""
+  else
+   positional="$positional \"\$$n\""
+   n_positional=$((n_positional + 1))
+  fi
+  n=$((n + 1))
+ done
+ printf '%s\n' "set -- $positional $flags"
+}
+eval "$(reorder_args_cmd "$@")"
+# End of public domain reorder arguments snippet
 
 APK="$1"
 DEVICE="$2"
