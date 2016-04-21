@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Copyright (c) 2014-2015 Scott Zeid.
+# Copyright (c) 2014-2016 Scott Zeid.
 # Released under the X11 License:  <https://tldrlegal.com/l/x11>
 
 DEFAULT_USER=root
