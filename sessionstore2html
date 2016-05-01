@@ -2,8 +2,9 @@
 
 """Converts a Firefox sessionstore.js file to HTML.
 
-The sessionstore.js file should be given as an argument.  To read from standard
-input, use -.
+The sessionstore.js file may be given as an argument.  To read from standard
+input, use -.  If no argument is given, this script will try to find the
+sessionstore.js file from the default Firefox profile.
 
 Currently does not support tab groups.  Tabs from multiple tab groups within a
 single window will be mixed together depending on the order they appear in the
@@ -12,8 +13,10 @@ sessionstore.js file.
 """
 
 import cgi
+import ConfigParser
 import json
 import os
+import platform
 import string
 import sys
 
@@ -124,6 +127,56 @@ def make_html(windows,
   ) for i in xrange(len(windows))])
  )
 
+def get_default_profile_path(profiles_dir=None):
+ if profiles_dir is None:
+  # Linux master race
+  home = os.path.expanduser("~")
+  profiles_dir = os.path.join(home, ".mozilla", "firefox")
+  if platform.system().lower() == "windows":
+   profiles_dir = None
+   appdata = os.environ.get("APPDATA", "")
+   if appdata:
+    profiles_dir = os.path.join(appdata, "Mozilla", "Firefox")
+  elif platform.system().lower() == "darwin":
+   profiles_dir = os.path.join(home, "Library", "Application Support", "Firefox")
+ 
+ if not os.path.isdir(profiles_dir or ""):
+  return None
+ 
+ profile = None
+ 
+ cp = ConfigParser.RawConfigParser(None, dict, True)
+ with open(os.path.join(profiles_dir, "profiles.ini"), "rb") as f:
+  cp.readfp(f)
+ for section in cp.sections():
+  if section.lower() != "general":
+   if cp.has_option(section, "Default") and cp.has_option(section, "Path"):
+    if cp.get(section, "Default") == "1":
+     profile = cp.get(section, "Path")
+     break
+ 
+ if profile:
+  profile_dir = os.path.join(profiles_dir, profile)
+  if os.path.isdir(profile_dir):
+   return profile_dir
+ 
+ return None
+
+def get_sessionstore_js_path(profile_dir):
+ sessionstore_backups_dir = os.path.join(profile_dir, "sessionstore-backups")
+ if os.path.isdir(sessionstore_backups_dir):
+  recovery_js = os.path.join(sessionstore_backups_dir, "recovery.js")
+  if os.path.isfile(recovery_js):
+   return recovery_js
+  else:
+   previous_js = os.path.join(sessionstore_backups_dir, "previous.js")
+   if os.path.isfile(previous_js):
+    return previous_js
+ else:
+  legacy_js = os.path.join(profile_dir, "sessionstore.js")
+  if os.path.isfile(legacy_js):
+   return legacy_js
+
 def main(argv):
  usage = "Usage: %s [--help|-h|-|[-- ]sessionstore-js]"
  usage += "\n" + __doc__.rstrip()
@@ -134,12 +187,25 @@ def main(argv):
  elif len(argv) == 2 and argv[1] in ("--help", "-h"):
   print usage % argv[0]
   return 0
+ elif len(argv) == 1:
+  sessionstore_js = None
  elif len(argv) not in (2, 3):
   print usage % argv[0]
   return 2
  else:
   sessionstore_js = argv[1]
  
+ if sessionstore_js is None:
+  profile_path = get_default_profile_path()
+  if not profile_path:
+   print >> sys.stderr, "error: could not find default Firefox profile"
+   return 1
+  sessionstore_js = get_sessionstore_js_path(profile_path)
+  if not sessionstore_js:
+   print >> sys.stderr, ("error: could not find sessionstore.js file in the default"
+                         " Firefox profile")
+   return 1
+
  if isinstance(sessionstore_js, basestring):
   sessionstore_js = open(sessionstore_js, "rb")
  print make_html(windows_from_sessionstore(sessionstore_js))
