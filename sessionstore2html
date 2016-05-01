@@ -1,4 +1,5 @@
 #!/usr/bin/env python2
+# vim:set fdm=marker:
 
 """Converts a Firefox sessionstore.js file to HTML.
 
@@ -12,6 +13,8 @@ sessionstore.js file.
 
 """
 
+# Plumbing {{{1
+
 import cgi
 import ConfigParser
 import json
@@ -22,11 +25,15 @@ import sys
 
 from collections import namedtuple
 
+
+# Templates and template helpers {{{1
+
 def indent(s, n):
  return "\n".join((" " * (n * int(not l.startswith("$")))) + l for l in s.splitlines())
 Template = namedtuple("Template", "template,indent")
 class Template(Template):
  def compile(self): return string.Template(indent(self[0], self[1]))
+
 
 OUTPUT_CHARSET = "utf-8"
 
@@ -82,6 +89,9 @@ TAB_TEMPLATE = Template("""<li class="tab">
 
 TABS_WORD = ("tab", "tabs")
 
+
+# sessionstore parsing {{{1
+
 def windows_from_sessionstore(store):
  if isinstance(store, file):
   store = store.read().decode("utf-8")
@@ -89,8 +99,10 @@ def windows_from_sessionstore(store):
   store = json.loads(store)
  return [window_to_list(window) for window in store["windows"]]
 
+
 def window_to_list(window):
  return [i for i in [tab_to_dict(tab) for tab in window["tabs"]] if i]
+
 
 def tab_to_dict(tab):
  if not tab.get("entries"):
@@ -100,8 +112,12 @@ def tab_to_dict(tab):
                    os.path.basename(tab["entries"][tab["index"] - 1]["url"])),
          "url":   tab["entries"][tab["index"] - 1]["url"]}
 
+
+# HTML generation {{{1
+
 def html_escape_tab(tab, charset=OUTPUT_CHARSET):
  return dict([(k, cgi.escape(tab[k], True).encode(OUTPUT_CHARSET)) for k in tab])
+
 
 def make_html(windows,
               page_tpl=PAGE_TEMPLATE,
@@ -126,6 +142,9 @@ def make_html(windows,
    n=i+1, n_tabs=len(windows[i]), tabs_word=tabs_word[int(len(windows[i]) > 1)]
   ) for i in xrange(len(windows))])
  )
+
+
+# Profile/sessionstore.js finders {{{1
 
 def get_default_profile_path(profiles_dir=None):
  if profiles_dir is None:
@@ -162,6 +181,7 @@ def get_default_profile_path(profiles_dir=None):
  
  return None
 
+
 def get_sessionstore_js_path(profile_dir):
  sessionstore_backups_dir = os.path.join(profile_dir, "sessionstore-backups")
  if os.path.isdir(sessionstore_backups_dir):
@@ -177,7 +197,8 @@ def get_sessionstore_js_path(profile_dir):
   if os.path.isfile(legacy_js):
    return legacy_js
 
-def main(argv):
+
+def main(argv):  #{{{1
  usage = "Usage: %s [--help|-h|-|[-- ]sessionstore-js]"
  usage += "\n" + __doc__.rstrip()
  if len(argv) == 3 and argv[1] == "--":
@@ -214,5 +235,6 @@ def main(argv):
  
  return 0
 
-if __name__ == "__main__":
+
+if __name__ == "__main__":  #{{{1
  sys.exit(main(sys.argv))
