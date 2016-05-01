@@ -211,7 +211,7 @@ def main(argv):  #{{{1
  elif len(argv) == 1:
   sessionstore_js = None
  elif len(argv) not in (2, 3):
-  print usage % argv[0]
+  print >> sys.stderr, usage % argv[0]
   return 2
  else:
   sessionstore_js = argv[1]
