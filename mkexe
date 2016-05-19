@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 
 PE_EXTENSIONS = (".cpl", ".dll", ".drv", ".exe", ".ico", ".ocx", ".scr", ".sys")
 
@@ -27,15 +28,30 @@ def mkexe(infile, outfile, tk=False, windowed=False, debug=False,
  global windows
  pyinstaller_path = pyinstaller_path or globals()["pyinstaller_path"]
  python_path = python_path or globals()["python_path"]
- infile = os.path.abspath(infile)
+ infile = real_infile = os.path.abspath(infile)
  outfile = os.path.abspath(outfile)
  basename = os.path.splitext(os.path.basename(infile))[0]
  if real_name is None:
   real_name = infile
  real_basename = os.path.splitext(os.path.basename(real_name))[0]
+ is_zip = False
+ try:
+  z = zipfile.ZipFile(infile, "r")
+  is_zip = True
+  z.close()
+ except zipfile.BadZipfile:
+  pass
  cwd = os.getcwd()
  tmpdir = tempfile.mkdtemp()
  os.chdir(tmpdir)
+ if is_zip:
+  zipdir = tempfile.mkdtemp(dir=tmpdir, prefix="zip-contents-")
+  z = zipfile.ZipFile(infile, "r")
+  z.extractall(zipdir)
+  infile = os.path.join(zipdir, "__main__.py")
+  if not os.path.isfile(infile):
+   return False
+  basename = "__main__"
  spec = os.path.join(tmpdir, basename + ".spec")
  ret = False
  makespec_cmd = [pyinstaller_script("Makespec"), "--onefile"]
