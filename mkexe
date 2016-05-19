@@ -105,8 +105,12 @@ def patch_spec(spec, rm_django=True):
  excludes = []
  if rm_django:
   excludes += ["django"]
- excludes = ", ".join(["'%s'" % i for i in excludes])
- s = s.replace("pathex=[", "excludes=[" + excludes + "], pathex=[", 1)
+ #excludes = ", ".join(["'%s'" % i for i in excludes])
+ #s = s.replace("pathex=[", "excludes=[" + excludes + "], pathex=[", 1)
+ if s.find("excludes=") < 0:
+  s = s.replace("pathex=", "excludes=[], pathex=")
+ s = s.replace("excludes=None", "excludes=[]")
+ s = s.replace("excludes=", "excludes=%s+" % repr(excludes))
  with open(spec, "wb") as f:
   f.write(s)
 
