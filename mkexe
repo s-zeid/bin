@@ -30,6 +30,8 @@ def mkexe(infile, outfile, tk=False, windowed=False, debug=False,
  infile = os.path.abspath(infile)
  outfile = os.path.abspath(outfile)
  basename = os.path.splitext(os.path.basename(infile))[0]
+ if real_name is None:
+  real_name = infile
  real_basename = os.path.splitext(os.path.basename(real_name))[0]
  cwd = os.getcwd()
  tmpdir = tempfile.mkdtemp()
