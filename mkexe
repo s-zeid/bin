@@ -91,7 +91,8 @@ def mkexe(infile, outfile, tk=False, windowed=False, debug=False,
  makespec_cmd += ["--specpath="+tmpdir, infile]
  if subprocess.call(makespec_cmd) == 0:
   patch_spec(spec, rm_django=(not django))
-  if subprocess.call([pyinstaller_script("Build"), spec]) == 0:
+  #if subprocess.call([pyinstaller_script("Build"), spec]) == 0:
+  if subprocess.call([pyinstaller_script(), spec]) == 0:
    nametomove = basename + ".exe" if windows else basename
    shutil.move(os.path.join(tmpdir, "dist", nametomove), outfile)
    ret = True
@@ -167,8 +168,9 @@ def main(argv):
   print "building failed!"
   sys.exit(1)
 
-def pyinstaller_script(name):
- return os.path.join(pyinstaller_path, "pyi-" + name.lower() + (".exe" if windows else ""))
+def pyinstaller_script(name=None):
+ script = "pyi-" + name.lower() if name else "pyinstaller"
+ return os.path.join(pyinstaller_path, script + (".exe" if windows else ""))
 
 def to_unicode(s, encoding="utf8"):
  if isinstance(s, (str, buffer)):
