@@ -1,0 +1,149 @@
+#!/bin/sh
+
+URL_EZPYI='https://code.s.zeid.me/bin/raw/master/ezpyi'
+URL_PYTHON27='https://www.python.org/ftp/python/2.7.11/python-2.7.11.msi'
+
+MAGIC=6827a824-5fb8-45b0-952d-161ef88951f7
+
+if [ x"$EZPYI_WINE_VAR" = x"" ]; then
+ EZPYI_WINE_VAR=~/.ezpyi-wine
+fi
+
+
+usage() {
+ cat <<USAGE
+Usage: $0 [EZPYI-OPTIONS] SCRIPT [EXEFILE]
+       $0 : WINE-PROGRAM [ARGS [...]]
+       $0 :: INTERNAL-COMMAND [ARGS [...]]
+
+This script runs ezpyi (a wrapper for PyInstaller that simplifies its usage)
+with the given arguments in a custom Wine environment, which is created on first
+run and contains Python 2.7, setuptools, pip, PyInstaller, PyWin32, and ezpyi.
+
+As with normal command-line invocations of Wine, regular Unix-style paths may
+be given, and those paths may be relative to the current directory.
+
+To run commands in the Wine environment, use \`:\` as the first argument, followed
+by the command; e.g. \`ezpyi-wine : pip install -U PACKAGE [...]\`.
+
+The program uses the \`~/.ezpyi-wine\` directory by default to store its files,
+which can be overridden using the \$EZPYI_WINE_VAR environment variable.  Its
+\`wineprefix\` subdirectory is used as the Wine prefix, which is always 32-bit.
+
+Internal commands:
+ * upgrade - upgrades PyInstaller and ezpyi inside the Wine prefix.
+USAGE
+}
+
+
+main() {
+ if [ $# -lt 1 ]; then
+  usage >&2
+  return 2
+ fi
+ 
+ local mode="ezpyi"
+ local force_prep=
+ 
+ if [ x"$1" = x":" ]; then
+  shift
+  if [ x"$1" != x"ezpyi" ]; then
+   mode="wine"
+  else
+   shift
+  fi
+ elif [ x"$1" = x"::" ]; then
+  shift
+  if [ x"$1" = x"upgrade" ]; then
+   mode="upgrade"
+   force_prep=1
+  else
+   echo "$0: error: \`$1\` is not a valid internal command" >&2
+   return 2
+  fi
+ fi
+ 
+ prep_var "$force_prep" || return
+ 
+ if [ x"$mode" = x"ezpyi" ]; then
+  wine python C:/ezpyi.py "$@"
+ elif [ x"$mode" = x"wine" ]; then
+  wine "$@"
+ fi
+}
+
+
+prep_var() {
+ local force=$1
+ 
+ local main_magic_file="$EZPYI_WINE_VAR/magic"
+ if [ -d "$EZPYI_WINE_VAR" ]; then
+  if (! [ -f "$main_magic_file" ]) || \
+     [ x"$(cat "$main_magic_file")" != x"$MAGIC" ]; then
+   echo "$0: error: the contents of \`$EZPYI_WINE_VAR\` are not valid" >&2
+   return 1
+  fi
+ else
+  mkdir "$EZPYI_WINE_VAR" || return
+  echo "$MAGIC" > "$main_magic_file" || return
+ fi
+ 
+ local wineprefix="$EZPYI_WINE_VAR/wineprefix"
+ if [ -e "$wineprefix" ] && (! [ -d "$wineprefix" ]); then
+  echo "$0: error: \`$wineprefix\` exists and is not a directory" >&2
+  return 1
+ fi
+ 
+ local python_magic_file="$wineprefix/drive_c/Python27/installed.ezpyi-wine-magic"
+ if (! [ -f "$wineprefix/drive_c/Python27/python.exe" ]) || \
+    [ x"$(cat "$python_magic_file" 2>/dev/null)" != x"$MAGIC" ]; then
+  rm -f "$python_magic_file" || return
+  if ! [ -f "$EZPYI_WINE_VAR/python-2.7.msi" ]; then
+   echo_run curl -L "$URL_PYTHON27" -o "$EZPYI_WINE_VAR/python-2.7.msi" || return
+  fi
+  DISPLAY= echo_run wine msiexec /i "$EZPYI_WINE_VAR/python-2.7.msi" /qn || return
+  echo "$MAGIC" > "$python_magic_file" || return
+ fi
+ 
+ local ready_magic_file="$wineprefix/drive_c/ready.ezpyi-wine-magic"
+ if [ x"$force" != x"" ] || \
+    [ x"$(cat "$ready_magic_file" 2>/dev/null)" != x"$MAGIC" ]; then
+  rm -f "$ready_magic_file" || return
+  echo_run wine pip install -U pyinstaller==3.1.1 pypiwin32 || return
+  echo_run curl -L "$URL_EZPYI" -o "$wineprefix/drive_c/ezpyi.py" || return
+  printf '@echo off\r\npython C:\\ezpyi.py %%*\r\n' \
+   > "$wineprefix/drive_c/windows/ezpyi.bat" || return
+  echo "$MAGIC" > "$ready_magic_file" || return
+ fi
+}
+
+
+ezpyi_wine_env() {
+ export WINEPREFIX="$EZPYI_WINE_VAR/wineprefix"
+ export WINEDLLOVERRIDES="winemenubuilder.exe=d"
+ export WINEARCH=win32
+ "$@"
+}
+
+
+echo_run() {
+ echo + "$@" >&2
+ "$@"
+}
+
+
+wine() {
+ ezpyi_wine_env command wine "$@"
+}
+
+
+abspath() {
+ printf '%s\n' \
+  "$(cd "$(dirname -- "$1")"; printf '%s' "$(pwd)")/$(basename -- "$1")"
+}
+
+
+EZPYI_WINE_VAR=`abspath "$EZPYI_WINE_VAR"`
+
+
+main "$@"
