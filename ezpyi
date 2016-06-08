@@ -21,7 +21,7 @@ else:
  python_path = "python"
  pyinstaller_path = ""
 
-def mkexe(infile, outfile, tk=False, windowed=False, debug=False,
+def ezpyi(infile, outfile, tk=False, windowed=False, debug=False,
           icon=None, version=None,
           django=False,
           pyinstaller_path=None, python_path=None, real_name=None):
@@ -179,7 +179,7 @@ def main(argv):
  exefile = args[1] if len(args) == 2 else exename
  if os.path.isdir(os.path.realpath(exefile)):
   exefile = os.path.join(exefile, exename)
- if mkexe(script, exefile, options.tk, options.windowed, options.debug,
+ if ezpyi(script, exefile, options.tk, options.windowed, options.debug,
           options.icon, options.version,
           options.django,
           options.pyinstaller, options.python, options.real_name) == False:
