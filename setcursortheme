@@ -67,6 +67,7 @@ import time
 
 from ctypes import *
 
+
 l_X11 = cdll.LoadLibrary("libX11.so")
 t_XID = c_ulong
 t_Cursor = t_XID
@@ -100,6 +101,8 @@ XFixesChangeCursorByName.argtypes = [t_Display_p, t_Cursor, c_char_p]
 
 
 def main(argv):
+ error = os.path.basename(argv[0]) + ": error: %s"
+ 
  p = argparse.ArgumentParser(description=__doc__.splitlines()[0].strip())
  p.add_argument("--repeat", "-r", metavar="N", type=float, default=0,
                 help="repeat every N seconds (default or 0: do not repeat)")
@@ -113,6 +116,10 @@ def main(argv):
   return exc.code
   
  display = XOpenDisplay(None)
+ if not display:
+  print >> sys.stderr, error % "could not open X display"
+  return 1
+ 
  while True:
   set_cursor_theme(display, args.theme, args.size)
   if args.repeat:
