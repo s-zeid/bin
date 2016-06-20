@@ -100,6 +100,9 @@ XFixesChangeCursorByName = l_Xfixes.XFixesChangeCursorByName
 XFixesChangeCursorByName.argtypes = [t_Display_p, t_Cursor, c_char_p]
 
 
+CURSOR_LIST = None  # this is set near the end of the file
+
+
 def main(argv):
  error = os.path.basename(argv[0]) + ": error: %s"
  
@@ -138,8 +141,7 @@ def load_cursor(display, name, theme, size):
 
 
 def set_cursor_theme(display, theme, size):
- cursors = cursor_list()
- for name, alternative in cursors:
+ for name, alternative in CURSOR_LIST:
   cursor = load_cursor(display, name, theme, size)
   if not cursor and alternative:
    cursor = load_cursor(display, alternative, theme, size)
@@ -147,7 +149,7 @@ def set_cursor_theme(display, theme, size):
    XFixesChangeCursorByName(display, cursor, name)
 
 
-def cursor_list():
+def make_cursor_list():
  cursor_list_file = """
 # From ThemePage::applyTheme <https://github.com/KDE/plasma-desktop/blob/master/kcms/cursortheme/xcursor/themepage.cpp>
 # and XCursorTheme::findAlternative <https://github.com/KDE/plasma-desktop/blob/master/kcms/cursortheme/xcursor/xcursortheme.cpp>
@@ -208,6 +210,9 @@ pirate
    cursor_list[i] = [cursor_list[i], None]
  
  return cursor_list
+
+
+CURSOR_LIST = make_cursor_list()
 
 
 if __name__ == "__main__":
