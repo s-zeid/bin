@@ -1,0 +1,210 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+
+"Sets the X cursor theme, either once or at a regular interval."
+
+# Copyright (c) 2016 Scott Zeid <https://s.zeid.me/>.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public
+# License version 2 as published by the Free Software Foundation.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; see the file COPYING.  If not, write to
+# the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+# Boston, MA 02110-1301, USA.
+
+# Portions of this program are translated from portions of
+# kde-workspace (/plasma-desktop/kcms/input/xcursor/cursortheme.cpp) and
+# plasma-desktop (/kcms/cursortheme/xcursor/xcursortheme.cpp)
+# that were originally under the following license:
+# Copyright © 2006-2007 Fredrik Höglund <fredrik@kde.org>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public
+# License version 2 or at your option version 3 as published 
+# by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; see the file COPYING.  If not, write to
+# the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+# Boston, MA 02110-1301, USA.
+
+# Portions of this program are translated from portions of
+# plasma-desktop (/kcms/cursortheme/xcursor/themepage.cpp)
+# that were originally under the following license:
+# Copyright © 2003-2007 Fredrik Höglund <fredrik@kde.org>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public
+# License version 2 as published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; see the file COPYING.  If not, write to
+# the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+# Boston, MA 02110-1301, USA.
+
+
+import argparse
+import os
+import sys
+import time
+
+from ctypes import *
+
+l_X11 = cdll.LoadLibrary("libX11.so")
+t_XID = c_ulong
+t_Cursor = t_XID
+t_Display_p = POINTER(c_int)
+#XOpenDisplay
+XOpenDisplay = l_X11.XOpenDisplay
+XOpenDisplay.argtypes = [c_char_p]
+XOpenDisplay.restype = t_Display_p
+
+l_Xcursor = cdll.LoadLibrary("libXcursor.so")
+t_XcursorImages_p = POINTER(c_int)
+#XcursorLibraryLoadImages
+XcursorLibraryLoadImages = l_Xcursor.XcursorLibraryLoadImages
+XcursorLibraryLoadImages.argtypes = [c_char_p, c_char_p, c_int]
+XcursorLibraryLoadImages.restype = t_XcursorImages_p
+#XcursorImagesLoadCursor
+XcursorImagesLoadCursor = l_Xcursor.XcursorImagesLoadCursor
+XcursorImagesLoadCursor.argtypes = [t_Display_p, t_XcursorImages_p]
+XcursorImagesLoadCursor.restype = t_Cursor
+#XcursorImagesDestroy
+XcursorImagesDestroy = l_Xcursor.XcursorImagesDestroy
+XcursorImagesDestroy.argtypes = [t_XcursorImages_p]
+
+l_Xfixes = cdll.LoadLibrary("libXfixes.so")
+#XFixesSetCursorName
+XFixesSetCursorName = l_Xfixes.XFixesSetCursorName
+XFixesSetCursorName.argtypes = [t_Display_p, t_Cursor, c_char_p]
+#XFixesChangeCursorByName
+XFixesChangeCursorByName = l_Xfixes.XFixesChangeCursorByName
+XFixesChangeCursorByName.argtypes = [t_Display_p, t_Cursor, c_char_p]
+
+
+def main(argv):
+ p = argparse.ArgumentParser(description=__doc__.splitlines()[0].strip())
+ p.add_argument("--repeat", "-r", metavar="N", type=float, default=0,
+                help="repeat every N seconds (default or 0: do not repeat)")
+ p.add_argument("theme",
+                help="the theme's name")
+ p.add_argument("size", type=int, nargs="?", default="0",
+                help="the size to use (default: 0)")
+ try:
+  args = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+  
+ display = XOpenDisplay(None)
+ while True:
+  set_cursor_theme(display, args.theme, args.size)
+  if args.repeat:
+   time.sleep(args.repeat)
+  else:
+   break
+
+
+def load_cursor(display, name, theme, size):
+ images = XcursorLibraryLoadImages(name, theme, size)
+ if images:
+  cursor = XcursorImagesLoadCursor(display, images)
+  XcursorImagesDestroy(images)
+  XFixesSetCursorName(display, cursor, name)
+  return cursor
+
+
+def set_cursor_theme(display, theme, size):
+ cursors = cursor_list()
+ for name, alternative in cursors:
+  cursor = load_cursor(display, name, theme, size)
+  if not cursor and alternative:
+   cursor = load_cursor(display, alternative, theme, size)
+  if cursor:
+   XFixesChangeCursorByName(display, cursor, name)
+
+
+def cursor_list():
+ cursor_list_file = """
+# From ThemePage::applyTheme <https://github.com/KDE/plasma-desktop/blob/master/kcms/cursortheme/xcursor/themepage.cpp>
+# and XCursorTheme::findAlternative <https://github.com/KDE/plasma-desktop/blob/master/kcms/cursortheme/xcursor/xcursortheme.cpp>
+# First column is cursor name; optional second column is alternative name
+# Qt
+left_ptr
+up_arrow center_ptr
+cross crosshair
+wait watch
+left_ptr_watch 3ecb610c1bf2410f44200f48c40d3599
+ibeam xterm
+size_ver 00008160000006810000408080010102
+size_hor 028006030e0e7ebffc7f7070c0600140
+size_bdiag fcf1c3c7cd4491d801f1e1c78f100000
+size_fdiag c7088f0f3e6c8088236ef8e1e3e70000
+size_all fleur
+split_v 2870a09082c103050810ffdffffe0204
+split_h 14fef782d02440884392942c11205230
+pointing_hand hand2
+openhand 9141b49c8149039304290b508d208c40
+closedhand 05e88622050804100c20044008402080
+forbidden 03b6e0fcb3499374a867c041f52298f0
+whats_this d9ce0ab605698f320427677b458ad60b
+copy
+move
+link
+# X core
+X_cursor
+right_ptr
+hand1
+hand2 e29285e634086352946a0e7090d73106
+watch
+xterm
+crosshair
+left_ptr_watch
+center_ptr
+sb_h_double_arrow
+sb_v_double_arrow
+fleur
+top_left_corner
+top_side
+top_right_corner
+right_side
+bottom_right_corner
+bottom_side
+bottom_left_corner
+left_side
+question_arrow
+pirate
+""".lstrip()
+ 
+ cursor_list = [i for i in cursor_list_file.strip().replace("#", "\n#").splitlines()
+                if i and not i.startswith("#")]
+ for i in xrange(len(cursor_list)):
+  if " " in cursor_list[i]:
+   cursor_list[i] = cursor_list[i].split(" ", 2)
+  else:
+   cursor_list[i] = [cursor_list[i], None]
+ 
+ return cursor_list
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
