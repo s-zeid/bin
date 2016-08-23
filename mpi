@@ -1,0 +1,17 @@
+#!/bin/bash
+
+input_conf='
+SPACE ignore
+p ignore
+'
+
+# hack hack hackity hack
+input_conf_file=~/.config/mpv/input.conf
+if [ -f "$input_conf_file" ]; then
+ input_conf="$(cat "$input_conf_file")$input_conf"
+fi
+
+exec mpv \
+ --input-conf=<(printf '%s\n' "$input_conf") \
+ --pause \
+ "$@"
