@@ -274,9 +274,10 @@ def certbot(domains, certbot_bin, certbot_args=None,
   cmd += ["-d", domain]
  
  cb_r = subprocess.call(cmd)
- post_r = post(domains[0], certbot_config_dir)
- if post_r != 0:
-  return post_r
+ if cb_r == 0:
+  post_r = post(domains[0], certbot_config_dir)
+  if post_r != 0:
+   return post_r
  return cb_r
 
 
