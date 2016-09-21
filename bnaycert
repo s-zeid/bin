@@ -6,7 +6,7 @@
 # Scans a directory for domains for which to generate TLS certificates
 # via the holy, blessèd Let's Encrypt service.
 # 
-# Copyright (c) 2015 Scott Zeid.  
+# Copyright (c) 2015-2016 Scott Zeid.  
 # Released under the X11 License:  <https://tldrlegal.com/l/x11>  
 # <https://code.s.zeid.me/bin/blob/master/bnaycert>
 # 
@@ -40,7 +40,7 @@
 # 
 # (\*) If a domain or glob starts with a ., then the next character must be a
 #      forward slash or backslash; otherwise it will be treated as a "special"
-#      section (e.g. ".letsencrypt") that controls other settings.
+#      section (e.g. ".certbot") that controls other settings.
 # 
 # The configuration file is structured as follows:
 # 
@@ -75,13 +75,13 @@
 #     
 #     [...]
 #     
-#     [.letsencrypt]  ; (optional)
-#      path = <(optional; default: "letsencrypt")
-#              path to letsencrypt executable or directory containing
-#              letsencrypt-auto; can also be the name of an executable on
+#     [.certbot]  ; (optional)
+#      path = <(optional; default: "certbot")
+#              path to certbot executable or directory containing
+#              certbot-auto; can also be the name of an executable on
 #              $PATH>
 #      args = <(optional; default: 'certonly --webroot -w "/var/www"')
-#              args to add to the letsencrypt command before the domains,
+#              args to add to the certbot command before the domains,
 #              in a simple POSIX-like shell syntax>
 #      config-dir = <(optional; default: "/etc/letsencrypt")
 #                   path to the Let's Encrypt configuration directory; it should
@@ -130,6 +130,9 @@ import sys
 import subprocess
 
 from collections import OrderedDict as odict
+
+
+DEFAULT_CERTBOT_CONFIG_DIR = "/etc/letsencrypt"
 
 
 class BnayCertError(Exception):
@@ -258,23 +261,23 @@ def get_domains(config):
  return result
 
 
-def letsencrypt(domains, letsencrypt_bin, letsencrypt_args=None,
-                letsencrypt_config_dir=None):
- if os.path.isdir(letsencrypt_bin):
-  letsencrypt_bin = os.path.join(letsencrypt_bin, "letsencrypt-auto")
- letsencrypt_args = list(letsencrypt_args or [])
- if not letsencrypt_config_dir:
-  letsencrypt_config_dir = "/etc/letsencrypt"
+def certbot(domains, certbot_bin, certbot_args=None,
+                certbot_config_dir=None):
+ if os.path.isdir(certbot_bin):
+  certbot_bin = os.path.join(certbot_bin, "certbot-auto")
+ certbot_args = list(certbot_args or [])
+ if not certbot_config_dir:
+  certbot_config_dir = DEFAULT_CERTBOT_CONFIG_DIR
  
- cmd = [letsencrypt_bin] + letsencrypt_args
+ cmd = [certbot_bin] + certbot_args
  for domain in domains:
   cmd += ["-d", domain]
  
- le_r = subprocess.call(cmd)
- post_r = post(domains[0], letsencrypt_config_dir)
+ cb_r = subprocess.call(cmd)
+ post_r = post(domains[0], certbot_config_dir)
  if post_r != 0:
   return post_r
- return le_r
+ return cb_r
 
 
 def load_config(config, path=""):
@@ -358,8 +361,8 @@ def load_config(config, path=""):
  return result
 
 
-def post(main_domain, letsencrypt_config_dir, recurse=True):
- live_root = os.path.join(letsencrypt_config_dir, "live")
+def post(main_domain, certbot_config_dir, recurse=True):
+ live_root = os.path.join(certbot_config_dir, "live")
  if os.path.exists(live_root):
   # change to root if necessary
   if recurse and os.stat(live_root).st_uid != os.getuid():
@@ -373,10 +376,10 @@ def post(main_domain, letsencrypt_config_dir, recurse=True):
            'exec(compile(open(%s, "rb").read(), %s, "exec"));'
            'sys.exit(catch_main_errors(post, %s, %s, False))')
           % (repr(str(__file__)), repr(str(__file__)),
-             repr(str(main_domain)), repr(str(letsencrypt_config_dir)))]
+             repr(str(main_domain)), repr(str(certbot_config_dir)))]
    return subprocess.call(cmd)
   
-  cert_dir = os.path.join("/etc/letsencrypt/live", main_domain)
+  cert_dir = os.path.join(DEFAULT_CERTBOT_CONFIG_DIR, "live", main_domain)
   if os.path.exists(os.path.join(cert_dir, "cert.pem")):
    # change permissions
    os.chmod(os.path.realpath(os.path.join(cert_dir, "privkey.pem")), 0600)
@@ -412,7 +415,7 @@ def main(argv, recurse=True):
  if recurse:
   return catch_main_errors(main, argv, False)
  
- USAGE  = "Usage: %s [-l|--list|--] <config-file> [extra-letsencrypt-args [...]]"
+ USAGE  = "Usage: %s [-l|--list|--] <config-file> [extra-certbot-args [...]]"
  USAGE %= argv[0]
  
  ls = False
@@ -446,12 +449,16 @@ def main(argv, recurse=True):
    print domain
   return 0
  else:
-  le_section = config["."].get("letsencrypt", {})
-  le_path = le_section.get("path", "letsencrypt")
-  le_args = le_section.get("args", 'certonly --webroot -w "/var/www"')
-  le_args = shlex.split(le_args)
-  le_config_dir = le_section.get("config-dir", None)
-  return letsencrypt(domains, le_path, le_args + extra_args, le_config_dir)
+  if "letsencrypt" in config["."]:
+   raise BnayCertError("the `.letsencrypt` special section has been renamed to"
+                       " `.certbot`; please update your BnayCert configuration"
+                       " file(s) accordingly")
+  cb_section = config["."].get("certbot", {})
+  cb_path = cb_section.get("path", "certbot")
+  cb_args = cb_section.get("args", 'certonly --webroot -w "/var/www"')
+  cb_args = shlex.split(cb_args)
+  cb_config_dir = cb_section.get("config-dir", None)
+  return certbot(domains, cb_path, cb_args + extra_args, cb_config_dir)
 
 
 if __name__ == "__main__":
