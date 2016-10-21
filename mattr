@@ -7,9 +7,10 @@ usage() {
  echo "       $SCRIPT --help"
  echo
  echo "Commands:"
- echo "  ls                    Lists attributes (the default if no command is"
- echo "                        given)."
- echo "  get                   Gets the attribute's value."
+ echo "  ls                    Lists attributes (the default if no attribute or"
+ echo "                        command is given)."
+ echo "  get                   Gets the attribute's value (the default if an"
+ echo "                        attribute is given but not a command)."
  echo "  set/= [value]         Sets the attribute to the given value, or the"
  echo "                        contents of standard input if no value is given."
  echo "  cp <new-name>         Copies the attribute."
