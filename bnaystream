@@ -62,7 +62,8 @@ afilter=
 
 mux=mpegts
 
-mime=video/mpeg
+mime=video/mp2t
+
 host=127.0.0.1
 port=26290
 paths="
