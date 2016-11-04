@@ -12,9 +12,9 @@
 # 
 # Example usage:
 # 
-#     $ bnaystream ytdl+Source:twitch.tv/trihex
-#     $ bnaystream `youtube-dl -f Source -g twitch.tv/trihex`
-#     $ livestreamer -p bnaystream twitch.tv/trihex source
+#     $ bnaystream ytdl+Source:twitch.tv/raysfire
+#     $ bnaystream `youtube-dl -f Source -g twitch.tv/raysfire`
+#     $ livestreamer -p bnaystream twitch.tv/raysfire source
 # 
 # Then access the stream via http://127.0.0.1:26290/
 # (or also /bnaystream/ or /.bnaystream/ with the default settings).
