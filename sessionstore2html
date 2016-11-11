@@ -107,7 +107,7 @@ def window_to_list(window):
 def tab_to_dict(tab):
  if not tab.get("entries"):
   return None
- return {"icon":  tab.get("image", tab["attributes"].get("image", "")) or "",
+ return {"icon":  tab.get("image", tab.get("attributes", {}).get("image", "")) or "",
          "title": tab["entries"][tab["index"] - 1].get("title",
                    os.path.basename(tab["entries"][tab["index"] - 1]["url"])),
          "url":   tab["entries"][tab["index"] - 1]["url"]}
