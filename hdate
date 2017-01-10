@@ -1,0 +1,61 @@
+#!/bin/sh
+
+usage() {
+ cat <<EOF
+Usage: $0 [--help] [-<precision>] [<date>]
+
+A frontend for GNU date(1) that shows the given date (default: 'now') in
+ISO 8601 to the given precision (default: 'date').  The precision may be
+any supported by GNU date's -I option, or the first letter(s) thereof:
+
+    date, hours, minutes, seconds, ns
+
+The date argument "is a mostly free format human readable date string such as
+'Sun, 29 Feb 2004 16:21:42 -0800' or '2004-02-29 16:21:42' or even 'next
+Thursday'. A date string may contain items indicating calendar date, time of
+day, time zone, day of week, relative time, relative date, and numbers. An
+empty string indicates the begin- ning of the day. The date string format is
+more complex than is easily documented here but is fully described in the info
+documentation."  (From the "DATE STRING" section of the GNU date man page.)
+
+The date argument may be broken up into multiple arguments, in which case they
+will be combined into one argument, with a space separating each one.
+
+The resulting ISO 8601 date will have a space instead of a T, and the time
+zone will be stripped.
+EOF
+}
+
+precision=
+want_help=0
+
+set_cmd='set --'
+n=1
+while [ $n -le $# ]; do
+ arg=
+ eval "arg=\$$n"
+ if [ x"$arg" = x"--help" ] || [ x"$arg" = x"-help" ]; then
+  want_help=1
+ elif [ x"$arg" = x"--hep" ] || [ x"$arg" = x"-hep" ]; then
+  want_hep=1
+ elif (printf '%s' "$arg" | grep -q -e '^-\S'); then
+  precision=$(printf '%s' "$arg" | sed -e 's/^-*//g')
+ else
+  set_cmd="$set_cmd \"\$$n\""
+ fi
+ n=$((n+1))
+done
+eval "$set_cmd"
+
+if [ $want_help -ne 0 ]; then
+ usage >&2
+ exit 0
+elif [ x"$want_hep" = x"1" ]; then
+ echo "Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes."
+ echo "--Red Green (episode 102), https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s"
+ exit 0
+fi
+
+date=$@
+
+date -I"$precision" -d "$date" | sed -e 's/T/ /g; s/[+-][0-9][0-9]:[0-9][0-9]$//'
