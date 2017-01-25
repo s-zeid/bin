@@ -10,7 +10,7 @@ usage() {
  echo "         <apk> [<user>@]<device address>[:<port>][,...] [-U] [<pm options> [...]]"
  echo ""
  echo "Notes:"
- echo " * <user> defaults to \`$DEFAULT_USER\`)"
+ echo " * <user> defaults to \`$DEFAULT_USER\`"
  echo " * pm options that take values should be given after the device address"
  echo " * \`-U\` means to uninstall first, DELETING the app's data and cache,"
  echo "   and requires \`aapt\` to be on your \$PATH"
