@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# lowstream
+# Streams a file or stream as low-quality Opus audio over HTTP.
+
 MAGIC=362bfa2a-044b-11e7-830c-aa000047a7d4
 NAME=lowstream
 
@@ -13,11 +16,13 @@ usage() {
  local SIZE_EST_HOURS=2
  local SIZE_EST_SEC="3600*$SIZE_EST_HOURS"
  local SIZE_EST_MUXER_OVERHEAD='1.0387'
+ 
+ # 16 * 3600 * 2 * 1.0387 / 8 / 1024 ~= 15 MB
  local SIZE_EST_MB_EXPR="$AB*$SIZE_EST_SEC*$SIZE_EST_MUXER_OVERHEAD/8/1024"
  local SIZE_EST_MB="$(bc_round "$SIZE_EST_MB_EXPR")"
  
  cat <<USAGE
-Usage: $0 <url> [<port (default: $PORT)>]
+Usage: $0 <url> [:<port (default: $PORT)>|<write-to-filename-or-directory>]
 
 This streams audio/video content at the given URL as audio only at low quality
 settings.  This is intended for use in client environments where the network is
@@ -50,7 +55,7 @@ USAGE
 
 bc_round() {  # non-negative inputs only
  for i; do
-  printf 'scale=1\ni=%s\no=i*10/10\nif (i*100%%100 < 5) o else o+.1\n' "$i" | bc
+  printf 'scale=17; i=%s; scale=0; o=i*1/1; if (i*10%%10 < 5) o else o+1\n' "$i" | bc
  done
 }
 
@@ -72,22 +77,44 @@ main() {
  fi
  
  local port="$PORT"
- if [  x"$2" != x"" ]; then
-  port=$2
+ local filename=
+ if (printf '%s' "$2" | grep -q -e '^:[0-9]\+$'); then
+  port=${2#:}
+ elif [ x"$2" != x"" ]; then
+  filename=$2
+  if [ -d "$filename" ]; then
+   filename=${url%%\?*}
+   filename=$(basename -- "$filename")
+   filename="$2/${filename%.*}.ogg"
+  fi
  fi
  
- export ___MAGIC___="$MAGIC"
- export ___URL___="$url"
- #echo "$url" >&2
- echo "Serving <$url> on <http://$HOST:$port>..." >&2
- ncat -l -k -e "$(abspath "$0")" "$HOST" "$port"
+ if [ x"$filename" = x"" ]; then
+  export ___MAGIC___="$MAGIC"
+  export ___URL___="$url"
+  #echo "$url" >&2
+  echo "Serving <$url> on <http://$HOST:$port>..." >&2
+  ncat -l -k -e "$(abspath "$0")" "$HOST" "$port"
+ else
+  export ___URL___="$url"
+  if [ x"$filename" != x"-" ]; then
+   export ___PATH___="/$(basename -- "$filename")?download"
+   child_main > "$filename"
+  else
+   export ___PATH___="/download"
+   child_main
+  fi
+ fi
 }
 
 
 child_main() {
+ local name="$NAME"
+ local quiet='-nostdin -loglevel fatal -y'
+ local copyts='-copyts'
+ 
  local input_url="$___URL___"
  local url="$input_url"
- local name="$NAME"
  if (printf '%s' "$input_url" | head -n 1 | tr A-Z a-z | grep -q -e '^ytdl:'); then
   url="$(resolve_ytdl_uri "$input_url")"
   local resolve_r=$?
@@ -104,17 +131,26 @@ child_main() {
  fi
  
  local request_line=
- read -r request_line
- if (printf '%s' "$request_line" | egrep -q -v -i -e '^(GET|HEAD) .* HTTP/[^ ]+$'); then
-  printf '%s\r\n' "HTTP/1.0 400 Bad Request" "" "<h1>400 Bad Request</h1>"
-  return 1
+ local method=
+ local path=
+ if [ x"$___PATH___" = x"" ]; then
+  read -r request_line
+  if (printf '%s' "$request_line" | egrep -q -v -i -e '^(GET|HEAD) .* HTTP/[^ ]+$'); then
+   printf '%s\r\n' "HTTP/1.0 400 Bad Request" "" "<h1>400 Bad Request</h1>"
+   return 1
+  fi
+  method="$(printf '%s' "${request_line%% *}" | tr a-z A-Z)"
+  path="$(printf '%s' "$request_line" | sed -e 's@^[^ ]\+ @@; s@ HTTP/[^ ]\+$@@i')"
+ else
+  path="$___PATH___"
+  method=GET
+  request_line="$method $path HTTP/1.0"
+  quiet=''
  fi
- local method="$(printf '%s' "${request_line%% *}" | tr a-z A-Z)"
- local path="$(printf '%s' "$request_line" | sed -e 's@^[^ ]\+ @@; s@ HTTP/[^ ]\+$@@i')"
  
  local disposition=inline
  if (printf '%s' "$path" | egrep -q -i -e '[/?](dl|download)([?&].*)?$'); then
-  disposition=attachment; re=''
+  disposition=attachment; re=''; #copyts=''
   path="$(printf '%s' "$path" | sed -e 's@[/?]\(dl\|download\)\([?&].*\)\?$@@i')"
  fi
  path=${path%%\?*}
@@ -127,23 +163,25 @@ child_main() {
   name="$name.ogg"
  fi
  
- printf '%s\r\n' "HTTP/1.0 200 OK"
- printf '%s\r\n' "Content-Type: audio/ogg"
- printf '%s\r\n' "Content-Disposition: $disposition; filename=$name"
- printf '%s\r\n' "Cache-Control: no-transform"
- printf '%s\r\n' "Connection: close"
- printf '%s\r\n' "Server: $NAME"
- printf '\r\n'
- if [ x"$method" = x"HEAD" ]; then
-  return 0
+ if [ x"$___PATH___" = x"" ]; then
+  printf '%s\r\n' "HTTP/1.0 200 OK"
+  printf '%s\r\n' "Content-Type: audio/ogg"
+  printf '%s\r\n' "Content-Disposition: $disposition; filename=$name"
+  printf '%s\r\n' "Cache-Control: no-transform"
+  printf '%s\r\n' "Connection: close"
+  printf '%s\r\n' "Server: $NAME"
+  printf '\r\n'
+  if [ x"$method" = x"HEAD" ]; then
+   return 0
+  fi
  fi
  
- exec ffmpeg -hide_banner -nostdin -loglevel fatal -y \
+ exec ffmpeg -hide_banner $quiet \
   $re -i "$url" \
   -vn \
   -c:a libopus -ac 1 -ar $AR -b:a ${AB}k -vbr off -application voip -packet_loss 10 \
-  -f ogg -copyts \
-  -map_metadata -1 -metadata title="${name%.*}" \
+  -f ogg $copyts \
+  -map_metadata -1 -metadata:g title="${name%.*}" -metadata:g artist="$NAME" \
   -
 }
 
