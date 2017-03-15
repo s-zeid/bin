@@ -1,10 +1,11 @@
 #!/bin/sh
+# vim: set fdm=marker fmr={\ #{,}}}:
 
 # lowstream
 # Streams a file or stream as low-quality Opus audio over HTTP.
 
-MAGIC=362bfa2a-044b-11e7-830c-aa000047a7d4
 NAME=lowstream
+SOURCE_CODE='https://code.s.zeid.me/bin/blob/master/lowstream'
 
 HOST=0.0.0.0
 PORT=2629
@@ -12,7 +13,7 @@ AB=16
 AR=16000
 
 
-usage() {
+usage() { #{1
  local SIZE_EST_HOURS=2
  local SIZE_EST_SEC="3600*$SIZE_EST_HOURS"
  local SIZE_EST_MUXER_OVERHEAD='1.0387'
@@ -22,7 +23,7 @@ usage() {
  local SIZE_EST_MB="$(bc_round "$SIZE_EST_MB_EXPR")"
  
  cat <<USAGE
-Usage: $0 <url> [:<port (default: $PORT)>|<write-to-filename-or-directory>]
+Usage: $0 <url> [:[<port (default: $PORT)>]|<write-to-filename-or-directory>] [<title>]
 
 This streams audio/video content at the given URL as audio only at low quality
 settings.  This is intended for use in client environments where the network is
@@ -47,8 +48,10 @@ opposed to streaming it. In download mode, static files will be read as fast
 as possible instead of sending the output in realtime.
 
 The request URL, minus any query string, will be used as the filename and (minus
-any extension) as the metadata title.  The defaults are \`$NAME.ogg\` and
-\`$NAME\`, respectively.
+any extension) as the metadata title.  If a title is given on the command line,
+then it will override the request URL for the metadata title.  The default is
+to use the URL for both the filename and the metadata title, with some special
+characters replaced in the filename.
 USAGE
 }
 
@@ -60,7 +63,7 @@ bc_round() {  # non-negative inputs only
 }
 
 
-main() {
+main() { #{1
  if [ $# -lt 1 ]; then
   usage >&2
   return 2
@@ -78,8 +81,11 @@ main() {
  
  local port="$PORT"
  local filename=
- if (printf '%s' "$2" | grep -q -e '^:[0-9]\+$'); then
+ if (printf '%s' "$2" | grep -q -e '^:[0-9]*$'); then
   port=${2#:}
+  if [ x"$port" = x"" ]; then
+   port=$PORT
+  fi
  elif [ x"$2" != x"" ]; then
   filename=$2
   if [ -d "$filename" ]; then
@@ -89,29 +95,47 @@ main() {
   fi
  fi
  
+ local title="$3"
+ 
  if [ x"$filename" = x"" ]; then
   export ___MAGIC___="$MAGIC"
   export ___URL___="$url"
+  export ___TITLE___="$title"
   #echo "$url" >&2
   echo "Serving <$url> on <http://$HOST:$port>..." >&2
   ncat -l -k -e "$(abspath "$0")" "$HOST" "$port"
  else
   export ___URL___="$url"
+  export ___TITLE___="$title"
   if [ x"$filename" != x"-" ]; then
    export ___PATH___="/$(basename -- "$filename")?download"
-   child_main > "$filename"
+   response_main > "$filename"
   else
    export ___PATH___="/download"
-   child_main
+   response_main
   fi
  fi
 }
 
 
-child_main() {
- local name="$NAME"
+abspath() {
+ printf '%s\n' \
+  "$(cd "$(dirname -- "$1")"; printf '%s' "$(pwd)")/$(basename -- "$1")"
+}
+
+
+response_main() { #{1
+ local name=
+ local title=
+ 
  local quiet='-nostdin -loglevel fatal -y'
  local copyts='-copyts'
+ 
+ if [ x"$___TITLE___" != x"" ]; then
+  title=$___TITLE___
+  name=$title
+  name=$(printf '%s' "$name" | sed -e 's@/@ - @g')
+ fi
  
  local input_url="$___URL___"
  local url="$input_url"
@@ -122,6 +146,12 @@ child_main() {
    echo "error: could not resolve ytdl: URI" >&2
    return $resolve_r
   fi
+ fi
+ 
+ if [ x"$name" = x"" ]; then
+  title=${input_url%%\?*}
+  name=$title
+  name=$(printf '%s' "$name" | sed -e 's@^/*@@g; s@/*$@@g; s@/@_@g')
  fi
  
  local re=
@@ -157,11 +187,16 @@ child_main() {
  
  if (printf '%s' "$path" | egrep -q -e '^/+[^/]'); then
   name="$(basename -- "$(printf '%s' "$path" | sed -e 's@^/*@@; s@/*$@@')")"
+  if [ x"$___TITLE___" = x"" ]; then
+   title=${name%.*}
+  fi
  fi
  
- if (printf '%s' "$name" | grep -q -v -e '\.[^.]\+$'); then
+ if (printf '%s' "$name" | grep -q -v -e '\.[a-zA-Z][^. ]\+$'); then
   name="$name.ogg"
  fi
+ 
+ name=$(printf '%s' "$name" | sed -e 's/\(ytdl\|https\?\|ftps\?\|rtmp[ste]*\):/\1_/g; s/:/ - /g')
  
  if [ x"$___PATH___" = x"" ]; then
   printf '%s\r\n' "HTTP/1.0 200 OK"
@@ -170,23 +205,29 @@ child_main() {
   printf '%s\r\n' "Cache-Control: no-transform"
   printf '%s\r\n' "Connection: close"
   printf '%s\r\n' "Server: $NAME"
+  printf '%s\r\n' "X-Source-Code: $SOURCE_CODE"
   printf '\r\n'
   if [ x"$method" = x"HEAD" ]; then
    return 0
   fi
  fi
  
- exec ffmpeg -hide_banner $quiet \
+ local exec=exec
+ if [ x"$___PATH___" != x"" ]; then
+  exec=''
+ fi
+ $exec ffmpeg -hide_banner $quiet \
   $re -i "$url" \
   -vn \
   -c:a libopus -ac 1 -ar $AR -b:a ${AB}k -vbr off -application voip -packet_loss 10 \
   -f ogg $copyts \
-  -map_metadata -1 -metadata:g title="${name%.*}" -metadata:g artist="$NAME" \
+  -map_metadata -1 -metadata:g title="$title" \
+  -metadata:g artist="$NAME" -metadata:g album="$SOURCE_CODE" \
   -
 }
 
 
-resolve_ytdl_uri() {
+resolve_ytdl_uri() { #{1
  local DEFAULT_FORMAT="worstaudio;worst"
  
  local ytdl_uri="$1"
@@ -233,11 +274,9 @@ check_not_empty() {
 }
 
 
-abspath() {
- printf '%s\n' \
-  "$(cd "$(dirname -- "$1")"; printf '%s' "$(pwd)")/$(basename -- "$1")"
-}
+# entry { #{1
 
+MAGIC=362bfa2a-044b-11e7-830c-aa000047a7d4
 
 is_child=0
 if [ x"$___MAGIC___" = x"$MAGIC" ]; then
@@ -248,5 +287,5 @@ fi
 if [ $is_child -eq 0 ]; then
  main "$@"
 else
- child_main "$@"
+ response_main "$@"
 fi
