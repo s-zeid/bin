@@ -262,7 +262,7 @@ def get_domains(config):
 
 
 def certbot(domains, certbot_bin, certbot_args=None,
-                certbot_config_dir=None):
+            certbot_config_dir=None):
  if os.path.isdir(certbot_bin):
   certbot_bin = os.path.join(certbot_bin, "certbot-auto")
  certbot_args = list(certbot_args or [])
@@ -270,6 +270,7 @@ def certbot(domains, certbot_bin, certbot_args=None,
   certbot_config_dir = DEFAULT_CERTBOT_CONFIG_DIR
  
  cmd = [certbot_bin] + certbot_args
+ cmd += ["--cert-name=" + domains[0]]
  for domain in domains:
   cmd += ["-d", domain]
  
