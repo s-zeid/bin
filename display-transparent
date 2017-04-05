@@ -10,11 +10,17 @@ import argparse
 import os
 import sys
 
+from collections import namedtuple
+
 import cairo
 import gtk
 import pygtk
 
 pygtk.require("2.0")
+
+
+Padding = namedtuple("Padding", "top,right,bottom,left")
+
 
 def _close_callback(window, data):
  """Called when the window is closed."""
@@ -43,7 +49,22 @@ def make_transparent(window, event):
  # Set the compositing operator back to the default
  cr.set_operator(cairo.OPERATOR_OVER)
 
-def display_transparent(image_filename, size_factor=1, opacity=1):
+def display_transparent(image_filename, size_factor=1, opacity=1,
+                        x=None, y=None, padding=None):
+ if isinstance(padding, basestring):
+  padding = [int(i.strip()) for i in padding.split(",")]
+ if not padding:
+  padding = [0, 0, 0, 0]
+ elif len(padding) == 1:
+  padding = padding * 4
+ elif len(padding) == 2:
+  padding = padding * 2
+ elif len(padding) == 3:
+  padding = [padding[0], padding[1], padding[2], padding[1]]
+ elif len(padding) > 4:
+  padding = padding[:4]
+ pad = padding = Padding(*[int(round(i)) for i in padding])
+ 
  win = gtk.Window()
  win.set_title(os.path.basename(image_filename))
  win.set_decorated(False)
@@ -67,19 +88,37 @@ def display_transparent(image_filename, size_factor=1, opacity=1):
  
  # Load and scale the image
  pixbuf = gtk.gdk.pixbuf_new_from_file(image_filename)
+ width = int(round(pixbuf.get_width() * size_factor))
+ height = int(round(pixbuf.get_height() * size_factor))
  if size_factor != 1:
   pixbuf = gtk.gdk.pixbuf_new_from_file_at_size(image_filename,
-            int(round(pixbuf.get_width() * size_factor)),
-            int(round(pixbuf.get_height() * size_factor)))
+            width, height)
  
- # Add the image
+ # Add the image to a Fixed container for padding purposes
+ fixed = gtk.Fixed()
  img = gtk.image_new_from_pixbuf(pixbuf)
- win.set_size_request(pixbuf.get_width(), pixbuf.get_height())
- win.add(img)
+ fixed.add(img)
+ fixed.move(img, pad.left, pad.top)
+ 
+ # Add the container to the window
+ width_padded = pixbuf.get_width() + pad.left + pad.right
+ height_padded = pixbuf.get_height() + pad.top + pad.bottom
+ win.set_size_request(width_padded, height_padded)
+ win.add(fixed)
  
  # Make the window draggable
  win.connect("button-press-event", _drag_callback)
  win.add_events(gtk.gdk.BUTTON_PRESS_MASK)
+ 
+ # Position window
+ if x or y:
+  x = str(x or "")
+  if x and x[0] != "-":
+   x = "+" + x
+  y = str(y or "")
+  if y and y[0] != "-":
+   y = "+" + y
+  win.parse_geometry(x+y)
  
  # Enter GTK main loop
  win.show_all()
@@ -94,13 +133,22 @@ def main(argv):
                      help="Desired size of the image as a percentage")
  parser.add_argument("-o", "--opacity", type=float, default=100.,
                      help="Desired opacity of the image as a percentage")
+ parser.add_argument("-x", type=str, default=None,
+                     help="Initial X position (default: auto)")
+ parser.add_argument("-y", type=str, default=None,
+                     help="Initial X position (default: auto)")
+ parser.add_argument("-p", "--padding", default=None,
+                     help="Padding (default: None; format:"
+                          " {all-sides} | {top/bottom},{left/right} |"
+                          " {t},{r/l},{b} | {t},{r},{b},{l})")
  try:
   args = parser.parse_args(argv[1:])
  except SystemExit as exit:
   return exit.code
  
  display_transparent(args.filename, size_factor=args.size * 0.01,
-                     opacity=args.opacity * 0.01)
+                     opacity=args.opacity * 0.01, x=args.x, y=args.y,
+                     padding=args.padding)
 
 if __name__ == "__main__":
  try:
