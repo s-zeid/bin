@@ -13,5 +13,6 @@ fi
 
 exec mpv \
  --input-conf=<(printf '%s\n' "$input_conf") \
+ --no-osc \
  --pause \
  "$@"
