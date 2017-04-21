@@ -1,6 +1,5 @@
 #!/bin/sh
 
-URL_EZPYI='https://code.s.zeid.me/bin/raw/master/ezpyi'
 URL_PYTHON27='https://www.python.org/ftp/python/2.7.11/python-2.7.11.msi'
 
 MAGIC=6827a824-5fb8-45b0-952d-161ef88951f7
@@ -66,7 +65,7 @@ main() {
  prep_var "$force_prep" || return
  
  if [ x"$mode" = x"ezpyi" ]; then
-  wine python C:/ezpyi.py "$@"
+  wine ezpyi2 "$@"
  elif [ x"$mode" = x"wine" ]; then
   wine "$@"
  fi
@@ -109,10 +108,8 @@ prep_var() {
  if [ x"$force" != x"" ] || \
     [ x"$(cat "$ready_magic_file" 2>/dev/null)" != x"$MAGIC" ]; then
   rm -f "$ready_magic_file" || return
-  echo_run wine pip install -U pyinstaller==3.1.1 pypiwin32 || return
-  echo_run curl -L "$URL_EZPYI" -o "$wineprefix/drive_c/ezpyi.py" || return
-  printf '@echo off\r\npython C:\\ezpyi.py %%*\r\n' \
-   > "$wineprefix/drive_c/windows/ezpyi.bat" || return
+  echo_run wine pip install -U pyinstaller pypiwin32 || return
+  echo_run wine pip install -U ezpyi || return
   echo "$MAGIC" > "$ready_magic_file" || return
  fi
 }
