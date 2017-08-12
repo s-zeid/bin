@@ -2,7 +2,7 @@
 
 usage() {
  cat <<EOF
-Usage: $0 [--help] [-<precision>] [<date>]
+Usage: $0 [-H|--help] [-<precision>] [<date>]
 
 A frontend for GNU date(1) that shows the given date (default: 'now') in
 ISO 8601 to the given precision (default: 'date').  The precision may be
@@ -38,7 +38,7 @@ n=1
 while [ $n -le $# ]; do
  arg=
  eval "arg=\$$n"
- if [ x"$arg" = x"--help" ] || [ x"$arg" = x"-help" ]; then
+ if [ x"$arg" = x"-H" ] || [ x"$arg" = x"--help" ] || [ x"$arg" = x"-help" ]; then
   want_help=1
  elif [ x"$arg" = x"--hep" ] || [ x"$arg" = x"-hep" ]; then
   want_hep=1
