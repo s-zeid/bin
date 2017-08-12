@@ -1,14 +1,27 @@
 #!/bin/sh
 
-hostname=`hostname --short`
-case "$hostname" in
- lady-labyrinth)
-  xgamma -rgamma 0.670 -ggamma 0.648 -bgamma 0.704
-  ;;
- tracce)
-  xgamma -rgamma 0.827 -ggamma 0.798 -bgamma 0.711
-  ;;
- *)
-  echo "$0: error: hostname $hostname not recognized"
-  exit 1
-esac
+main() {
+ local hostname=`hostname --short`
+ case "$hostname" in
+  lady-labyrinth)
+   local scale=1.25
+   xgamma -rgamma $(e 0.670 x $scale) -ggamma $(e 0.648 x $scale) -bgamma $(e 0.704 x $scale)
+   ;;
+  tracce)
+   xgamma -rgamma 0.827 -ggamma 0.798 -bgamma 0.711
+   ;;
+  *)
+   echo "$0: error: hostname $hostname not recognized"
+   return 1
+ esac
+}
+
+
+e() {
+ local e=; e=$@
+ e=$(printf '%s' "$e" | sed -e 's/[xX]/*/g')
+ echo | awk "{ print $e }"
+}
+
+
+main "$@"
