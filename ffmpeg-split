@@ -30,7 +30,7 @@ class Split(object):
 
 def main(argv):
  USAGE = """
-Usage: %s <splits-file> <ffmpeg-args> [...]
+Usage: %s <splits-file> [-ss {}] <ffmpeg-args> [...]
        %s <splits-file> --list
 
 Splits a media file according to a list of times.
@@ -44,6 +44,9 @@ split.  If a line is missing a time, then it will be ignored.
 To reference the output filename in the FFmpeg command line, use `{}`.  The
 FFmpeg arguments used to specify the start and length will be inserted
 immediately before the first argument that references the split name.
+
+If the first two arguments after the splits file are `-ss {}`, then the start
+time will be passed to FFmpeg as an input flag and not an output flag.
 
 Example: %s splits.txt -i input.mp4 -vn -c:a flac {}.flac
 creates FLAC files for each split defined in the splits file.
@@ -59,6 +62,10 @@ creates FLAC files for each split defined in the splits file.
  if list_mode and len(ffmpeg_args) != 1:
   print >> sys.stderr, USAGE
   return 2
+ 
+ ss_as_input = ffmpeg_args[0] == "-ss" and ffmpeg_args[1] == "{}"
+ if ss_as_input:
+  ffmpeg_args = ffmpeg_args[2:]
  
  with open(splits_file, "rb") as f:
   splits_lines = f.read().splitlines()
@@ -79,6 +86,8 @@ creates FLAC files for each split defined in the splits file.
    print split.debug()
  else:
   for split in splits:
+   time_args = []
+   
    name_pos = -1
    for i in xrange(len(ffmpeg_args)):
     arg = ffmpeg_args[i]
@@ -88,7 +97,13 @@ creates FLAC files for each split defined in the splits file.
    
    ffmpeg_args_filtered = [arg.replace("{}", split.name) for arg in ffmpeg_args]
    
-   time_args = ["-ss", str(split.start)]
+   ss_args = ["-ss", str(split.start)]
+   if ss_as_input:
+    ffmpeg_args_filtered = ss_args + ffmpeg_args_filtered
+    name_pos += 2
+   else:
+    time_args += ss_args
+   
    if split.length:
     time_args += ["-t", str(split.length)]
    
