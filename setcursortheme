@@ -76,8 +76,15 @@ t_Display_p = POINTER(c_int)
 XOpenDisplay = l_X11.XOpenDisplay
 XOpenDisplay.argtypes = [c_char_p]
 XOpenDisplay.restype = t_Display_p
+#XFreeCursor
+XFreeCursor = l_X11.XFreeCursor
+XFreeCursor.argtypes = [t_Display_p, t_Cursor]
+XFreeCursor.restype = c_int
 
-l_Xcursor = cdll.LoadLibrary("libXcursor.so")
+try:
+ l_Xcursor = cdll.LoadLibrary("libXcursor.so")
+except OSError:
+ l_Xcursor = cdll.LoadLibrary("libXcursor.so.1")
 t_XcursorImages_p = POINTER(c_int)
 #XcursorLibraryLoadImages
 XcursorLibraryLoadImages = l_Xcursor.XcursorLibraryLoadImages
@@ -111,7 +118,7 @@ def main(argv):
                 help="repeat every N seconds (default or 0: do not repeat)")
  p.add_argument("theme",
                 help="the theme's name")
- p.add_argument("size", type=int, nargs="?", default="0",
+ p.add_argument("size", type=int, nargs="?", default=0,
                 help="the size to use (default: 0)")
  try:
   args = p.parse_args(argv[1:])
@@ -131,22 +138,31 @@ def main(argv):
    break
 
 
-def load_cursor(display, name, theme, size):
+def load_images(display, name, theme, size):
  images = XcursorLibraryLoadImages(name, theme, size)
  if images:
-  cursor = XcursorImagesLoadCursor(display, images)
-  XcursorImagesDestroy(images)
-  XFixesSetCursorName(display, cursor, name)
-  return cursor
+  return images
+
+
+def load_cursor(display, name, images):
+ cursor = XcursorImagesLoadCursor(display, images)
+ #XcursorImagesDestroy(images)
+ XFixesSetCursorName(display, cursor, name)
+ return cursor
 
 
 def set_cursor_theme(display, theme, size):
- for name, alternative in CURSOR_LIST:
-  cursor = load_cursor(display, name, theme, size)
-  if not cursor and alternative:
-   cursor = load_cursor(display, alternative, theme, size)
-  if cursor:
-   XFixesChangeCursorByName(display, cursor, name)
+ for cursor in CURSOR_LIST:
+  if cursor.images is None:
+   cursor.images = load_images(display, cursor.name, theme, size)
+   if not cursor.images and cursor.alternative:
+    cursor.images = load_images(display, cursor.alternative, theme, size)
+   if not cursor.images:
+    cursor.images = False
+  if cursor.images:
+   cursor_xid = load_cursor(display, cursor.name, cursor.images)
+   XFixesChangeCursorByName(display, cursor_xid, cursor.name)
+   XFreeCursor(display, cursor_xid)
 
 
 def make_cursor_list():
@@ -205,11 +221,21 @@ pirate
                 if i and not i.startswith("#")]
  for i in xrange(len(cursor_list)):
   if " " in cursor_list[i]:
-   cursor_list[i] = cursor_list[i].split(" ", 2)
+   name, alternative = cursor_list[i].split(" ", 2)
   else:
-   cursor_list[i] = [cursor_list[i], None]
+   name, alternative = cursor_list[i], None
+  cursor_list[i] = Cursor(name, alternative)
  
  return cursor_list
+
+
+class Cursor(object):
+ def __init__(self, name, alternative=None):
+  self.name = name
+  self.alternative = alternative
+  #: t_XcursorImages_p (X11/Xcursor/Xcursor.h:XcursorImages*)
+  #: None: uninitialized; False: does not exist, don't try to initialize again
+  self.images = None
 
 
 CURSOR_LIST = make_cursor_list()
