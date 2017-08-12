@@ -14,9 +14,13 @@ The date argument "is a mostly free format human readable date string such as
 'Sun, 29 Feb 2004 16:21:42 -0800' or '2004-02-29 16:21:42' or even 'next
 Thursday'. A date string may contain items indicating calendar date, time of
 day, time zone, day of week, relative time, relative date, and numbers. An
-empty string indicates the begin- ning of the day. The date string format is
-more complex than is easily documented here but is fully described in the info
+empty string indicates the beginning of the day. The date string format is more
+complex than is easily documented here but is fully described in the info
 documentation."  (From the "DATE STRING" section of the GNU date man page.)
+
+Additionally, when a bare number with one to five digits and an optional
+negative sign (hyphen) is given as the date argument, the string " days" is
+appended in order to treat it as a number of days from the current date.
 
 The date argument may be broken up into multiple arguments, in which case they
 will be combined into one argument, with a space separating each one.
@@ -38,7 +42,7 @@ while [ $n -le $# ]; do
   want_help=1
  elif [ x"$arg" = x"--hep" ] || [ x"$arg" = x"-hep" ]; then
   want_hep=1
- elif (printf '%s' "$arg" | grep -q -e '^-\S'); then
+ elif (printf '%s' "$arg" | grep -q -e '^-[^0-9 ]'); then
   precision=$(printf '%s' "$arg" | sed -e 's/^-*//g')
  else
   set_cmd="$set_cmd \"\$$n\""
@@ -57,5 +61,10 @@ elif [ x"$want_hep" = x"1" ]; then
 fi
 
 date=$@
+if [ x"$date" = x"" ] || (printf '%s' "$date" | grep -q -E '^[-:.]$'); then
+ date="today"
+elif (printf '%s' "$date" | grep -q -E '^-?[0-9]{1,5}$'); then
+ date="$date days"
+fi
 
 date -I"$precision" -d "$date" | sed -e 's/T/ /g; s/[+-][0-9][0-9]:[0-9][0-9]$//'
