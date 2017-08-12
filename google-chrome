@@ -1,6 +1,6 @@
 #!/bin/sh
 
 exec /opt/google/chrome/google-chrome \
- --purge-memory-button \
+ --purge-memory-button --password-store=basic \
  --enable-apps --enable-print-preview \
  "$@"
