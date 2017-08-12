@@ -1,6 +1,7 @@
 #!/bin/sh
 
-URL_PYTHON27='https://www.python.org/ftp/python/2.7.11/python-2.7.11.msi'
+PYTHON27_MICRO=13
+URL_PYTHON27="https://www.python.org/ftp/python/2.7.$PYTHON27_MICRO/python-2.7.$PYTHON27_MICRO.msi"
 
 MAGIC=6827a824-5fb8-45b0-952d-161ef88951f7
 
