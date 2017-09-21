@@ -2,6 +2,9 @@
 
 # My (Scott Zeid) script to start Chromium Web Browser
 
-CHROMIUM_CMD=/usr/bin/chromium-browser
+CHROMIUM_CMD=/usr/bin/"$(basename -- "$0")"
 
-exec $CHROMIUM_CMD --enable-sync --purge-memory-button $@
+exec $CHROMIUM_CMD \
+ --purge-memory-button --password-store=basic \
+ --enable-apps --enable-print-preview \
+ "$@"
