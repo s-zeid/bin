@@ -3,9 +3,10 @@
 
 """Converts a Firefox sessionstore.js file to HTML.
 
-The sessionstore.js file may be given as an argument.  To read from standard
-input, use -.  If no argument is given, this script will try to find the
-sessionstore.js file from the default Firefox profile.
+A sessionstore.js file or path to a Firefox profile may be given as an
+argument.  To read from standard input, use -.  If no argument is given, this
+script will try to find the sessionstore.js file from the default Firefox
+profile.
 
 Currently does not support tab groups.  Tabs from multiple tab groups within a
 single window will be mixed together depending on the order they appear in the
@@ -199,7 +200,7 @@ def get_sessionstore_js_path(profile_dir):
 
 
 def main(argv):  #{{{1
- usage = "Usage: %s [--help|-h|-|[-- ]sessionstore-js]"
+ usage = "Usage: %s [--help|-h|-|[-- ]{sessionstore-js|profile-dir}]"
  usage += "\n" + __doc__.rstrip()
  if len(argv) == 3 and argv[1] == "--":
   sessionstore_js = argv[2]
@@ -224,6 +225,13 @@ def main(argv):  #{{{1
   sessionstore_js = get_sessionstore_js_path(profile_path)
   if not sessionstore_js:
    print >> sys.stderr, ("error: could not find sessionstore.js file in the default"
+                         " Firefox profile")
+   return 1
+ elif os.path.isdir(sessionstore_js):
+  profile_path = sessionstore_js
+  sessionstore_js = get_sessionstore_js_path(profile_path)
+  if not sessionstore_js:
+   print >> sys.stderr, ("error: could not find sessionstore.js file in the given"
                          " Firefox profile")
    return 1
 
