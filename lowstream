@@ -7,7 +7,7 @@
 NAME=lowstream
 SOURCE_CODE='https://code.s.zeid.me/bin/blob/master/lowstream'
 
-HOST=0.0.0.0
+HOST=
 PORT=2629
 AB=16
 AR=16000
@@ -102,8 +102,13 @@ main() { #{1
   export ___URL___="$url"
   export ___TITLE___="$title"
   #echo "$url" >&2
-  echo "Serving <$url> on <http://$HOST:$port>..." >&2
-  ncat -l -k -e "$(abspath "$0")" "$HOST" "$port"
+  if [ x"$HOST" = x"" ]; then
+   echo "Serving <$url> on <http://[::]:$port>..." >&2
+   ncat -l -k -e "$(abspath "$0")" "$port"
+  else
+   echo "Serving <$url> on <http://$HOST:$port>..." >&2
+   ncat -l -k -e "$(abspath "$0")" "$HOST" "$port"
+  fi
  else
   export ___URL___="$url"
   export ___TITLE___="$title"
