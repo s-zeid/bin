@@ -1,16 +1,18 @@
 #!/usr/bin/env python2
 # vim:set fdm=marker:
 
-"""Converts a Firefox sessionstore.js file to HTML.
+"""Converts a Firefox sessionstore js/jsonlz4 file to HTML.
 
-A sessionstore.js file or path to a Firefox profile may be given as an
+A sessionstore file or path to a Firefox profile may be given as an
 argument.  To read from standard input, use -.  If no argument is given, this
-script will try to find the sessionstore.js file from the default Firefox
-profile.
+script will try to find the sessionstore file from the default Firefox profile.
 
 Currently does not support tab groups.  Tabs from multiple tab groups within a
 single window will be mixed together depending on the order they appear in the
-sessionstore.js file.
+sessionstore file.
+
+To read jsonlz4 files used in newer versions of Firefox, you will need to run
+`pip install lz4` (or install that package some other way).
 
 """
 
@@ -25,6 +27,8 @@ import string
 import sys
 
 from collections import namedtuple
+
+import lz4  # pip install lz4
 
 
 # Templates and template helpers {{{1
@@ -95,8 +99,11 @@ TABS_WORD = ("tab", "tabs")
 
 def windows_from_sessionstore(store):
  if isinstance(store, file):
-  store = store.read().decode("utf-8")
+  store = store.read()
  if isinstance(store, basestring):
+  if store.startswith(b"mozLz40\0"):
+   store = lz4.block.decompress(store[8:])
+  store = store.decode("utf-8")
   store = json.loads(store)
  return [window_to_list(window) for window in store["windows"]]
 
@@ -186,12 +193,19 @@ def get_default_profile_path(profiles_dir=None):
 def get_sessionstore_js_path(profile_dir):
  sessionstore_backups_dir = os.path.join(profile_dir, "sessionstore-backups")
  if os.path.isdir(sessionstore_backups_dir):
+  recovery_mozlz = os.path.join(sessionstore_backups_dir, "recovery.jsonlz4")
   recovery_js = os.path.join(sessionstore_backups_dir, "recovery.js")
-  if os.path.isfile(recovery_js):
-   return recovery_js
-  else:
-   previous_js = os.path.join(sessionstore_backups_dir, "previous.js")
-   if os.path.isfile(previous_js):
+  previous_mozlz = os.path.join(sessionstore_backups_dir, "previous.jsonlz4")
+  previous_js = os.path.join(sessionstore_backups_dir, "previous.js")
+  if os.path.isfile(recovery_mozlz) or os.path.isfile(previous_mozlz):
+   if os.path.isfile(recovery_mozlz):
+    return recovery_mozlz
+   elif os.path.isfile(previous_mozlz):
+    return previous_mozlz
+  elif os.path.isfile(recovery_js) or os.path.isfile(previous_js):
+   if os.path.isfile(recovery_js):
+    return recovery_js
+   elif os.path.isfile(previous_js):
     return previous_js
  else:
   legacy_js = os.path.join(profile_dir, "sessionstore.js")
