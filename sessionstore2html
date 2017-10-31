@@ -7,6 +7,9 @@ A sessionstore file or path to a Firefox profile may be given as an
 argument.  To read from standard input, use -.  If no argument is given, this
 script will try to find the sessionstore file from the default Firefox profile.
 
+If the WebExtension version of Tree Style Tab is installed, then tabs will be
+nested accordingly.  Other tab-tree extensions are not supported.
+
 Currently does not support tab groups.  Tabs from multiple tab groups within a
 single window will be mixed together depending on the order they appear in the
 sessionstore file.
@@ -49,13 +52,24 @@ PAGE_TEMPLATE = Template("""<!DOCTYPE html>
   <meta charset="$charset" />
   <title>Firefox Tabs</title>
   <link rel="stylesheet" type="text/css" href="https://s.zeid.me/styles/basic.css" />
+  <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Material+Icons" />
   <style type="text/css">
    body { background: #f8f8f8; }
    li { line-height: 22px; }
    .tabs { padding-left: 0.5em; }
    .tab { list-style-type: none; }
-   .tab .icon { float: left; width: 16px; height: 16px; margin-top: 0.2em; }
+   .tab .icon { float: left; width: 16px; max-height: 16px; margin-top: 0.2em;
+                font-size: 16px; color: #666; }
+   .tab .icon[alt^="photo"] { color: #668; }
    .tab .title { margin-left: 0.25em; }
+   .children { border-left: 1px solid #ddd; margin: 0 0 0 8px; }
+   
+   /* workaround for favicons blocked by uBlock Origin
+      (e.g. Fanboy's Enhanced Tracking List) */
+   .tab .icon[hidden] + .title:before {
+    content: "tab"; font: 16px "Material Icons"; color: #666;
+    position: relative; left: -0.25em; top: 0.125em; width: 16px; height: 16px;
+   }
   </style>
   <!--[if lt IE 9]>
    <script type="text/javascript" src="https://s.zeid.me/html5shiv.js"></script>
@@ -88,8 +102,10 @@ $tabs
 
 TAB_TEMPLATE = Template("""<li class="tab">
  <a href="$url" target="_blank" class="link">
-  <img src="$icon" alt="" class="icon" /><span class="title">$title</span>
+  <img src="$icon" alt="$material_icon" class="icon material-icons"
+  /><span class="title">$title</span>
  </a>
+ <ul class="children tabs">$children</ul>
 </li>""", 4).compile()
 
 TABS_WORD = ("tab", "tabs")
@@ -109,22 +125,91 @@ def windows_from_sessionstore(store):
 
 
 def window_to_list(window):
- return [i for i in [tab_to_dict(tab) for tab in window["tabs"]] if i]
+ return build_tree([i for i in [tab_to_dict(tab) for tab in window["tabs"]] if i])
 
 
 def tab_to_dict(tab):
  if not tab.get("entries"):
   return None
- return {"icon":  tab.get("image", tab.get("attributes", {}).get("image", "")) or "",
-         "title": tab["entries"][tab["index"] - 1].get("title",
-                   os.path.basename(tab["entries"][tab["index"] - 1]["url"])),
-         "url":   tab["entries"][tab["index"] - 1]["url"]}
+ 
+ result = {
+  "icon":  tab.get("image", tab.get("attributes", {}).get("image", "")) or "",
+  "title": tab["entries"][tab["index"] - 1].get("title",
+            os.path.basename(tab["entries"][tab["index"] - 1]["url"])),
+  "url":   tab["entries"][tab["index"] - 1]["url"],
+  "_children": [],
+ }
+ 
+ ext = tab.get("extData", {})
+ ext_tst = "extension:treestyletab@piro.sakura.ne.jp:"
+ if ext_tst + "data-persistent-id" in ext:
+  result.update({
+   "_tst_id": json.loads(ext.get(ext_tst + "data-persistent-id", "{}")).get("id", ""),
+   "_tst_ancestors": json.loads(ext.get(ext_tst + "ancestors", "[]")),
+   "_tst_before": json.loads(ext.get(ext_tst + "insert-before", '""')),
+   "_tst_after": json.loads(ext.get(ext_tst + "isnert-after",  # typo is upstream
+                            ext.get(ext_tst + "insert-after",  # in case they fix it
+                            '""'))),
+   "_tst_collapsed": json.loads(ext.get(ext_tst + "subtree-collapsed", "null")),
+   "_tst_children": json.loads(ext.get(ext_tst + "children", "[]")),
+  })
+ 
+ return result
+
+
+def build_tree(tabs_in):
+ if "_tst_id" not in tabs_in[0]:
+  return tabs_in
+ 
+ tabs_out = []
+ tabs_dict = dict([(i["_tst_id"], i) for i in tabs_in if i["_tst_id"]])
+ 
+ for tab in tabs_in:
+  if not len(tab["_tst_ancestors"]):
+   tabs_out += [tab]
+ 
+ def build_subtree(tab):
+  for child_id in tab["_tst_children"]:
+   child = tabs_dict[child_id]
+   before = tabs_dict.get(child["_tst_before"], None)
+   after = tabs_dict.get(child["_tst_after"], None)
+   if before in tab["_children"]:
+    before_index = tab["_children"].index(before)
+    tab["_children"][before_index:before_index] = [child]
+   elif after in tab["_children"]:
+    after_index = tab["_children"].index(after)
+    tab["_children"][after_index+1:after_index+1] = [child]
+   else:
+    tab["_children"] += [child]
+   build_subtree(child)
+ 
+ for tab in tabs_out:
+  build_subtree(tab)
+ 
+ return tabs_out
 
 
 # HTML generation {{{1
 
-def html_escape_tab(tab, charset=OUTPUT_CHARSET):
- return dict([(k, cgi.escape(tab[k], True).encode(OUTPUT_CHARSET)) for k in tab])
+def html_escape_tab(tab, charset=OUTPUT_CHARSET, tab_tpl=TAB_TEMPLATE):
+ result = dict([(k, cgi.escape(tab[k], True).encode(OUTPUT_CHARSET)) for k in tab
+                if not k.startswith("_")])
+ 
+ result["material_icon"] = "tab"
+ if tab["url"] == tab["icon"]:
+  result["icon"] = ""
+  result["material_icon"] = "photo_size_select_actual"
+ 
+ result["children"] = "\n".join([tab_tpl.substitute(html_escape_tab(i, charset, tab_tpl))
+                                 for i in tab["_children"]])
+ if len(result["children"]):
+  result["children"] = indent("\n%s\n   " % result["children"], 2)
+ 
+ return result
+
+
+def count_tabs(tabs):
+ return len(tabs) + sum([count_tabs(i["_children"]) for i in tabs])
 
 
 def make_html(windows,
@@ -139,15 +224,15 @@ def make_html(windows,
   windows="\n".join([
    window_tpl.substitute(
     n=i+1,
-    n_tabs=len(windows[i]),
-    tabs_word=tabs_word[int(len(windows[i]) > 1)],
+    n_tabs=count_tabs(windows[i]),
+    tabs_word=tabs_word[int(count_tabs(windows[i]) > 1)],
     tabs="\n".join([tab_tpl.substitute(html_escape_tab(tab, charset))
                     for tab in windows[i]])
    )
    for i in xrange(len(windows))
   ]),
   window_list="\n".join([window_list_tpl.substitute(
-   n=i+1, n_tabs=len(windows[i]), tabs_word=tabs_word[int(len(windows[i]) > 1)]
+   n=i+1, n_tabs=count_tabs(windows[i]), tabs_word=tabs_word[int(count_tabs(windows[i]) > 1)]
   ) for i in xrange(len(windows))])
  )
 
