@@ -191,21 +191,20 @@ def build_tree(tabs_in):
 
 # HTML generation {{{1
 
-def html_escape_tab(tab, charset=OUTPUT_CHARSET, tab_tpl=TAB_TEMPLATE):
- result = dict([(k, cgi.escape(tab[k], True).encode(OUTPUT_CHARSET)) for k in tab
+def make_tab(tab, tab_tpl=TAB_TEMPLATE, charset=OUTPUT_CHARSET):
+ params = dict([(k, cgi.escape(tab[k], True).encode(OUTPUT_CHARSET)) for k in tab
                 if not k.startswith("_")])
  
- result["material_icon"] = "tab"
+ params["material_icon"] = "tab"
  if tab["url"] == tab["icon"]:
-  result["icon"] = ""
-  result["material_icon"] = "photo_size_select_actual"
+  params["icon"] = ""
+  params["material_icon"] = "photo_size_select_actual"
  
- result["children"] = "\n".join([tab_tpl.substitute(html_escape_tab(i, charset, tab_tpl))
-                                 for i in tab["_children"]])
- if len(result["children"]):
-  result["children"] = indent("\n%s\n   " % result["children"], 2)
+ params["children"] = "\n".join([make_tab(i, tab_tpl, charset) for i in tab["_children"]])
+ if len(params["children"]):
+  params["children"] = indent("\n%s\n   " % params["children"], 2)
  
- return result
+ return tab_tpl.substitute(params)
 
 
 def count_tabs(tabs):
@@ -226,8 +225,7 @@ def make_html(windows,
     n=i+1,
     n_tabs=count_tabs(windows[i]),
     tabs_word=tabs_word[int(count_tabs(windows[i]) > 1)],
-    tabs="\n".join([tab_tpl.substitute(html_escape_tab(tab, charset))
-                    for tab in windows[i]])
+    tabs="\n".join([make_tab(tab, tab_tpl, charset) for tab in windows[i]])
    )
    for i in xrange(len(windows))
   ]),
