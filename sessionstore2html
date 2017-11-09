@@ -191,22 +191,6 @@ def build_tree(tabs_in):
 
 # HTML generation {{{1
 
-def make_tab(tab, tab_tpl=TAB_TEMPLATE, charset=OUTPUT_CHARSET):
- params = dict([(k, cgi.escape(tab[k], True).encode(OUTPUT_CHARSET)) for k in tab
-                if not k.startswith("_")])
- 
- params["material_icon"] = "tab"
- if tab["url"] == tab["icon"]:
-  params["icon"] = ""
-  params["material_icon"] = "photo_size_select_actual"
- 
- params["children"] = "\n".join([make_tab(i, tab_tpl, charset) for i in tab["_children"]])
- if len(params["children"]):
-  params["children"] = indent("\n%s\n   " % params["children"], 2)
- 
- return tab_tpl.substitute(params)
-
-
 def count_tabs(tabs):
  return len(tabs) + sum([count_tabs(i["_children"]) for i in tabs])
 
@@ -233,6 +217,22 @@ def make_html(windows,
    n=i+1, n_tabs=count_tabs(windows[i]), tabs_word=tabs_word[int(count_tabs(windows[i]) > 1)]
   ) for i in xrange(len(windows))])
  )
+
+
+def make_tab(tab, tab_tpl=TAB_TEMPLATE, charset=OUTPUT_CHARSET):
+ params = dict([(k, cgi.escape(tab[k], True).encode(OUTPUT_CHARSET)) for k in tab
+                if not k.startswith("_")])
+ 
+ params["material_icon"] = "tab"
+ if tab["url"] == tab["icon"]:
+  params["icon"] = ""
+  params["material_icon"] = "photo_size_select_actual"
+ 
+ params["children"] = "\n".join([make_tab(i, tab_tpl, charset) for i in tab["_children"]])
+ if len(params["children"]):
+  params["children"] = indent("\n%s\n   " % params["children"], 2)
+ 
+ return tab_tpl.substitute(params)
 
 
 # Profile/sessionstore.js finders {{{1
