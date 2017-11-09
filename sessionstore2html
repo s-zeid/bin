@@ -47,7 +47,7 @@ OUTPUT_CHARSET = "utf-8"
 
 PAGE_TEMPLATE = Template("""<!DOCTYPE html>
 
-<html>
+<ht""" """ml>
  <head>
   <meta charset="$charset" />
   <title>Firefox Tabs</title>
