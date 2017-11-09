@@ -58,10 +58,11 @@ PAGE_TEMPLATE = Template("""<!DOCTYPE html>
    li { line-height: 22px; }
    .tabs { padding-left: 0.5em; }
    .tab { list-style-type: none; }
-   .tab .icon { float: left; width: 16px; max-height: 16px; margin-top: 0.2em;
-                font-size: 16px; color: #666; }
+   .tab .link { display: table-row; }
+   .tab .icon { display: table-cell; position: relative; top: 0.15em;
+                width: 16px; max-height: 16px; font-size: 16px; color: #666; }
    .tab .icon[alt^="photo"] { color: #668; }
-   .tab .title { margin-left: 0.25em; }
+   .tab .title { display: table-cell; padding-left: 0.25em; }
    .children { border-left: 1px solid #ddd; margin: 0 0 0 8px; }
    
    /* workaround for favicons blocked by uBlock Origin
