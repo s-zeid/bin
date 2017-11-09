@@ -63,6 +63,8 @@ PAGE_TEMPLATE = Template("""<!DOCTYPE html>
                 width: 16px; max-height: 16px; font-size: 16px; color: #666; }
    .tab .icon[alt^="photo"] { color: #668; }
    .tab .title { display: table-cell; padding-left: 0.25em; }
+   .tab.pinned + .tab:not(.pinned) { border-top: 1px solid #ddd;
+                                     margin-top: 0.5em; padding-top: 0.5em; }
    .children { border-left: 1px solid #ddd; margin: 0 0 0 8px; }
    
    /* workaround for favicons blocked by uBlock Origin
@@ -101,7 +103,7 @@ $tabs
  <p><a href="#">Back to top</a></p>
 </section>""", 2).compile()
 
-TAB_TEMPLATE = Template("""<li class="tab">
+TAB_TEMPLATE = Template("""<li class="tab$extra_classes">
  <a href="$url" target="_blank" class="link">
   <img src="$icon" alt="$material_icon" class="icon material-icons"
   /><span class="title">$title</span>
@@ -138,6 +140,7 @@ def tab_to_dict(tab):
   "title": tab["entries"][tab["index"] - 1].get("title",
             os.path.basename(tab["entries"][tab["index"] - 1]["url"])),
   "url":   tab["entries"][tab["index"] - 1]["url"],
+  "_pinned": tab.get("pinned", False),
   "_children": [],
  }
  
@@ -228,6 +231,11 @@ def make_tab(tab, tab_tpl=TAB_TEMPLATE, charset=OUTPUT_CHARSET):
  if tab["url"] == tab["icon"]:
   params["icon"] = ""
   params["material_icon"] = "photo_size_select_actual"
+ 
+ extra_classes = []
+ if tab["_pinned"]:
+  extra_classes += ["pinned"]
+ params["extra_classes"] = " " + " ".join(extra_classes) if len(extra_classes) else ""
  
  params["children"] = "\n".join([make_tab(i, tab_tpl, charset) for i in tab["_children"]])
  if len(params["children"]):
