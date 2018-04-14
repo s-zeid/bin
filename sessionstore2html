@@ -175,18 +175,19 @@ def build_tree(tabs_in):
  
  def build_subtree(tab):
   for child_id in tab["_tst_children"]:
-   child = tabs_dict[child_id]
-   before = tabs_dict.get(child["_tst_before"], None)
-   after = tabs_dict.get(child["_tst_after"], None)
-   if before in tab["_children"]:
-    before_index = tab["_children"].index(before)
-    tab["_children"][before_index:before_index] = [child]
-   elif after in tab["_children"]:
-    after_index = tab["_children"].index(after)
-    tab["_children"][after_index+1:after_index+1] = [child]
-   else:
-    tab["_children"] += [child]
-   build_subtree(child)
+   if child_id in tabs_dict:
+    child = tabs_dict[child_id]
+    before = tabs_dict.get(child["_tst_before"], None)
+    after = tabs_dict.get(child["_tst_after"], None)
+    if before in tab["_children"]:
+     before_index = tab["_children"].index(before)
+     tab["_children"][before_index:before_index] = [child]
+    elif after in tab["_children"]:
+     after_index = tab["_children"].index(after)
+     tab["_children"][after_index+1:after_index+1] = [child]
+    else:
+     tab["_children"] += [child]
+    build_subtree(child)
  
  for tab in tabs_out:
   build_subtree(tab)
