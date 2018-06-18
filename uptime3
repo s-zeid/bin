@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+# vim: set fdm=marker:
+
+# A Python 3 + psutil implementation of uptime(1) from procps-ng
+# (because openSUSE only ships the GNU coreutils version,
+#  which doesn't have -s/--since or -p/--pretty)
+
+# LICENSE  {{{1
+
+# Ported from procps-ng uptime
+# (https://gitlab.com/procps-ng/procps/blob/master/proc/whattime.c)
+# Original copyright statement:
+# 
+# This is a trivial uptime program.  I hereby release this program
+# into the public domain.  I disclaim any responsibility for this
+# program --- use it at your own risk.  (as if there were any.. ;-)
+# -michaelkjohnson (johnsonm@sunsite.unc.edu)
+#
+# Modified by Larry Greenfield to give a more traditional output,
+# count users, etc.  (greenfie@gauss.rutgers.edu)
+#
+# Modified by mkj again to fix a few tiny buglies.
+#
+# Modified by J. Cowley to add printing the uptime message to a
+# string (for top) and to optimize file handling.  19 Mar 1993.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+
+
+# imports  {{{1
+
+import argparse
+import os
+import sys
+import time
+
+import psutil  # pip3 install psutil
+
+
+def main(argv):  #{{{1
+ p = argparse.ArgumentParser()
+ p.add_argument("-p", "--pretty", action="store_true",
+                help="show uptime in pretty format")
+ p.add_argument("-s", "--since", action="store_true",
+                help="system up since")
+ p.add_argument("--hep", dest="_hep_easter_egg", action="store_true",
+                help=argparse.SUPPRESS)
+ 
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ if options._hep_easter_egg:
+  print("Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes.")
+  print("--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s")
+  return 0
+ 
+ if options.since:
+  print_uptime_since()
+ else:
+  print_uptime(options.pretty)
+
+
+def print_uptime_since():  #{{{1
+ print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(psutil.boot_time())))
+
+
+def print_uptime(human_readable):  #{{{1
+ print(sprint_uptime(human_readable))
+
+
+def sprint_uptime(human_readable):  #{{{1
+ result = ""
+ 
+ if not human_readable:
+  result += time.strftime(" %H:%M:%S ") 
+ 
+ uptime_secs = time.time() - psutil.boot_time()
+ 
+ if human_readable:
+  updecades = int(uptime_secs / (60*60*24*365*10))
+  upyears = int((uptime_secs / (60*60*24*365)) % 10)
+  upweeks = int((uptime_secs / (60*60*24*7)) % 52)
+  updays = int((uptime_secs / (60*60*24)) % 7)
+ else:
+  updays = uptime_secs / (60*60*24)
+ 
+ result += "up "
+ 
+ if not human_readable:
+  if updays:
+   result += "%d day%s, " % (updays, "s" if updays != 1 else "")
+ 
+ upminutes = int(uptime_secs / 60)
+ uphours = int(upminutes / 60)
+ uphours = int(uphours % 24)
+ upminutes = int(upminutes % 60)
+ 
+ if not human_readable:
+  if uphours:
+   result += "%2d:%02d" % (uphours, upminutes)
+  else:
+   result += "%d min, " % upminutes
+ 
+  numuser = len(psutil.users())
+  result += ", %2d user%s" % (numuser, "" if numuser == 1 else "s")
+ 
+  try:
+   av = os.getloadavg()
+   result += ",  load average: %.2f, %.2f, %.2f" % (av[0], av[1], av[2])
+  except OSError:
+   pass
+ 
+ if human_readable:
+  comma = 0
+  if updecades:
+   result += "%d decade%s" % (updecades, "s" if updecades > 1 else "")
+   comma += 1
+  if upyears:
+   result += "%s%d year%s" % (", " if comma else "", upyears, "s" if upyears > 1 else "")
+   comma += 1
+  if upweeks:
+   result += "%s%d week%s" % (", " if comma else "", upweeks, "s" if upweeks > 1 else "")
+   comma += 1
+  if updays:
+   result += "%s%d day%s" % (", " if comma else "", updays, "s" if updays > 1 else "")
+   comma += 1
+  if uphours:
+   result += "%s%d hour%s" % (", " if comma else "", uphours, "s" if uphours > 1 else "")
+   comma += 1
+  if upminutes or (not upminutes and uptime_secs < 60):
+   result += "%s%d minute%s" % (", " if comma else "", upminutes, "s" if upminutes > 1 else "")
+   comma += 1
+ 
+ return result
+
+
+if __name__ == "__main__":  #{{{1
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
