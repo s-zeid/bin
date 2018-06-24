@@ -96,7 +96,7 @@ def sprint_uptime(human_readable):  #{{{1
   upweeks = int((uptime_secs / (60*60*24*7)) % 52)
   updays = int((uptime_secs / (60*60*24)) % 7)
  else:
-  updays = uptime_secs / (60*60*24)
+  updays = int(uptime_secs / (60*60*24))
  
  result += "up "
  
