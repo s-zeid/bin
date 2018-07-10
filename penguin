@@ -1,11 +1,12 @@
-#!/bin/bash
+#!/bin/sh
 
 PENGUIN_PLAIN='<")'
 PENGUIN_COLOR='[0;31;40;91;100m<[37m")[0m'
 PENGUIN_SCREEN='%{= KR}<%{-}%{= Kw}")%{-} '
 PENGUIN_SCREEN_STATUS='{= KR}<{-}{= Kw}"){-} '
+PENGUIN_TMUX='#[default]#[fg=brightred,bg=brightblack]<#[fg=white]")#[default]'
 
-if [ "$1" = "-h" -o "$1" = "--help" ]; then
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
  cat <<USAGE
 Usage: $0 [OPTION]
 
@@ -28,20 +29,34 @@ Options (only the first argument is considered):
                                    sequences, using ^E as the escape sequences
                                    (for use inside of a window's hardstatus).
     
+    -T, --tmux                     Displays the penguin using tmux escape
+                                   sequences.
+    
     -h, --help                     Displays this help and exits.
 
 USAGE
- exit
+ exit 0
+fi
+
+if [ x"$1" = x"--hep" ]; then
+ echo "Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes."
+ echo "--Red Green (episode 102), https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s"
+ exit 0
 fi
 
 PENGUIN="$PENGUIN_PLAIN"
-if [ "$1" = "-s" -o "$1" = "--screen" ]; then
+if [ x"$1" = x"-s" ] || [ x"$1" = x"--screen" ]; then
  PENGUIN="$PENGUIN_SCREEN"
-elif [ "$1" = "-S" -o "$1" = "--screen-status" ]; then
+elif [ x"$1" = x"-S" ] || [ x"$1" = x"--screen-hardstatus" ] || \
+     [ x"$1" = x"--screen-status" ]; then
  PENGUIN="$PENGUIN_SCREEN_STATUS"
-elif [ "$1" != "-p" -a "$1" != "--plain" -a \
-       "$1" != "-n" -a "$1" != "--no-color" -a "$1" != "--no-colour" ]; then
- if [ -t 1 -o "$1" = "-c" -o "$1" = "--color" -o "$1" = "--colour" ]; then
+elif [ x"$1" = x"-T" ] || [ x"$1" = x"--tmux" ]; then
+ PENGUIN="$PENGUIN_TMUX"
+elif [ x"$1" != x"-p" ] && [ x"$1" != x"--plain" ] && \
+     [ x"$1" != x"-n" ] && [ x"$1" != x"--no-color" ] && \
+     [ x"$1" != x"--no-colour" ]; then
+ if [ -t 1 ] || \
+    [ x"$1" = x"-c" ] || [ x"$1" = x"--color" ] || [ x"$1" = x"--colour" ]; then
   PENGUIN="$PENGUIN_COLOR"
  fi
 fi
