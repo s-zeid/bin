@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # vim:set fdm=marker:
 
 """Converts a Firefox sessionstore js/jsonlz4 file to HTML.
@@ -15,14 +15,15 @@ single window will be mixed together depending on the order they appear in the
 sessionstore file.
 
 To read jsonlz4 files used in newer versions of Firefox, you will need to run
-`pip install lz4` (or install that package some other way).
+`pip3 install lz4` (or install that package some other way).
 
 """
 
 # Plumbing {{{1
 
-import cgi
-import ConfigParser
+import configparser
+import html
+import io
 import json
 import os
 import platform
@@ -31,7 +32,7 @@ import sys
 
 from collections import namedtuple
 
-import lz4  # pip install lz4
+import lz4.block  # pip3 install lz4
 
 
 # Templates and template helpers {{{1
@@ -43,13 +44,11 @@ class Template(Template):
  def compile(self): return string.Template(indent(self[0], self[1]))
 
 
-OUTPUT_CHARSET = "utf-8"
-
 PAGE_TEMPLATE = Template("""<!DOCTYPE html>
 
 <ht""" """ml>
  <head>
-  <meta charset="$charset" />
+  <meta charset="utf-8" />
   <title>Firefox Tabs</title>
   <link rel="stylesheet" type="text/css" href="https://s.zeid.me/styles/basic.css" />
   <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Material+Icons" />
@@ -118,13 +117,13 @@ TABS_WORD = ("tab", "tabs")
 # sessionstore parsing {{{1
 
 def windows_from_sessionstore(store):
- if isinstance(store, file):
+ if isinstance(store, io.IOBase):
   store = store.read()
- if isinstance(store, basestring):
+ if isinstance(store, bytes):
   if store.startswith(b"mozLz40\0"):
    store = lz4.block.decompress(store[8:])
   store = store.decode("utf-8")
-  store = json.loads(store)
+ store = json.loads(store)
  return [window_to_list(window) for window in store["windows"]]
 
 
@@ -206,27 +205,25 @@ def make_html(windows,
               window_list_tpl=WINDOW_LIST_TEMPLATE,
               window_tpl=WINDOW_TEMPLATE,
               tab_tpl=TAB_TEMPLATE,
-              tabs_word=TABS_WORD,
-              charset=OUTPUT_CHARSET):
+              tabs_word=TABS_WORD):
  return page_tpl.substitute(
-  charset=cgi.escape(charset, True),
   windows="\n".join([
    window_tpl.substitute(
     n=i+1,
     n_tabs=count_tabs(windows[i]),
     tabs_word=tabs_word[int(count_tabs(windows[i]) > 1)],
-    tabs="\n".join([make_tab(tab, tab_tpl, charset) for tab in windows[i]])
+    tabs="\n".join([make_tab(tab, tab_tpl) for tab in windows[i]])
    )
-   for i in xrange(len(windows))
+   for i in range(len(windows))
   ]),
   window_list="\n".join([window_list_tpl.substitute(
    n=i+1, n_tabs=count_tabs(windows[i]), tabs_word=tabs_word[int(count_tabs(windows[i]) > 1)]
-  ) for i in xrange(len(windows))])
+  ) for i in range(len(windows))])
  )
 
 
-def make_tab(tab, tab_tpl=TAB_TEMPLATE, charset=OUTPUT_CHARSET):
- params = dict([(k, cgi.escape(tab[k], True).encode(OUTPUT_CHARSET)) for k in tab
+def make_tab(tab, tab_tpl=TAB_TEMPLATE):
+ params = dict([(k, html.escape(tab[k], True)) for k in tab
                 if not k.startswith("_")])
  
  params["material_icon"] = "tab"
@@ -239,7 +236,7 @@ def make_tab(tab, tab_tpl=TAB_TEMPLATE, charset=OUTPUT_CHARSET):
   extra_classes += ["pinned"]
  params["extra_classes"] = " " + " ".join(extra_classes) if len(extra_classes) else ""
  
- params["children"] = "\n".join([make_tab(i, tab_tpl, charset) for i in tab["_children"]])
+ params["children"] = "\n".join([make_tab(i, tab_tpl) for i in tab["_children"]])
  if len(params["children"]):
   params["children"] = indent("\n%s\n   " % params["children"], 2)
  
@@ -266,9 +263,9 @@ def get_default_profile_path(profiles_dir=None):
  
  profile = None
  
- cp = ConfigParser.RawConfigParser(None, dict, True)
- with open(os.path.join(profiles_dir, "profiles.ini"), "rb") as f:
-  cp.readfp(f)
+ cp = configparser.RawConfigParser(None, dict, True)
+ with open(os.path.join(profiles_dir, "profiles.ini"), "r") as f:
+  cp.read_file(f)
  for section in cp.sections():
   if section.lower() != "general":
    if cp.has_option(section, "Default") and cp.has_option(section, "Path"):
@@ -315,12 +312,12 @@ def main(argv):  #{{{1
  elif len(argv) == 2 and argv[1] == "-":
   sessionstore_js = sys.stdin
  elif len(argv) == 2 and argv[1] in ("--help", "-h"):
-  print usage % argv[0]
+  print(usage % argv[0])
   return 0
  elif len(argv) == 1:
   sessionstore_js = None
  elif len(argv) not in (2, 3):
-  print >> sys.stderr, usage % argv[0]
+  print(usage % argv[0], file=sys.stderr)
   return 2
  else:
   sessionstore_js = argv[1]
@@ -328,24 +325,26 @@ def main(argv):  #{{{1
  if sessionstore_js is None:
   profile_path = get_default_profile_path()
   if not profile_path:
-   print >> sys.stderr, "error: could not find default Firefox profile"
+   print("error: could not find default Firefox profile", file=sys.stderr)
    return 1
   sessionstore_js = get_sessionstore_js_path(profile_path)
   if not sessionstore_js:
-   print >> sys.stderr, ("error: could not find sessionstore.js file in the default"
-                         " Firefox profile")
+   print("error: could not find sessionstore.js file in the default"
+         " Firefox profile", file=sys.stderr)
    return 1
  elif os.path.isdir(sessionstore_js):
   profile_path = sessionstore_js
   sessionstore_js = get_sessionstore_js_path(profile_path)
   if not sessionstore_js:
-   print >> sys.stderr, ("error: could not find sessionstore.js file in the given"
-                         " Firefox profile")
+   print("error: could not find sessionstore.js file in the given"
+         " Firefox profile", file=sys.stderr)
    return 1
 
- if isinstance(sessionstore_js, basestring):
+ if isinstance(sessionstore_js, str):
   sessionstore_js = open(sessionstore_js, "rb")
- print make_html(windows_from_sessionstore(sessionstore_js))
+ 
+ print(make_html(windows_from_sessionstore(sessionstore_js)))
+ 
  if sessionstore_js != sys.stdin:
   sessionstore_js.close()
  
