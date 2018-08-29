@@ -30,7 +30,7 @@ import platform
 import string
 import sys
 
-from collections import namedtuple
+from typing import *
 
 import lz4.block  # pip3 install lz4
 
@@ -39,9 +39,14 @@ import lz4.block  # pip3 install lz4
 
 def indent(s, n):
  return "\n".join((" " * (n * int(not l.startswith("$")))) + l for l in s.splitlines())
-Template = namedtuple("Template", "template,indent")
-class Template(Template):
- def compile(self): return string.Template(indent(self[0], self[1]))
+
+
+class Template(NamedTuple):
+ template: str
+ indent: int
+ 
+ def compile(self):
+  return string.Template(indent(self.template, self.indent))
 
 
 PAGE_TEMPLATE = Template("""<!DOCTYPE html>
@@ -116,163 +121,204 @@ TABS_WORD = ("tab", "tabs")
 
 # sessionstore parsing {{{1
 
-def windows_from_sessionstore(store):
- if isinstance(store, io.IOBase):
-  store = store.read()
- if isinstance(store, bytes):
-  if store.startswith(b"mozLz40\0"):
-   store = lz4.block.decompress(store[8:])
-  store = store.decode("utf-8")
- store = json.loads(store)
- return [window_to_list(window) for window in store["windows"]]
+class Session:  #{{{2
+ src: dict
+ windows: List["Window"]
+ 
+ @overload
+ def __init__(self, src: io.IOBase) -> None: ...
+ 
+ @overload
+ def __init__(self, src: bytes) -> None: ...
+ 
+ @overload
+ def __init__(self, src: str) -> None: ...
+ 
+ def __init__(self, src):
+  if isinstance(src, io.IOBase):
+   src = src.read()
+  if isinstance(src, bytes):
+   if src.startswith(b"mozLz40\0"):
+    src = lz4.block.decompress(src[8:])
+   src = src.decode("utf-8")
+  
+  self.src = src = json.loads(src)
+  self.windows = [Window(window) for window in src["windows"]]
 
 
-def window_to_list(window):
- return build_tree([i for i in [tab_to_dict(tab) for tab in window["tabs"]] if i])
-
-
-def build_tree(tabs_in):
- if "_tst_id" not in tabs_in[0]:
-  return tabs_in
+class Window:  #{{{2
+ src: dict
+ tabs: List["Tab"]
+ tree: List["Tab"]
  
- tabs_out = []
- tabs_dict = dict([(i["_tst_id"], i) for i in tabs_in if i["_tst_id"]])
+ def __init__(self, src: dict) -> None:
+  self.src = src
+  self.tabs = [Tab(tab) for tab in src["tabs"] if "entries" in tab]
+  self.tree = self._build_tree()
  
- for tab in tabs_in:
-  if not len(tab["_tst_ancestors"]):
-   tabs_out += [tab]
-   tab["_parent"] = None
+ def _build_tree(self) -> List["Tab"]:
+  if not self.tabs[0]._tree.member:
+   return self.tabs
+  
+  result: List["Tab"] = []
+  tabs_dict = dict([(i._tree.id, i) for i in self.tabs if i._tree.id])
+  
+  for tab in self.tabs:
+   if not len(tab._tree.ancestors):
+    result += [tab]
+    tab._parent = None
+  
+  def build_subtree(tab):
+   for child_id in tab._tree.children:
+    if child_id in tabs_dict:
+     child = tabs_dict[child_id]
+     insert_child(child, tab)
+     build_subtree(child)
+     child._processed = 1
+  
+  def insert_child(child, parent):
+   before = tabs_dict.get(child._tree.before, None)
+   after = tabs_dict.get(child._tree.after, None)
+   siblings = parent._children if parent else result
+   if child in siblings:
+    siblings.remove(child)
+   if before in siblings:
+    before_index = siblings.index(before)
+    siblings[before_index:before_index] = [child]
+   elif after in siblings:
+    after_index = siblings.index(after)
+    siblings[after_index+1:after_index+1] = [child]
+   else:
+    siblings += [child]
+   child._parent = parent or None
+  
+  for tab in result:
+   build_subtree(tab)
+   tab._processed = 2
+  
+  # Insert orphaned tabs while making a best effort to preserve their
+  # original positions
+  
+  orphans = [tab for tab in self.tabs if not tab._processed]
  
- def build_subtree(tab):
-  for child_id in tab["_tst_children"]:
-   if child_id in tabs_dict:
-    child = tabs_dict[child_id]
-    insert_child(child, tab)
-    build_subtree(child)
-    child["__processed"] = 1
- 
- def insert_child(child, parent):
-  before = tabs_dict.get(child["_tst_before"], None)
-  after = tabs_dict.get(child["_tst_after"], None)
-  siblings = parent["_children"] if parent else tabs_out
-  if child in siblings:
-   siblings.remove(child)
-  if before in siblings:
-   before_index = siblings.index(before)
-   siblings[before_index:before_index] = [child]
-  elif after in siblings:
-   after_index = siblings.index(after)
-   siblings[after_index+1:after_index+1] = [child]
-  else:
-   siblings += [child]
-  child["_parent"] = parent or None
- 
- for tab in tabs_out:
-  build_subtree(tab)
-  tab["__processed"] = 2
- 
- # Insert orphaned tabs while making a best effort to preserve their
- # original positions
- 
- orphans = [tab for tab in tabs_in if not tab["__processed"]]
-
- for orphan in orphans:
-  # Propagate before/after to orphaned ancestors of orphaned tabs
-  before = tabs_dict.get(orphan["_tst_before"], None)
-  after = tabs_dict.get(orphan["_tst_after"], None)
-  for anc_id in orphan["_tst_ancestors"]:
-   if anc_id in tabs_dict:
-    anc = tabs_dict[anc_id]
-    if not anc["__processed"]:
-     if before:
-      anc["_tst_before"] = before["_tst_id"]
-     if after:
-      anc["_tst_after"] = after["_tst_id"]
-    break
- 
- delayed = []
- for pass_ in (1, 2):
-  # Insert in 2 passes.  The second pass is for tabs whose before xor after
-  # is set and which have an orphaned ancestor, since a better position
-  # might be available on the second pass.
-  for orphan in (orphans if pass_ == 1 else delayed):
-   before = tabs_dict.get(orphan["_tst_before"], None)
-   after = tabs_dict.get(orphan["_tst_after"], None)
-   
-   for anc_id in orphan["_tst_ancestors"]:
-    # non-orphaned ancestor
+  for orphan in orphans:
+   # Propagate before/after to orphaned ancestors of orphaned tabs
+   before = tabs_dict.get(orphan._tree.before, None)
+   after = tabs_dict.get(orphan._tree.after, None)
+   for anc_id in orphan._tree.ancestors:
     if anc_id in tabs_dict:
      anc = tabs_dict[anc_id]
-     if anc["__processed"]:
-      insert_child(orphan, anc)
-      orphan["__processed"] = 3
-      break
-   
-   else:
-    # orphaned ancestor; try to use parent of adjacent tab
-    if before:
-     parent = before["_parent"]
-    elif after:
-     parent = after["_parent"]
-    else:
-     parent = None
+     if not anc._processed:
+      if before:
+       anc._tree.before = before._tree.id
+      if after:
+       anc._tree.after = after._tree.id
+     break
+  
+  delayed: List["Tab"] = []
+  for pass_ in (1, 2):
+   # Insert in 2 passes.  The second pass is for tabs whose before xor after
+   # is set and which have an orphaned ancestor, since a better position
+   # might be available on the second pass.
+   for orphan in (orphans if pass_ == 1 else delayed):
+    before = tabs_dict.get(orphan._tree.before, None)
+    after = tabs_dict.get(orphan._tree.after, None)
     
-    if parent and parent is not Ellipsis and parent is not orphan:
-     # adjacent tab has parent
-     insert_child(orphan, parent)
-     orphan["__processed"] = 4
-    elif pass_ == 1 and ((before and not after) or (after and not before)):
-     # delay if before xor after are set because a better position might
-     # be available in the next pass
-     delayed += [orphan]
+    for anc_id in orphan._tree.ancestors:
+     # non-orphaned ancestor
+     if anc_id in tabs_dict:
+      anc = tabs_dict[anc_id]
+      if anc._processed:
+       insert_child(orphan, anc)
+       orphan._processed = 3
+       break
+    
     else:
-     # add to root level as a last resort
-     insert_child(orphan, None)
-     orphan["__processed"] = 5
-   
-   if pass_ == 2 and isinstance(orphan["__processed"], (int, float)):
-    orphan["__processed"] += 0.2
- 
- return tabs_out
+     # orphaned ancestor; try to use parent of adjacent tab
+     if before:
+      parent = before._parent
+     elif after:
+      parent = after._parent
+     else:
+      parent = None
+     
+     if parent and parent is not Ellipsis and parent is not orphan:
+      # adjacent tab has parent
+      insert_child(orphan, parent)
+      orphan._processed = 4
+     elif pass_ == 1 and ((before and not after) or (after and not before)):
+      # delay if before xor after are set because a better position might
+      # be available in the next pass
+      delayed += [orphan]
+     else:
+      # add to root level as a last resort
+      insert_child(orphan, None)
+      orphan._processed = 5
+    
+    if pass_ == 2 and isinstance(orphan._processed, (int, float)):
+     orphan._processed += 0.2
+  
+  return result
 
 
-def tab_to_dict(tab):
- if not tab.get("entries"):
-  return None
+class Tab:  #{{{2
  
- result = {
-  "icon":  tab.get("image", tab.get("attributes", {}).get("image", "")) or "",
-  "title": tab["entries"][tab["index"] - 1].get("title",
-            os.path.basename(tab["entries"][tab["index"] - 1]["url"])),
-  "url":   tab["entries"][tab["index"] - 1]["url"],
-  "_pinned": tab.get("pinned", False),
-  "_children": [],
-  "_parent": ...,
-  "__processed": False,
- }
+ src: dict
  
- ext = tab.get("extData", {})
- ext_tst = "extension:treestyletab@piro.sakura.ne.jp:"
- if ext_tst + "data-persistent-id" in ext:
-  result.update({
-   "_tst_id": json.loads(ext.get(ext_tst + "data-persistent-id", "{}")).get("id", ""),
-   "_tst_ancestors": json.loads(ext.get(ext_tst + "ancestors", "[]")),
-   "_tst_before": json.loads(ext.get(ext_tst + "insert-before", '""')),
-   "_tst_after": json.loads(ext.get(ext_tst + "isnert-after",  # typo is upstream
-                            ext.get(ext_tst + "insert-after",  # in case they fix it
-                            '""'))),
-   "_tst_collapsed": json.loads(ext.get(ext_tst + "subtree-collapsed", "null")),
-   "_tst_children": json.loads(ext.get(ext_tst + "children", "[]")),
-  })
+ icon: str
+ title: str
+ url: str
+ _pinned: bool
+ _children: List["Tab"]
+ _parent: Union["Tab", None]
+ _processed: Union[bool, int, float]
+
+ _tree: "_Tree"
+ class _Tree:
+  member: bool = False
+  id: str = ""
+  ancestors: List[str]
+  before: str = ""
+  after: str = ""
+  children: List[str]
+  collapsed: bool = False
  
- return result
+ def __init__(self, src: dict) -> None:
+  if not src.get("entries"):
+   raise ValueError("source dict must have an \"entries\" key")
+ 
+  self.icon = src.get("image", src.get("attributes", {}).get("image", "")) or ""
+  self.title = src["entries"][src["index"] - 1].get("title",
+                os.path.basename(src["entries"][src["index"] - 1]["url"]))
+  self.url = src["entries"][src["index"] - 1]["url"]
+  self._pinned = src.get("pinned", False)
+  self._children = []
+  self._parent = cast(None, ...)
+  self._processed = False
+  self._tree = self._Tree()       
+  
+  ext = src.get("extData", {})
+  ext_tst = "extension:treestyletab@piro.sakura.ne.jp:"
+  if ext_tst + "data-persistent-id" in ext:
+   self._tree.member = True
+   self._tree.id = json.loads(ext.get(ext_tst + "data-persistent-id", "{}")).get("id", "")
+   self._tree.ancestors = json.loads(ext.get(ext_tst + "ancestors", "[]"))
+   self._tree.before = json.loads(ext.get(ext_tst + "insert-before", '""'))
+   self._tree.after = json.loads(ext.get(ext_tst + "isnert-after",  # typo is upstream
+                                 ext.get(ext_tst + "insert-after",  # in case they fix it
+                                 '""')))
+   self._tree.children = json.loads(ext.get(ext_tst + "children", "[]"))
+   self._tree.collapsed = json.loads(ext.get(ext_tst + "subtree-collapsed", "null"))
+  else:
+   self._tree.ancestors = []
+   self._tree.children = []
+ 
+ @staticmethod
+ def count(tabs: List["Tab"]) -> int:
+  return len(tabs) + sum([Tab.count(i._children) for i in tabs])
 
 
 # HTML generation {{{1
-
-def count_tabs(tabs):
- return len(tabs) + sum([count_tabs(i["_children"]) for i in tabs])
-
 
 def make_html(windows,
               page_tpl=PAGE_TEMPLATE,
@@ -284,33 +330,38 @@ def make_html(windows,
   windows="\n".join([
    window_tpl.substitute(
     n=i+1,
-    n_tabs=count_tabs(windows[i]),
-    tabs_word=tabs_word[int(count_tabs(windows[i]) > 1)],
-    tabs="\n".join([make_tab(tab, tab_tpl) for tab in windows[i]])
+    n_tabs=Tab.count(windows[i].tree),
+    tabs_word=tabs_word[int(Tab.count(windows[i].tree) > 1)],
+    tabs="\n".join([make_tab(tab, tab_tpl) for tab in windows[i].tree])
    )
    for i in range(len(windows))
   ]),
   window_list="\n".join([window_list_tpl.substitute(
-   n=i+1, n_tabs=count_tabs(windows[i]), tabs_word=tabs_word[int(count_tabs(windows[i]) > 1)]
+   n=i+1,
+   n_tabs=Tab.count(windows[i].tree),
+   tabs_word=tabs_word[int(Tab.count(windows[i].tree) > 1)]
   ) for i in range(len(windows))])
  )
 
 
 def make_tab(tab, tab_tpl=TAB_TEMPLATE):
- params = dict([(k, html.escape(tab[k], True)) for k in tab
-                if not k.startswith("_")])
+ params = dict(
+  icon=html.escape(tab.icon),
+  title=html.escape(tab.title),
+  url=html.escape(tab.url),
+ )
  
  params["material_icon"] = "tab"
- if tab["url"] == tab["icon"]:
+ if tab.url == tab.icon:
   params["icon"] = ""
   params["material_icon"] = "photo_size_select_actual"
  
  extra_classes = []
- if tab["_pinned"]:
+ if tab._pinned:
   extra_classes += ["pinned"]
  params["extra_classes"] = " " + " ".join(extra_classes) if len(extra_classes) else ""
  
- params["children"] = "\n".join([make_tab(i, tab_tpl) for i in tab["_children"]])
+ params["children"] = "\n".join([make_tab(i, tab_tpl) for i in tab._children])
  if len(params["children"]):
   params["children"] = indent("\n%s\n   " % params["children"], 2)
  
@@ -417,7 +468,8 @@ def main(argv):  #{{{1
  if isinstance(sessionstore_js, str):
   sessionstore_js = open(sessionstore_js, "rb")
  
- print(make_html(windows_from_sessionstore(sessionstore_js)))
+ session = Session(sessionstore_js)
+ print(make_html(session.windows))
  
  if sessionstore_js != sys.stdin:
   sessionstore_js.close()
