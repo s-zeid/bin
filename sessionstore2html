@@ -121,146 +121,6 @@ TABS_WORD = ("tab", "tabs")
 
 # sessionstore parsing {{{1
 
-class Session:  #{{{2
- src: dict
- windows: List["Window"]
- 
- @overload
- def __init__(self, src: io.IOBase) -> None: ...
- 
- @overload
- def __init__(self, src: bytes) -> None: ...
- 
- @overload
- def __init__(self, src: str) -> None: ...
- 
- def __init__(self, src):
-  if isinstance(src, io.IOBase):
-   src = src.read()
-  if isinstance(src, bytes):
-   if src.startswith(b"mozLz40\0"):
-    src = lz4.block.decompress(src[8:])
-   src = src.decode("utf-8")
-  
-  self.src = src = json.loads(src)
-  self.windows = [Window(window) for window in src["windows"]]
-
-
-class Window:  #{{{2
- src: dict
- tabs: List["Tab"]
- tree: List["Tab"]
- 
- def __init__(self, src: dict) -> None:
-  self.src = src
-  self.tabs = [Tab(tab) for tab in src["tabs"] if "entries" in tab]
-  self.tree = self._build_tree()
- 
- def _build_tree(self) -> List["Tab"]:
-  if not self.tabs[0]._tree.member:
-   return self.tabs
-  
-  result: List["Tab"] = []
-  tabs_dict = dict([(i._tree.id, i) for i in self.tabs if i._tree.id])
-  
-  for tab in self.tabs:
-   if not len(tab._tree.ancestors):
-    result += [tab]
-    tab._parent = None
-  
-  def build_subtree(tab):
-   for child_id in tab._tree.children:
-    if child_id in tabs_dict:
-     child = tabs_dict[child_id]
-     insert_child(child, tab)
-     build_subtree(child)
-     child._processed = 1
-  
-  def insert_child(child, parent):
-   before = tabs_dict.get(child._tree.before, None)
-   after = tabs_dict.get(child._tree.after, None)
-   siblings = parent._children if parent else result
-   if child in siblings:
-    siblings.remove(child)
-   if before in siblings:
-    before_index = siblings.index(before)
-    siblings[before_index:before_index] = [child]
-   elif after in siblings:
-    after_index = siblings.index(after)
-    siblings[after_index+1:after_index+1] = [child]
-   else:
-    siblings += [child]
-   child._parent = parent or None
-  
-  for tab in result:
-   build_subtree(tab)
-   tab._processed = 2
-  
-  # Insert orphaned tabs while making a best effort to preserve their
-  # original positions
-  
-  orphans = [tab for tab in self.tabs if not tab._processed]
- 
-  for orphan in orphans:
-   # Propagate before/after to orphaned ancestors of orphaned tabs
-   before = tabs_dict.get(orphan._tree.before, None)
-   after = tabs_dict.get(orphan._tree.after, None)
-   for anc_id in orphan._tree.ancestors:
-    if anc_id in tabs_dict:
-     anc = tabs_dict[anc_id]
-     if not anc._processed:
-      if before:
-       anc._tree.before = before._tree.id
-      if after:
-       anc._tree.after = after._tree.id
-     break
-  
-  delayed: List["Tab"] = []
-  for pass_ in (1, 2):
-   # Insert in 2 passes.  The second pass is for tabs whose before xor after
-   # is set and which have an orphaned ancestor, since a better position
-   # might be available on the second pass.
-   for orphan in (orphans if pass_ == 1 else delayed):
-    before = tabs_dict.get(orphan._tree.before, None)
-    after = tabs_dict.get(orphan._tree.after, None)
-    
-    for anc_id in orphan._tree.ancestors:
-     # non-orphaned ancestor
-     if anc_id in tabs_dict:
-      anc = tabs_dict[anc_id]
-      if anc._processed:
-       insert_child(orphan, anc)
-       orphan._processed = 3
-       break
-    
-    else:
-     # orphaned ancestor; try to use parent of adjacent tab
-     if before:
-      parent = before._parent
-     elif after:
-      parent = after._parent
-     else:
-      parent = None
-     
-     if parent and parent is not Ellipsis and parent is not orphan:
-      # adjacent tab has parent
-      insert_child(orphan, parent)
-      orphan._processed = 4
-     elif pass_ == 1 and ((before and not after) or (after and not before)):
-      # delay if before xor after are set because a better position might
-      # be available in the next pass
-      delayed += [orphan]
-     else:
-      # add to root level as a last resort
-      insert_child(orphan, None)
-      orphan._processed = 5
-    
-    if pass_ == 2 and isinstance(orphan._processed, (int, float)):
-     orphan._processed += 0.2
-  
-  return result
-
-
 class Tab:  #{{{2
  
  src: dict
@@ -316,6 +176,146 @@ class Tab:  #{{{2
  @staticmethod
  def count(tabs: List["Tab"]) -> int:
   return len(tabs) + sum([Tab.count(i._children) for i in tabs])
+
+
+class Window:  #{{{2
+ src: dict
+ tabs: List[Tab]
+ tree: List[Tab]
+ 
+ def __init__(self, src: dict) -> None:
+  self.src = src
+  self.tabs = [Tab(tab) for tab in src["tabs"] if "entries" in tab]
+  self.tree = self._build_tree()
+ 
+ def _build_tree(self) -> List[Tab]:
+  if not self.tabs[0]._tree.member:
+   return self.tabs
+  
+  result: List[Tab] = []
+  tabs_dict = dict([(i._tree.id, i) for i in self.tabs if i._tree.id])
+  
+  for tab in self.tabs:
+   if not len(tab._tree.ancestors):
+    result += [tab]
+    tab._parent = None
+  
+  def build_subtree(tab):
+   for child_id in tab._tree.children:
+    if child_id in tabs_dict:
+     child = tabs_dict[child_id]
+     insert_child(child, tab)
+     build_subtree(child)
+     child._processed = 1
+  
+  def insert_child(child, parent):
+   before = tabs_dict.get(child._tree.before, None)
+   after = tabs_dict.get(child._tree.after, None)
+   siblings = parent._children if parent else result
+   if child in siblings:
+    siblings.remove(child)
+   if before in siblings:
+    before_index = siblings.index(before)
+    siblings[before_index:before_index] = [child]
+   elif after in siblings:
+    after_index = siblings.index(after)
+    siblings[after_index+1:after_index+1] = [child]
+   else:
+    siblings += [child]
+   child._parent = parent or None
+  
+  for tab in result:
+   build_subtree(tab)
+   tab._processed = 2
+  
+  # Insert orphaned tabs while making a best effort to preserve their
+  # original positions
+  
+  orphans = [tab for tab in self.tabs if not tab._processed]
+ 
+  for orphan in orphans:
+   # Propagate before/after to orphaned ancestors of orphaned tabs
+   before = tabs_dict.get(orphan._tree.before, None)
+   after = tabs_dict.get(orphan._tree.after, None)
+   for anc_id in orphan._tree.ancestors:
+    if anc_id in tabs_dict:
+     anc = tabs_dict[anc_id]
+     if not anc._processed:
+      if before:
+       anc._tree.before = before._tree.id
+      if after:
+       anc._tree.after = after._tree.id
+     break
+  
+  delayed: List[Tab] = []
+  for pass_ in (1, 2):
+   # Insert in 2 passes.  The second pass is for tabs whose before xor after
+   # is set and which have an orphaned ancestor, since a better position
+   # might be available on the second pass.
+   for orphan in (orphans if pass_ == 1 else delayed):
+    before = tabs_dict.get(orphan._tree.before, None)
+    after = tabs_dict.get(orphan._tree.after, None)
+    
+    for anc_id in orphan._tree.ancestors:
+     # non-orphaned ancestor
+     if anc_id in tabs_dict:
+      anc = tabs_dict[anc_id]
+      if anc._processed:
+       insert_child(orphan, anc)
+       orphan._processed = 3
+       break
+    
+    else:
+     # orphaned ancestor; try to use parent of adjacent tab
+     if before:
+      parent = before._parent
+     elif after:
+      parent = after._parent
+     else:
+      parent = None
+     
+     if parent and parent is not Ellipsis and parent is not orphan:
+      # adjacent tab has parent
+      insert_child(orphan, parent)
+      orphan._processed = 4
+     elif pass_ == 1 and ((before and not after) or (after and not before)):
+      # delay if before xor after are set because a better position might
+      # be available in the next pass
+      delayed += [orphan]
+     else:
+      # add to root level as a last resort
+      insert_child(orphan, None)
+      orphan._processed = 5
+    
+    if pass_ == 2 and isinstance(orphan._processed, (int, float)):
+     orphan._processed += 0.2
+  
+  return result
+
+
+class Session:  #{{{2
+ src: dict
+ windows: List[Window]
+ 
+ @overload
+ def __init__(self, src: io.IOBase) -> None: ...
+ 
+ @overload
+ def __init__(self, src: bytes) -> None: ...
+ 
+ @overload
+ def __init__(self, src: str) -> None: ...
+ 
+ def __init__(self, src):
+  if isinstance(src, io.IOBase):
+   src = src.read()
+  if isinstance(src, bytes):
+   if src.startswith(b"mozLz40\0"):
+    src = lz4.block.decompress(src[8:])
+   src = src.decode("utf-8")
+  
+  self.src = src = json.loads(src)
+  self.windows = [Window(window) for window in src["windows"]]
 
 
 # HTML generation {{{1
