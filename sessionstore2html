@@ -142,6 +142,8 @@ def tab_to_dict(tab):
   "url":   tab["entries"][tab["index"] - 1]["url"],
   "_pinned": tab.get("pinned", False),
   "_children": [],
+  "_parent": ...,
+  "__processed": False,
  }
  
  ext = tab.get("extData", {})
@@ -171,25 +173,98 @@ def build_tree(tabs_in):
  for tab in tabs_in:
   if not len(tab["_tst_ancestors"]):
    tabs_out += [tab]
+   tab["_parent"] = None
  
  def build_subtree(tab):
   for child_id in tab["_tst_children"]:
    if child_id in tabs_dict:
     child = tabs_dict[child_id]
-    before = tabs_dict.get(child["_tst_before"], None)
-    after = tabs_dict.get(child["_tst_after"], None)
-    if before in tab["_children"]:
-     before_index = tab["_children"].index(before)
-     tab["_children"][before_index:before_index] = [child]
-    elif after in tab["_children"]:
-     after_index = tab["_children"].index(after)
-     tab["_children"][after_index+1:after_index+1] = [child]
-    else:
-     tab["_children"] += [child]
+    insert_child(child, tab)
     build_subtree(child)
+    child["__processed"] = 1
+ 
+ def insert_child(child, parent):
+  before = tabs_dict.get(child["_tst_before"], None)
+  after = tabs_dict.get(child["_tst_after"], None)
+  siblings = parent["_children"] if parent else tabs_out
+  if child in siblings:
+   siblings.remove(child)
+  if before in siblings:
+   before_index = siblings.index(before)
+   siblings[before_index:before_index] = [child]
+  elif after in siblings:
+   after_index = siblings.index(after)
+   siblings[after_index+1:after_index+1] = [child]
+  else:
+   siblings += [child]
+  if parent:
+   child["_parent"] = parent
  
  for tab in tabs_out:
   build_subtree(tab)
+  tab["__processed"] = 2
+ 
+ # Insert orphaned tabs while making a best effort to preserve their
+ # original positions
+ 
+ orphans = [tab for tab in tabs_in if not tab["__processed"]]
+
+ for orphan in orphans:
+  # Propagate before/after to orphaned ancestors of orphaned tabs
+  before = tabs_dict.get(orphan["_tst_before"], None)
+  after = tabs_dict.get(orphan["_tst_after"], None)
+  for anc_id in orphan["_tst_ancestors"]:
+   if anc_id in tabs_dict:
+    anc = tabs_dict[anc_id]
+    if not anc["__processed"]:
+     if before:
+      anc["_tst_before"] = before["_tst_id"]
+     if after:
+      anc["_tst_after"] = after["_tst_id"]
+    break
+ 
+ delayed = []
+ for pass_ in (1, 2):
+  # Insert in 2 passes.  The second pass is for tabs whose before xor after
+  # is set and which have an orphaned ancestor, since a better position
+  # might be available on the second pass.
+  for orphan in (orphans if pass_ == 1 else delayed):
+   before = tabs_dict.get(orphan["_tst_before"], None)
+   after = tabs_dict.get(orphan["_tst_after"], None)
+   
+   for anc_id in orphan["_tst_ancestors"]:
+    # non-orphaned ancestor
+    if anc_id in tabs_dict:
+     anc = tabs_dict[anc_id]
+     if anc["__processed"]:
+      insert_child(orphan, anc)
+      orphan["__processed"] = 3
+      break
+   
+   else:
+    # orphaned ancestor; try to use parent of adjacent tab
+    if before:
+     parent = before["_parent"]
+    elif after:
+     parent = after["_parent"]
+    else:
+     parent = None
+    
+    if parent and parent is not Ellipsis and parent is not orphan:
+     # adjacent tab has parent
+     insert_child(orphan, parent)
+     orphan["__processed"] = 4
+    elif pass_ == 1 and ((before and not after) or (after and not before)):
+     # delay if before xor after are set because a better position might
+     # be available in the next pass
+     delayed += [orphan]
+    else:
+     # add to root level as a last resort
+     insert_child(orphan, None)
+     orphan["__processed"] = 5
+   
+   if pass_ == 2 and isinstance(orphan["__processed"], (int, float)):
+    orphan["__processed"] += 0.2
  
  return tabs_out
 
