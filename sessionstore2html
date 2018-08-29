@@ -122,7 +122,6 @@ TABS_WORD = ("tab", "tabs")
 # sessionstore parsing {{{1
 
 class Tab:  #{{{2
- 
  src: dict
  
  icon: str
