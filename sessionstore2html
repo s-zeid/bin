@@ -131,38 +131,6 @@ def window_to_list(window):
  return build_tree([i for i in [tab_to_dict(tab) for tab in window["tabs"]] if i])
 
 
-def tab_to_dict(tab):
- if not tab.get("entries"):
-  return None
- 
- result = {
-  "icon":  tab.get("image", tab.get("attributes", {}).get("image", "")) or "",
-  "title": tab["entries"][tab["index"] - 1].get("title",
-            os.path.basename(tab["entries"][tab["index"] - 1]["url"])),
-  "url":   tab["entries"][tab["index"] - 1]["url"],
-  "_pinned": tab.get("pinned", False),
-  "_children": [],
-  "_parent": ...,
-  "__processed": False,
- }
- 
- ext = tab.get("extData", {})
- ext_tst = "extension:treestyletab@piro.sakura.ne.jp:"
- if ext_tst + "data-persistent-id" in ext:
-  result.update({
-   "_tst_id": json.loads(ext.get(ext_tst + "data-persistent-id", "{}")).get("id", ""),
-   "_tst_ancestors": json.loads(ext.get(ext_tst + "ancestors", "[]")),
-   "_tst_before": json.loads(ext.get(ext_tst + "insert-before", '""')),
-   "_tst_after": json.loads(ext.get(ext_tst + "isnert-after",  # typo is upstream
-                            ext.get(ext_tst + "insert-after",  # in case they fix it
-                            '""'))),
-   "_tst_collapsed": json.loads(ext.get(ext_tst + "subtree-collapsed", "null")),
-   "_tst_children": json.loads(ext.get(ext_tst + "children", "[]")),
-  })
- 
- return result
-
-
 def build_tree(tabs_in):
  if "_tst_id" not in tabs_in[0]:
   return tabs_in
@@ -266,6 +234,38 @@ def build_tree(tabs_in):
     orphan["__processed"] += 0.2
  
  return tabs_out
+
+
+def tab_to_dict(tab):
+ if not tab.get("entries"):
+  return None
+ 
+ result = {
+  "icon":  tab.get("image", tab.get("attributes", {}).get("image", "")) or "",
+  "title": tab["entries"][tab["index"] - 1].get("title",
+            os.path.basename(tab["entries"][tab["index"] - 1]["url"])),
+  "url":   tab["entries"][tab["index"] - 1]["url"],
+  "_pinned": tab.get("pinned", False),
+  "_children": [],
+  "_parent": ...,
+  "__processed": False,
+ }
+ 
+ ext = tab.get("extData", {})
+ ext_tst = "extension:treestyletab@piro.sakura.ne.jp:"
+ if ext_tst + "data-persistent-id" in ext:
+  result.update({
+   "_tst_id": json.loads(ext.get(ext_tst + "data-persistent-id", "{}")).get("id", ""),
+   "_tst_ancestors": json.loads(ext.get(ext_tst + "ancestors", "[]")),
+   "_tst_before": json.loads(ext.get(ext_tst + "insert-before", '""')),
+   "_tst_after": json.loads(ext.get(ext_tst + "isnert-after",  # typo is upstream
+                            ext.get(ext_tst + "insert-after",  # in case they fix it
+                            '""'))),
+   "_tst_collapsed": json.loads(ext.get(ext_tst + "subtree-collapsed", "null")),
+   "_tst_children": json.loads(ext.get(ext_tst + "children", "[]")),
+  })
+ 
+ return result
 
 
 # HTML generation {{{1
