@@ -197,8 +197,7 @@ def build_tree(tabs_in):
    siblings[after_index+1:after_index+1] = [child]
   else:
    siblings += [child]
-  if parent:
-   child["_parent"] = parent
+  child["_parent"] = parent or None
  
  for tab in tabs_out:
   build_subtree(tab)
