@@ -1,21 +1,24 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import argparse
-import htmlentitydefs
+import html.entities
 import re
 import sys
 
+
 def char2entity(char):
- return "&%s;" % htmlentitydefs.codepoint2name.get(ord(char), "#x%s" % hex(ord(char))[2:])
+ return "&%s;" % html.entities.codepoint2name.get(ord(char), "#x%s" % hex(ord(char))[2:])
+
 
 def entity2char(entity):
  entity = re.match(r"^&?(.*?);?$", entity).group(1)
  if re.match(r"^#([0-9]+)$", entity):
-  return unichr(int(entity[1:], 10))
+  return chr(int(entity[1:], 10))
  if re.match(r"^#x([0-9a-fA-F]+)$", entity):
-  return unichr(int(entity[2:], 16))
- codepoint = htmlentitydefs.name2codepoint.get(entity, None)
- return unichr(codepoint) if codepoint else None
+  return chr(int(entity[2:], 16))
+ codepoint = html.entities.name2codepoint.get(entity, None)
+ return chr(codepoint) if codepoint else None
+
 
 def main(argv):
  p = argparse.ArgumentParser()
@@ -29,11 +32,11 @@ def main(argv):
  except SystemExit as exc:
   return exc.code
  
- input_ = unicode(args.input, "utf-8")
+ input_ = args.input
  mode   = (char2entity if len(input_) == 1 else entity2char)
  result = mode(input_)
  if result is None:
-  print >> sys.stderr, "error: invalid entity %s" % repr(input_)[1:]
+  print("error: invalid entity %s" % repr(input_), file=sys.stderr)
   return 1
  
  if args.code_point:
@@ -41,12 +44,16 @@ def main(argv):
    result = input_
   sys.stdout.write("U+" + re.sub(r"^0x", "", hex(ord(result))))
  else:
-  sys.stdout.write(result.encode("utf-8"))
+  sys.stdout.write(result)
  
  if sys.stdout.isatty():
-  print
+  print()
  
  return 0
 
+
 if __name__ == "__main__":
- sys.exit(main(sys.argv))
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
