@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # One day in computer club, back when I was in high school, someone was teaching
 # basic Java to one of his friends by writing the Java equivalent of this program.
@@ -27,13 +27,13 @@ class SexParty:
  def __init__(num_times=6, parties=[]):
   for party in range((len(parties) or 1) - 1 or 1):
    sex = Fuck()
-   print
-   print sex.how_good_was_it()
+   print()
+   print(sex.how_good_was_it())
    if len(parties) > 1:
     num_times = int(re.sub("[^0-9]", "", parties[party + 1]) or num_times)
    for laid in range(num_times):
     sex.get_some()
-    print sex.how_good_was_it()
+    print(sex.how_good_was_it())
 
 def main(argv):
  SexParty(parties=argv)
