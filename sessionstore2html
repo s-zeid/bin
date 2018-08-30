@@ -21,6 +21,7 @@ To read jsonlz4 files used in newer versions of Firefox, you will need to run
 
 # Plumbing {{{1
 
+import argparse
 import configparser
 import html
 import io
@@ -429,22 +430,28 @@ def get_sessionstore_js_path(profile_dir):
 
 
 def main(argv):  #{{{1
- usage = "Usage: %s [--help|-h|-|[-- ]{sessionstore-js|profile-dir}]"
- usage += "\n" + __doc__.rstrip()
- if len(argv) == 3 and argv[1] == "--":
-  sessionstore_js = argv[2]
- elif len(argv) == 2 and argv[1] == "-":
-  sessionstore_js = sys.stdin
- elif len(argv) == 2 and argv[1] in ("--help", "-h"):
-  print(usage % argv[0])
+ desc, epilog = __doc__.split("\n\n", 1)
+ p = argparse.ArgumentParser(
+  description=desc.strip(),
+  epilog=epilog.strip(),
+  formatter_class=argparse.RawDescriptionHelpFormatter,
+ )
+ p.add_argument("--hep", dest="_hep_easter_egg", action="store_true",
+                help=argparse.SUPPRESS)
+ p.add_argument("sessionstore_or_profile_path", default=None, nargs="?",
+                help="the session store file or profile path (default: autodetect)")
+
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ if options._hep_easter_egg:
+  print("Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes.")
+  print("--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s")
   return 0
- elif len(argv) == 1:
-  sessionstore_js = None
- elif len(argv) not in (2, 3):
-  print(usage % argv[0], file=sys.stderr)
-  return 2
- else:
-  sessionstore_js = argv[1]
+ 
+ sessionstore_js = options.sessionstore_or_profile_path
  
  if sessionstore_js is None:
   profile_path = get_default_profile_path()
@@ -465,7 +472,10 @@ def main(argv):  #{{{1
    return 1
 
  if isinstance(sessionstore_js, str):
-  sessionstore_js = open(sessionstore_js, "rb")
+  if sessionstore_js == "-":
+   sessionstore_js = sys.stdin
+  else:
+   sessionstore_js = open(sessionstore_js, "rb")
  
  session = Session(sessionstore_js)
  print(make_html(session.windows))
