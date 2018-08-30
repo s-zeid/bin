@@ -1,11 +1,11 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import argparse
 import base64
 import os
 import re
 import sys
-import urllib
+import urllib.parse
 
 from collections import OrderedDict
 
@@ -14,37 +14,43 @@ DEFAULT_MIME_TYPE_TEXT = "text/plain"
 
 class DataURIString(bytes):
  def __new__(cls, value, mime, mime_params, charset):
-  self = super(DataURIString, cls).__new__(cls, value)
+  self = super().__new__(cls, value)
   self.mime = mime
   self.mime_params = mime_params
   self.charset = charset
   return self
 
 def decode(uri):
- if uri[:5].lower() != "data:" or "," not in uri[5:]:
+ if isinstance(uri, str):
+  uri = uri.encode("utf-8", "surrogateescape")
+ 
+ if uri[:5].lower() != b"data:" or b"," not in uri[5:]:
   raise ValueError("Invalid data: URI")
  
- mime, data = uri[5:].split(",", 1)
- if mime.lower().endswith(";base64"):
+ mime, data = uri[5:].split(b",", 1)
+ if mime.lower().endswith(b";base64"):
   use_base64 = True
   mime = mime[:-7]
  else:
   use_base64 = False
  
- mime, mime_params = (mime + ";").split(";", 1)
+ mime, mime_params = (mime + b";").decode("utf-8", "surrogateescape").split(";", 1)
  mime_params = OrderedDict([i.split("=", 1) for i in mime_params.split(";") if i])
  charset = mime_params.get("charset", "us-ascii")
  
  if use_base64:
   result = base64.standard_b64decode(data)
  else:
-  result = urllib.unquote(data)
+  if isinstance(data, bytes):
+   data = data.decode("utf-8", "surrogateescape")
+  result = urllib.parse.unquote(data, encoding="utf-8", errors="surrogateescape")
+  result = result.encode("utf-8", "surrogateescape")
  
  return DataURIString(result, mime, mime_params, charset)
 
 def encode(data, mime=None, filename=None, force_text=None, force_base64=None,
            mgc_file=None):
- uri = "data:"
+ uri = b"data:"
  use_base64 = True
  
  if not mime:
@@ -74,17 +80,24 @@ def encode(data, mime=None, filename=None, force_text=None, force_base64=None,
  if force_base64:
   use_base64 = True
  
- uri += mime
+ uri += mime.encode("utf-8", "surrogateescape")
 
  if use_base64:
-  uri += ";base64"
+  uri += b";base64"
  
- uri += ","
+ uri += b","
  
  if use_base64:
+  if isinstance(data, str):
+   data = data.encode("utf-8", "surrogateescape")
   uri += base64.standard_b64encode(data)
  else:
-  uri += re.sub(r"</(script)", r"<%2F\1", urllib.quote(data, safe="/<> "), flags=re.I)
+  if isinstance(data, bytes):
+   data = data.decode("utf-8", "surrogateescape")
+  quoted = urllib.parse.quote(data, safe="/<> ",
+                              encoding="utf-8", errors="surrogateescape")
+  quoted = re.sub(r"</(script)", r"<%2F\1", quoted, flags=re.I)
+  uri += quoted.encode("utf-8", "surrogateescape")
  
  return uri
 
@@ -114,7 +127,7 @@ def main(argv):
  
  is_stdin = args.input == None
  
- f = open(args.input, "rb") if not is_stdin else sys.stdin
+ f = open(args.input, "rb") if not is_stdin else sys.stdin.buffer
  
  if args.decode:
   result = decode(f.read())
@@ -126,15 +139,15 @@ def main(argv):
   f.close()
  
  if args.decode and args.info:
-  print >> sys.stderr, "MIME type: " + result.mime
+  print("MIME type: " + result.mime, file=sys.stderr)
   for k in result.mime_params:
-   print >> sys.stderr, k + "=" + result.mime_params[k]
-  print >> sys.stderr
+   print(k + "=" + result.mime_params[k], file=sys.stderr)
+  print(file=sys.stderr)
  
  if args.output == None:
-  sys.stdout.write(result)
+  sys.stdout.buffer.write(result)
  else:
-  with open(args.output) as out:
+  with open(args.output, "wb") as out:
    out.write(result)
 
 def guess_mime_type(filename, default="application/octet-stream", data=None,
@@ -167,7 +180,7 @@ The MIME type is determined as follows:
  if not mgc_file:
   mgc_file = "/usr/share/misc/magic.mgc"
  
- if not filename or not isinstance(filename, basestring):
+ if not filename or not isinstance(filename, str):
   filename = ""
  
  mime = default
