@@ -130,7 +130,7 @@ class Tab:  #{{{2
  url: str
  _pinned: bool
  _children: List["Tab"]
- _parent: Union["Tab", None]
+ _parent: Optional["Tab"]
  _processed: Union[bool, int, float]
 
  _tree: "_Tree"
