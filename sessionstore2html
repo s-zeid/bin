@@ -38,7 +38,7 @@ import lz4.block  # pip3 install lz4
 
 # Templates and template helpers {{{1
 
-def indent(s, n):
+def indent(s: str, n: int) -> str:
  return "\n".join((" " * (n * int(not l.startswith("$")))) + l for l in s.splitlines())
 
 
@@ -46,7 +46,7 @@ class Template(NamedTuple):
  template: str
  indent: int
  
- def compile(self):
+ def compile(self) -> string.Template:
   return string.Template(indent(self.template, self.indent))
 
 
@@ -123,7 +123,7 @@ TABS_WORD = ("tab", "tabs")
 # sessionstore parsing {{{1
 
 class Tab:  #{{{2
- src: dict
+ _src: dict
  
  icon: str
  title: str
@@ -135,7 +135,7 @@ class Tab:  #{{{2
 
  _tree: "_Tree"
  class _Tree:
-  member: bool = False
+  is_member: bool = False
   id: str = ""
   ancestors: List[str]
   before: str = ""
@@ -146,6 +146,8 @@ class Tab:  #{{{2
  def __init__(self, src: dict) -> None:
   if not src.get("entries"):
    raise ValueError("source dict must have an \"entries\" key")
+  
+  self._src = src
  
   self.icon = src.get("image", src.get("attributes", {}).get("image", "")) or ""
   self.title = src["entries"][src["index"] - 1].get("title",
@@ -155,12 +157,12 @@ class Tab:  #{{{2
   self._children = []
   self._parent = cast(None, ...)
   self._processed = False
-  self._tree = self._Tree()       
+  self._tree = self._Tree()
   
   ext = src.get("extData", {})
   ext_tst = "extension:treestyletab@piro.sakura.ne.jp:"
   if ext_tst + "data-persistent-id" in ext:
-   self._tree.member = True
+   self._tree.is_member = True
    self._tree.id = json.loads(ext.get(ext_tst + "data-persistent-id", "{}")).get("id", "")
    self._tree.ancestors = json.loads(ext.get(ext_tst + "ancestors", "[]"))
    self._tree.before = json.loads(ext.get(ext_tst + "insert-before", '""'))
@@ -179,17 +181,18 @@ class Tab:  #{{{2
 
 
 class Window:  #{{{2
- src: dict
+ _src: dict
+ 
  tabs: List[Tab]
  tree: List[Tab]
  
  def __init__(self, src: dict) -> None:
-  self.src = src
+  self._src = src
   self.tabs = [Tab(tab) for tab in src["tabs"] if "entries" in tab]
   self.tree = self._build_tree()
  
  def _build_tree(self) -> List[Tab]:
-  if not self.tabs[0]._tree.member:
+  if not self.tabs[0]._tree.is_member:
    return self.tabs
   
   result: List[Tab] = []
@@ -200,7 +203,7 @@ class Window:  #{{{2
     result += [tab]
     tab._parent = None
   
-  def build_subtree(tab):
+  def build_subtree(tab: Tab) -> None:
    for child_id in tab._tree.children:
     if child_id in tabs_dict:
      child = tabs_dict[child_id]
@@ -208,7 +211,7 @@ class Window:  #{{{2
      build_subtree(child)
      child._processed = 1
   
-  def insert_child(child, parent):
+  def insert_child(child: Tab, parent: Optional[Tab]) -> None:
    before = tabs_dict.get(child._tree.before, None)
    after = tabs_dict.get(child._tree.after, None)
    siblings = parent._children if parent else result
@@ -294,57 +297,49 @@ class Window:  #{{{2
 
 
 class Session:  #{{{2
- src: dict
+ _src: dict
  windows: List[Window]
  
- @overload
- def __init__(self, src: io.IOBase) -> None: ...
- 
- @overload
- def __init__(self, src: bytes) -> None: ...
- 
- @overload
- def __init__(self, src: str) -> None: ...
- 
- def __init__(self, src):
+ def __init__(self, input: Union[io.IOBase, bytes, str]) -> None:
+  src = cast(Any, input)
   if isinstance(src, io.IOBase):
-   src = src.read()
+   src = cast(Any, src).read()
   if isinstance(src, bytes):
    if src.startswith(b"mozLz40\0"):
     src = lz4.block.decompress(src[8:])
    src = src.decode("utf-8")
   
-  self.src = src = json.loads(src)
+  self._src = src = json.loads(src)
   self.windows = [Window(window) for window in src["windows"]]
 
 
 # HTML generation {{{1
 
-def make_html(windows,
-              page_tpl=PAGE_TEMPLATE,
-              window_list_tpl=WINDOW_LIST_TEMPLATE,
-              window_tpl=WINDOW_TEMPLATE,
-              tab_tpl=TAB_TEMPLATE,
-              tabs_word=TABS_WORD):
+def make_html(windows: List[Window],
+              page_tpl: string.Template = PAGE_TEMPLATE,
+              window_list_tpl: string.Template = WINDOW_LIST_TEMPLATE,
+              window_tpl: string.Template = WINDOW_TEMPLATE,
+              tab_tpl: string.Template = TAB_TEMPLATE,
+              tabs_word: Tuple[str, str] = TABS_WORD) -> str:
  return page_tpl.substitute(
   windows="\n".join([
    window_tpl.substitute(
-    n=i+1,
-    n_tabs=Tab.count(windows[i].tree),
+    n=str(i+1),
+    n_tabs=str(Tab.count(windows[i].tree)),
     tabs_word=tabs_word[int(Tab.count(windows[i].tree) > 1)],
     tabs="\n".join([make_tab(tab, tab_tpl) for tab in windows[i].tree])
    )
    for i in range(len(windows))
   ]),
   window_list="\n".join([window_list_tpl.substitute(
-   n=i+1,
-   n_tabs=Tab.count(windows[i].tree),
+   n=str(i+1),
+   n_tabs=str(Tab.count(windows[i].tree)),
    tabs_word=tabs_word[int(Tab.count(windows[i].tree) > 1)]
   ) for i in range(len(windows))])
  )
 
 
-def make_tab(tab, tab_tpl=TAB_TEMPLATE):
+def make_tab(tab: Tab, tab_tpl: string.Template = TAB_TEMPLATE) -> str:
  params = dict(
   icon=html.escape(tab.icon),
   title=html.escape(tab.title),
@@ -356,7 +351,7 @@ def make_tab(tab, tab_tpl=TAB_TEMPLATE):
   params["icon"] = ""
   params["material_icon"] = "photo_size_select_actual"
  
- extra_classes = []
+ extra_classes: List[str] = []
  if tab._pinned:
   extra_classes += ["pinned"]
  params["extra_classes"] = " " + " ".join(extra_classes) if len(extra_classes) else ""
@@ -370,9 +365,9 @@ def make_tab(tab, tab_tpl=TAB_TEMPLATE):
 
 # Profile/sessionstore.js finders {{{1
 
-def get_default_profile_path(profiles_dir=None):
+def get_default_profile_path(profiles_dir: Optional[str] = None) -> Optional[str]:
  if profiles_dir is None:
-  # Linux master race
+  # Praise Linux!
   home = os.path.expanduser("~")
   profiles_dir = os.path.join(home, ".mozilla", "firefox")
   if platform.system().lower() == "windows":
@@ -386,6 +381,7 @@ def get_default_profile_path(profiles_dir=None):
  if not os.path.isdir(profiles_dir or ""):
   return None
  
+ profiles_dir = cast(str, profiles_dir)
  profile = None
  
  cp = configparser.RawConfigParser(None, dict, True)
@@ -406,7 +402,7 @@ def get_default_profile_path(profiles_dir=None):
  return None
 
 
-def get_sessionstore_js_path(profile_dir):
+def get_sessionstore_js_path(profile_dir: str) -> Optional[str]:
  sessionstore_backups_dir = os.path.join(profile_dir, "sessionstore-backups")
  if os.path.isdir(sessionstore_backups_dir):
   recovery_mozlz = os.path.join(sessionstore_backups_dir, "recovery.jsonlz4")
@@ -427,9 +423,10 @@ def get_sessionstore_js_path(profile_dir):
   legacy_js = os.path.join(profile_dir, "sessionstore.js")
   if os.path.isfile(legacy_js):
    return legacy_js
+ return None
 
 
-def main(argv):  #{{{1
+def main(argv: List[str]) -> int:  #{{{1
  desc, epilog = __doc__.split("\n\n", 1)
  p = argparse.ArgumentParser(
   description=desc.strip(),
@@ -464,7 +461,7 @@ def main(argv):  #{{{1
          " Firefox profile", file=sys.stderr)
    return 1
  elif os.path.isdir(sessionstore_js):
-  profile_path = sessionstore_js
+  profile_path = cast(str, sessionstore_js)
   sessionstore_js = get_sessionstore_js_path(profile_path)
   if not sessionstore_js:
    print("error: could not find sessionstore.js file in the given"
