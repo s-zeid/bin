@@ -5,7 +5,15 @@ import sys
 
 
 def main(argv):
+ arg0 = argv[0]
  args = argv[1:]
+ 
+ if "-oneline-" in arg0 or "-1l-" in arg0:
+  suffix = arg0.split("-")[-1]
+  if "c" in suffix:
+   args += ["--color=always"]
+  if "n" in suffix:
+   args += ["--no-merges"]
  
  if "--color=always" in args or "--color" in args:
   color = True
