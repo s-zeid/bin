@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import re
 import subprocess
 import sys
 
@@ -8,8 +9,8 @@ def main(argv):
  arg0 = argv[0]
  args = argv[1:]
  
- if "-oneline-" in arg0 or "-1l-" in arg0:
-  suffix = arg0.split("-")[-1]
+ if "-oneline-" in arg0 or "-1l" in arg0:
+  suffix = re.sub(r"^git-1l[^-]", "git-1l-", arg0).split("-")[-1]
   if "c" in suffix:
    args += ["--color=always"]
   if "n" in suffix:
