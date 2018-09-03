@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+
+import subprocess
+import sys
+
+
+def main(argv):
+ args = argv[1:]
+ 
+ if "--color=always" in args or "--color" in args:
+  color = True
+ elif "--color=never" in args:
+  color = False
+ else:
+  color = sys.stdout.isatty()
+ 
+ if color:
+  color_arg = "--color=always"
+ else:
+  color_arg = "--color=never"
+ 
+ tformat = r"%C(auto,white dim)%ai%Creset %C(auto,yellow)%h%Creset %s"
+ 
+ p = subprocess.Popen(["git", "log", "--pretty=" + tformat] + args + [color_arg],
+                      stdout=subprocess.PIPE)
+ 
+ lines = []
+ for line in p.stdout:
+  lines += [line.decode("utf-8").rstrip("\r\n")]
+ 
+ fmt = "{:>" + str(max(len(str(len(lines))) + 1, 4)) + "}"
+ if color:
+  fmt = "\x1b[2;33m" + fmt + "\x1b[0m"
+ fmt += " {}"
+ 
+ for n in range(len(lines)):
+  line = lines[n]
+  print(fmt.format(n+1, line))
+ 
+ return p.returncode
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
