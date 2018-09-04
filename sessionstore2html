@@ -435,6 +435,8 @@ def main(argv: List[str]) -> int:  #{{{1
  )
  p.add_argument("--hep", dest="_hep_easter_egg", action="store_true",
                 help=argparse.SUPPRESS)
+ p.add_argument("-l", "--print-path", action="store_true",
+                help="print the detected path to the session store file and exit")
  p.add_argument("sessionstore_or_profile_path", default=None, nargs="?",
                 help="the session store file or profile path (default: autodetect)")
 
@@ -467,6 +469,10 @@ def main(argv: List[str]) -> int:  #{{{1
    print("error: could not find sessionstore.js file in the given"
          " Firefox profile", file=sys.stderr)
    return 1
+ 
+ if options.print_path:
+  print(sessionstore_js)
+  return 0
 
  if isinstance(sessionstore_js, str):
   if sessionstore_js == "-":
