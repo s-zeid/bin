@@ -2,6 +2,7 @@
 # vim: set ft=make fdm=marker:
 
 # mksfx
+# 
 # A self-extracting archive generator that can be executed as a shell script
 # or a Makefile.
 # 
@@ -13,14 +14,19 @@
 # hyphens.  In Makefile mode, the name of the archive can be changed by setting
 # the `sfx` Make variable on the command line.
 # 
+# Optionally, a script or other executable may be run to check arguments before
+# the archive is extracted.  To enable this, pass the name of the executable to
+# run, relative to the archive root, as a fourth argument to the shell script or
+# as the `checkargs` Make variable.  This feature is disabled by default.
+# 
 # Optionally, a script or other executable may be run after the archive is
 # extracted.  To enable this, pass the name of the executable to run, relative
 # to the archive root, as a third argument to the shell script or as the
 # `postextract` Make variable.  This feature is disabled by default.
 # 
 # The archive is an uncompressed TAR archive preceded by a public domain shell
-# script that takes an output directory as its argument and extracts the archive
-# to that directory.
+# script that takes an output directory as its argument and extracts the
+# archive to that directory.
 # 
 # Public domain via CC0:  <https://creativecommons.org/publicdomain/zero/1.0/>
 
@@ -31,8 +37,10 @@ true shell:
 	 local dir=$1
 	 local sfx=$2
 	 local postextract=$3
+	 local checkargs=$4
 	 if [ x"${dir}" = x"" ] || [ x"${sfx}" = x"" ]; then
-	  echo "Usage: $0 <directory> <output-sfx> [postextract-executable]" >&2
+	  echo "Usage: $0 <directory> <output-sfx> [postextract-executable]" \
+	       " [check-args]" >&2
 	  exit 2
 	 fi
 	 if ! [ -d "${dir}" ]; then
@@ -45,7 +53,8 @@ true shell:
 	 
 	 cd "${dir}"
 	 unset MAKELEVEL MAKEFILES MAKEFLAGS MFLAGS GNUMAKEFLAGS
-	 make -f "${run}" sfx="${sfx}" postextract="${postextract}"
+	 make -f "${run}" sfx="${sfx}" \
+	                  postextract="${postextract}" checkargs="${checkargs}"
 	}
 	abspath() {
 	 printf '%s\n' \
@@ -59,9 +68,11 @@ NAME=$(notdir $(shell pwd | sed -e 's/ /-/g'))
 sfx=${NAME}.sfx
 tmp=sfx_mk_tmp
 postextract=
+checkargs=
 
 apos='#'
 postextract_esc=$(subst ${apos},${apos}"${apos}"${apos},${postextract})
+checkargs_esc=$(subst ${apos},${apos}"${apos}"${apos},${checkargs})
 
 all: ${sfx}
 .PHONY: ${sfx} clean
@@ -73,27 +84,47 @@ ${sfx}:
 	#!/bin/sh
 	# This extraction code is public domain via CC0:
 	# <https://creativecommons.org/publicdomain/zero/1.0/>
-	start=23
+	archive_start=41
+	F_archive() { tail -n "+$$archive_start" "$$0"; }
 	postextract='${postextract_esc}'
+	checkargs='${checkargs_esc}'
 	out=$$1
+	shift
+	run_checkargs() {
+	 checkargs_dir=`mktemp -d`
+	 F_archive | tar -x -C "$$checkargs_dir" "./$$postextract"
+	 SFX_CHECK_ARGS="$$checkargs" SFX_FILE="$$0" \
+	  "$$checkargs_dir/$$postextract" "$$out" "$$@"
+	 r=$$?
+	 rm -rf "$$checkargs_dir"
+	 return $$r
+	}
 	if [ x"$$out" = x"" ]; then
 	 if [ x"$$postextract" != x"" ]; then
-	  echo "Usage: $$0 <output-directory> [postextract-arguments [...]]" >&2
+	  if [ x"$$checkargs" != x"" ] && (which mktemp >/dev/null 2>&1); then
+	   run_checkargs "$$@"
+	   echo "error: the output directory must be given as the first argument" >&2
+	  else
+	   echo "Usage: $$0 <output-directory> [postextract-arguments [...]]" >&2
+	  fi
 	 else
 	  echo "Usage: $$0 <output-directory>" >&2
 	 fi
 	 exit 2
+	elif [ x"$$checkargs" != x"" ]; then
+	 run_checkargs "$$@" || exit
 	fi
-	shift
 	mkdir "$$out"; r=$$?; [ $$r -ne 0 ] && exit $$r
-	tail -n "+$$start" "$$0" | tar -x -C "$$out"
+	F_archive | tar -x -C "$$out"
 	if [ x"$$postextract" != x"" ]; then
 	 "$$out/$$postextract" "$$@"
 	fi
 	exit $$?
 	# End of public domain extraction code; uncompressed TAR archive follows
 	SH
-	tar -c . --exclude='*.swp' --exclude="${tmp}" >> "${tmp}"
+	tar -c $(if ${postextract},'./${postextract_esc}',) . \
+	 --exclude='*.swp' --exclude="${tmp}" \
+	 >> "${tmp}"
 	mv "${tmp}" "${sfx}"
 	chmod +x "${sfx}"
 
