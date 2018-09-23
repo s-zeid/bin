@@ -23,6 +23,6 @@ for i; do
 done
 OUT=`printf '%s' "$IN" | sed -r 's/(\.[^.]+)?$/.pdf/'`
 
-pandoc --latex-engine=xelatex "$@" -o "$OUT"
+pandoc --pdf-engine=xelatex "$@" -o "$OUT"
 
 if [ $PREVIEW -eq 1 ]; then xdg-open "$OUT"; fi
