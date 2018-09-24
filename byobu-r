@@ -4,5 +4,9 @@ if [ -d "$HOME/bin" ]; then
  PATH="$HOME/bin:$PATH"
 fi
 
+if [ -S "$HOME/.byobu/.ssh-agent" ]; then
+ export SSH_AUTH_SOCK="$HOME/.byobu/.ssh-agent"
+fi
+
 screen -ls | grep -q -e '[0-9]\.byobu'
 [ $? -eq 0 ] && exec byobu -xr byobu || exec byobu
