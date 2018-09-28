@@ -1,0 +1,44 @@
+#!/bin/sh
+
+main() {
+ if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+  echo "Usage: $0 <in-file> [out-file]" >&2
+  return 2
+ fi
+ 
+ local in="$1"
+ local out="$2"
+ if [ x"$out" = x"" ]; then
+  out="$(replace_extensions "$(dirname -- "$in")/$(basename -- "$in")" ts mp4)"
+ elif [ -d "$out" ]; then
+  out="$out/$(replace_extensions "$(basename -- "$in")" ts mp4)"
+ fi
+ 
+ local acodec="`ffprobe -show_entries stream=codec_name -select_streams a -of compact=p=0:nk=1 file:"$in" 2>/dev/null`"
+ local bsf_a=""
+ if [ x"$bsf_a" = x"aac" ]; then
+  bsf_a="-bsf:a aac_adtstoasc"
+ fi
+
+ exec ffmpeg \
+       -i file:"$in" \
+       -c:a copy $bsf_a \
+       -c:v copy \
+       -f mp4 -movflags faststart -copyts \
+       file:"$out"
+}
+
+
+replace_extensions() {
+ local result="$1"
+ local old="$2"
+ local new="$3"
+ local dir="$(dirname -- "$result")"
+ result="$(basename -- "$result" ".$old")"
+ result="$(basename -- "$result" ".$new")"
+ result="$dir/$result.$new"
+ printf '%s' "$result"
+}
+
+
+main "$@"
