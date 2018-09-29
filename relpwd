@@ -1,0 +1,76 @@
+#!/bin/sh
+
+relpwd() {
+ if [ x"$1" = x"-h" ] || [ x"$1" = x"--help" ]; then
+  cat >&2 <<USAGE
+ Usage: $(basename -- "$0") [reference-directory]
+ 
+ Prints the current working directory relative to \$HOME or to
+ \`reference-directory\`.
+ 
+ If \`reference-directory\` is a literal tilde (~), then '~/' will be
+ prepended to paths relative to \$HOME.
+USAGE
+  return 2
+ fi
+ 
+ local home arg1 pwd ref
+ 
+ home="$(cd "$HOME" && pwd)"
+ [ $? -ne 0 ] && return 1
+ 
+ arg1="$1"
+ if (printf '%s' "$arg1" | grep -q -e '^-'); then
+  arg1="./$arg1"
+ fi
+ 
+ pwd="$(pwd)"
+ [ $? -ne 0 ] && return 1
+ 
+ if [ x"$arg1" = x"~" ]; then
+  ref="$(cd "$HOME" && pwd)"
+  [ $? -ne 0 ] && return 1
+ else
+  ref="$(cd "${arg1:-$HOME}" && pwd)"
+  [ $? -ne 0 ] && return 1
+ fi
+ 
+ export __relpath_home="$home"
+ export __relpath_arg1="$arg1"
+ export __relpath_pwd="$pwd"
+ export __relpath_ref="$ref"
+ 
+ awk -e '
+  BEGIN {
+   home = ENVIRON["__relpath_home"]
+   arg1 = ENVIRON["__relpath_arg1"]
+   pwd = ENVIRON["__relpath_pwd"]
+   ref = ENVIRON["__relpath_ref"]
+   
+   is_home = (ref == home)
+   use_tilde = (is_home && arg1 == "~")
+   
+   if (pwd == ref) {
+    print (use_tilde) ? "~" : "."
+   } else if (ref == "/") {
+    print pwd
+   } else if (startswith(pwd, ref)) {
+    rel = substr(pwd, length(ref) + 2)
+    print (use_tilde) ? "~/" rel : rel
+   } else {
+    print pwd
+   }
+  }
+  
+  function startswith(str, prefix) {
+   return substr(str, 0, length(prefix)) == prefix
+  }
+ '
+ local r=$?
+ 
+ unset __relpath_pwd __relpath_ref __relpath_home __relpath_arg1
+ return $r
+}
+
+
+relpwd "$@"
