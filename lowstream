@@ -13,6 +13,9 @@ AB=16
 AR=16000
 
 
+USAGE_SHORT="$(basename -- "$0") <url> [:[<port (default: $PORT)>]|<write-to-filename-or-directory>] [<title>]"
+
+
 usage() { #{1
  local SIZE_EST_HOURS=2
  local SIZE_EST_SEC="3600*$SIZE_EST_HOURS"
@@ -22,16 +25,36 @@ usage() { #{1
  local SIZE_EST_MB_EXPR="$AB*$SIZE_EST_SEC*$SIZE_EST_MUXER_OVERHEAD/8/1024"
  local SIZE_EST_MB="$(bc_round "$SIZE_EST_MB_EXPR")"
  
+ local setext_underline="$(awk -v s="$NAME" -e 'BEGIN {
+  result = ""
+  for (i=0; i < length(s); i++)
+   result = result "="
+  print result
+ }')"
+ 
  cat <<USAGE
-Usage: $0 <url> [:[<port (default: $PORT)>]|<write-to-filename-or-directory>] [<title>]
+$NAME
+$setext_underline
 
-This streams audio/video content at the given URL as audio only at low quality
-settings.  This is intended for use in client environments where the network is
-either too slow or too metered for higher quality streams.  The audio is encoded
-as Opus at $AB kbps and $AR Hz with one channel, and the stream is served over
-plain HTTP, on port $PORT by default, inside an Ogg container.  The resulting
-file size for a $SIZE_EST_HOURS-hour-long input should be approximately $SIZE_EST_MB MB.
 
+Usage
+-----
+\`$USAGE_SHORT\`
+
+
+Summary
+-------
+This program streams audio/video content at the given URL as audio only at
+low quality settings.  This is intended for use in client environments where
+the network is either too slow or too metered for higher quality streams.
+The audio is encoded as Opus at $AB kbps and $AR Hz with one channel,
+and the stream is served over plain HTTP, on port $PORT by default, inside
+an Ogg container.  The resulting file size for a $SIZE_EST_HOURS-hour-long input should be
+approximately $SIZE_EST_MB MB.
+
+
+Support for youtube-dl
+----------------------
 This script may be used in conjunction with youtube-dl by giving a URL in the
 following format:
 
@@ -42,20 +65,36 @@ slashes; e.g. \`bestaudio;best\` instead of \`bestaudio/best\`.
 
 If the format is omitted, it will default to \`worstaudio;worst\`.
 
+
+Dynamic input URLs
+------------------
 To dynamically determine the input URL, give a URL in the following format:
 
     sh:<shell-command>
 
-Then, on each request, <shell-command> will be executed with \`sh -c\`.  The
-environment variables HTTP_PATH (the request path) and HTTP_METHOD (the
-request method) will be available to the command.  The command is expected
-to output the URL to be streamed, which may be an FFmpeg-compatible URL or
-a ytdl: URL as described above.
+Then, on each request, \`<shell-command>\` will be executed with \`sh -c\`.
+The environment variables HTTP_PATH (the request path) and HTTP_METHOD (the
+request method) will be available to the command.  The first line of the
+command's output must be the URL to be streamed, which may be either an
+FFmpeg-compatible URL or a ytdl: URL as described above.  Optionally, the
+command may also return a title on the last line of its output.
+
+
+Client usage
+------------
+The stream is served over plain HTTP, on port $PORT by default, inside an Ogg
+container, on all interfaces.  As an example, to listen to the stream with
+mpv, run:
+
+    mpv http://<hostname>:<port>/
 
 If the client's request URL ends with \`?dl\`, \`/dl\`, \`?download\`, or
 \`/download\`, then the client will be asked to save the audio to a file as
-opposed to streaming it. In download mode, static files will be read as fast
-as possible instead of sending the output in realtime.
+opposed to streaming it.  In download mode, if the input URL is a file on
+the host's filesystem, then it will be read as fast as possible.  Otherwise,
+\`-re\` will be passed to FFmpeg in order to read the file at its native
+frame rate, so that listening to part of the file will not result in the same
+data usage as listening to the whole file.
 
 The request URL, minus any query string, will be used as the filename and (minus
 any extension) as the metadata title.  If a title is given on the command line,
@@ -75,7 +114,11 @@ bc_round() {  # non-negative inputs only
 
 main() { #{1
  if [ $# -lt 1 ]; then
-  usage >&2
+  usage
+  if [ -t 1 ]; then
+   echo; echo
+   echo "Usage: $USAGE_SHORT" >&2
+  fi
   return 2
  fi
  
