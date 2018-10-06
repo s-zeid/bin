@@ -42,6 +42,16 @@ slashes; e.g. \`bestaudio;best\` instead of \`bestaudio/best\`.
 
 If the format is omitted, it will default to \`worstaudio;worst\`.
 
+To dynamically determine the input URL, give a URL in the following format:
+
+    sh:<shell-command>
+
+Then, on each request, <shell-command> will be executed with \`sh -c\`.  The
+environment variables HTTP_PATH (the request path) and HTTP_METHOD (the
+request method) will be available to the command.  The command is expected
+to output the URL to be streamed, which may be an FFmpeg-compatible URL or
+a ytdl: URL as described above.
+
 If the client's request URL ends with \`?dl\`, \`/dl\`, \`?download\`, or
 \`/download\`, then the client will be asked to save the audio to a file as
 opposed to streaming it. In download mode, static files will be read as fast
@@ -142,29 +152,6 @@ response_main() { #{1
   name=$(printf '%s' "$name" | sed -e 's@/@ - @g')
  fi
  
- local input_url="$___URL___"
- local url="$input_url"
- if (printf '%s' "$input_url" | head -n 1 | tr A-Z a-z | grep -q -e '^ytdl:'); then
-  url="$(resolve_ytdl_uri "$input_url")"
-  local resolve_r=$?
-  if [ $resolve_r -ne 0 ]; then
-   echo "error: could not resolve ytdl: URI" >&2
-   return $resolve_r
-  fi
- fi
- 
- if [ x"$name" = x"" ]; then
-  title=${input_url%%\?*}
-  name=$title
-  name=$(printf '%s' "$name" | sed -e 's@^/*@@g; s@/*$@@g; s@/@_@g')
- fi
- 
- local re=
- if (printf '%s' "$url" | head -n 1 | grep -q -v -e '^[a-zA-Z+-]\+:') ||
-    (printf '%s' "$url" | head -n 1 | grep -q -e '^file:'); then
-  re='-re'
- fi
- 
  local request_line=
  local method=
  local path=
@@ -181,6 +168,50 @@ response_main() { #{1
   method=GET
   request_line="$method $path HTTP/1.0"
   quiet=''
+ fi
+ 
+ local input_url="$___URL___"
+ local sh_url="$input_url"
+ local url="$input_url"
+ if (printf '%s' "$input_url" | head -n 1 | tr A-Z a-z | grep -q -e '^sh:'); then
+  local sh_cmd="$(printf '%s' "$input_url" | sed -e 's@sh:/*@@i')"
+  local sh_s="$(HTTP_PATH=$path HTTP_METHOD=$method sh -c "$sh_cmd")"
+  local resolve_r=$?
+  if [ $resolve_r -ne 0 ] || [ x"$sh_url" = x"" ]; then
+   echo "error: could not resolve sh: URI" >&2
+   return $resolve_r
+  fi
+  unset resolve_r
+  
+  sh_url="$(printf '%s' "$sh_s" | head -n 1)"
+  sh_title="$(printf '%s' "$sh_s" | tail -n 1)"
+  if [ x"$title" = x"" ] && [ x"$sh_title" != x"$sh_url" ]; then
+   title=$sh_title
+   name=$title
+   name=$(printf '%s' "$name" | sed -e 's@/@ - @g')
+  fi
+ fi
+ if (printf '%s' "$sh_url" | head -n 1 | tr A-Z a-z | grep -q -e '^ytdl:'); then
+  url="$(resolve_ytdl_uri "$sh_url")"
+  local resolve_r=$?
+  if [ $resolve_r -ne 0 ]; then
+   echo "error: could not resolve ytdl: URI" >&2
+   return $resolve_r
+  fi
+ else
+  url=$sh_url
+ fi
+ 
+ if [ x"$name" = x"" ]; then
+  title=${input_url%%\?*}
+  name=$title
+  name=$(printf '%s' "$name" | sed -e 's@^/*@@g; s@/*$@@g; s@/@_@g')
+ fi
+ 
+ local re=
+ if (printf '%s' "$url" | head -n 1 | grep -q -v -e '^[a-zA-Z+-]\+:') ||
+    (printf '%s' "$url" | head -n 1 | grep -q -e '^file:'); then
+  re='-re'
  fi
  
  local disposition=inline
@@ -236,7 +267,7 @@ resolve_ytdl_uri() { #{1
  local DEFAULT_FORMAT="worstaudio;worst"
  
  local ytdl_uri="$1"
- local after_scheme="$(printf '%s' "$ytdl_uri" | sed -e 's@ytdl:/*@@')"
+ local after_scheme="$(printf '%s' "$ytdl_uri" | sed -e 's@ytdl:/*@@i')"
  local format="${after_scheme%%/*}"
  local url="${after_scheme#*/}"
  if (printf '%s' "$after_scheme" | grep -q -v -e '/'); then
@@ -260,7 +291,7 @@ resolve_ytdl_uri() { #{1
  fi
  
  #echo "$format $url" >&2
- check_not_empty youtube-dl -g -f "$format" "$url" --playlist-end=1 --max-downloads=1 2>/dev/null && return
+ check_not_empty youtube-dl --prefer-insecure -g -f "$format" "$url" --playlist-end=1 --max-downloads=1 2>/dev/null && return
 }
 
 
