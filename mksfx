@@ -122,8 +122,9 @@ ${sfx}:
 	exit $$?
 	# End of public domain extraction code; uncompressed TAR archive follows
 	SH
-	tar -c $(if ${postextract},'./${postextract_esc}',) . \
+	tar \
 	 --exclude='*.swp' --exclude="${tmp}" \
+	 -c $(if ${postextract},'./${postextract_esc}',) . \
 	 >> "${tmp}"
 	mv "${tmp}" "${sfx}"
 	chmod +x "${sfx}"
