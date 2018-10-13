@@ -4,9 +4,15 @@ if [ -d "$HOME/bin" ]; then
  PATH="$HOME/bin:$PATH"
 fi
 
-if [ -S "$HOME/.byobu/.ssh-agent" ]; then
- export SSH_AUTH_SOCK="$HOME/.byobu/.ssh-agent"
+# if needed, set/export SSH_AUTH_SOCK if ~/.byobu/.ssh-agent points to a live socket
+byobu_ssh_agent="$HOME/.byobu/.ssh-agent"
+if [ x"$SSH_AUTH_SOCK" = x"" ] && [ -S "$byobu_ssh_agent" ]; then
+ socat=$(which socat >/dev/null 2>&1 && echo socat || echo true)
+ if $socat "UNIX-CONNECT:$byobu_ssh_agent" "OPEN:/dev/null" >/dev/null 2>&1; then
+  export SSH_AUTH_SOCK="$byobu_ssh_agent"
+ fi
 fi
 
-screen -ls | grep -q -e '[0-9]\.byobu'
+screen=$(which screen >/dev/null 2>&1 && echo screen || echo true)
+$screen -ls | grep -q -e '[0-9]\.byobu'
 [ $? -eq 0 ] && exec byobu -xr byobu || exec byobu
