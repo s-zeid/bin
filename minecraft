@@ -1,12 +1,14 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 """Runs Minecraft.
 
 Launchers should be placed in `~/.minecraft/launchers/`, and a `launchers.yml`
 file describing each launcher should be placed in the same directory.  These
-paths will be created if necessary, with sane defaults (i.e. it will try to
-run the stock launcher first, then the new dev launcher, then Magic Launcher
-as MagicLauncher.jar).  You will, however, need to manually add the JAR files.
+paths will be created if necessary, with sane defaults (i.e. it will try to run
+the new stock launcher first, then the old launcher, then Magic Launcher as
+MagicLauncher.jar).  You will, however, need to manually add the stock launcher
+and/or JAR files.  (By default, the new stock launcher's directory is expected
+to be located at `~/.minecraft/launchers/stock`.)
 
 If no launcher is given, then the first launcher in launchers.yml that exists
 will be executed.
@@ -20,32 +22,44 @@ Optional environment variables:
 If this script is invoked as `minceraft`, then it may or may not force the
 client to flip the E and C in the title screen logo.
 
-Depends on Python 2.7, PyYAML, and python-which:
+Depends on Python 3, PyYAML, and where:
 
-    fedora$ sudo yum install python-which PyYAML
-    ubuntu$ sudo apt-get install python-{yaml,pip} && sudo pip install which
+    fedora$ sudo yum install python3-PyYAML && sudo pip3 install where
+    ubuntu$ sudo apt install python3-{yaml,pip} && sudo pip3 install where
 
 launchers.yml should look like this (as an example):
 
     cwd: ..
     launchers:
-     dev:
-      jar:     MinecraftDev.jar
-      args:    ["--proxyHost", "some.proxy.example", "--proxyPort", 1080]
      stock:
-      jar:     Minecraft.jar
-     command:
-      cmd:     ["some-command"]
+      cwd:     launchers/stock
+      cmd:     ["./launcher"]
+      env:
+       EXAMPLE: 1
+     msvmc-env:
+      env:
+       LD_PRELOAD: /path/to/libxcustomtitle/libxcustomtitle.so
+       X_CUSTOM_TITLE: Microsoft® Visual Mining and Crafting®
+     msvmc:
+      extends: stock, msvmc-env
      usb:
       extends: stock
-      args:    ["--workDir", "/media/USB/Minecraft/.minecraft"]
+      args:    ["-workDir", "/media/USB/Minecraft/.minecraft"]
      portable: usb
+     
+     stock-old:
+      jar:     Minecraft.jar
+     msvmc-old:
+      extends: stock-old, msvmc-env
+     dev-old:
+      jar:     MinecraftDev.jar
+      args:    ["--proxyHost", "some.proxy.example", "--proxyPort", 1080]
 
 The ordering of the launchers is important.  Without arguments, the first
 launcher in the list whose JAR file exists will be executed.
 
 `jar` is either the relative (to `~/.minecraft/launchers/`) or absolute path to
-the launcher's JAR file.
+the launcher's JAR file.  This can be omitted if `cmd` is present.
 
 (optional) `env` is a mapping of environment variables to pass to the launcher.
 This may be specified either as part of a launcher or globally.  Environment
@@ -72,16 +86,17 @@ launcher.
 a launcher.  It may be specified either as part of a launcher or globally.  If
 defined inside a launcher, it will override the global `cwd` and be evaluated
 relative to the global `cwd` if the launcher `cwd` is not an absolute path.
+By default, the working directory used for the launcher is the directory
+containing `launchers.yml`.
 
-(optional) `extends` indicates that a launcher *extends* another launcher.  It
-will inherit all properties of the other launcher, and those properties may be
-overridden.  As a shortcut, if you just want to make an alias of another
+(optional) `extends` indicates that a launcher *extends* one or more other
+launchers.  It will inherit all properties of the other launchers in the order
+those launchers are listed, and those properties may be overridden.  For
+properties which are lists or dictionaries, the values will be combined instead
+of replaced.  As a shortcut, if you just want to make an alias of another
 launcher, you may define your alias using just a string instead of a mapping
 (e.g. "launcher-name: other-launcher").  This must be specified as part of a
 launcher.
-
-By default, the working directory used for the launcher is the directory
-containing `launchers.yml`.
 
 Any `~/` at the beginning of a path is expanded to the user's home directory.
 
@@ -96,70 +111,68 @@ import subprocess
 import sys
 import time
 
-try:
- # OrderedDict is included in standard library from Python 2.7
- from collections import OrderedDict
-except ImportError:
- # try importing the backport from PyPI
- from ordereddict import OrderedDict
+from collections import OrderedDict
 
 import yaml
 import yaml.constructor
 
-# We want the python-which module if it's available, but if it's not, use a
+# We want the where module if it's available, but if it's not, use a
 # minimal implementation that runs the system which command.  On Windows,
-# an ImportError will be raised if the real which module is unavailable
-# because Windows doesn't have a which command.
+# an ImportError will be raised if the real which module is unavailable,
+# because Windows (<= XP) doesn't have a which command.  (Support for
+# the where command in Vista and later may be added in the future.)
 try:
- import which
+ import where  # pip3 install where
 except ImportError:
  if platform.system() == "Windows":
-  raise ImportError("The which module is required on Windows")
- class which(object):
-  class WhichError(Exception): pass
+  raise ImportError("The where module is required on Windows."
+                    "  Please run `pip3 install where`.")
+ class where(object):
   @classmethod
-  def which(cls, what):
+  def first(cls, what):
    p = subprocess.Popen(["which", what], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
    if p.wait() == 0:
-    return p.communicate()[0].rstrip("\r\n\0")
+    return p.communicate()[0].rstrip(b"\r\n\0").decode(sys.getfilesystemencoding())
    else:
-    raise cls.WhichError("Could not find '%s' on the path." % what)
+    return None
 
 DEFAULT_LAUNCHERS_PATH = "~/.minecraft/launchers"
 DEFAULT_LAUNCHERS_YML  = "launchers.yml"
 DEFAULT_YML_CONTENTS = """\
 launchers:
  stock:
+  cwd:     stock
+  cmd:     ["./launcher"]
+ stock-old:
   jar:     Minecraft.jar
- dev:
-  jar:     MinecraftDev.jar
  magic:
   jar:     MagicLauncher.jar
 """
 
+
 def main(argv):
  if len(argv) > 1 and argv[1] in ("--help", "-h"):
   if len(argv) > 2 and argv[2] == "launchers.yml":
-   print "launchers.yml " + __doc__.split("\n\nlaunchers.yml ")[1].rstrip()
+   print("launchers.yml " + __doc__.split("\n\nlaunchers.yml ")[1].rstrip())
   else:
-   print "Usage: %s [--<launcher-name> or --help|-h or --] [launcher_args ...]" % argv[0]
+   print("Usage: %s [--<launcher-name> or --help|-h or --] [launcher_args ...]" % argv[0])
    if len(argv) > 2 and argv[2] == "all":
-    print __doc__.rstrip()
+    print(__doc__.rstrip())
    else:
-    print __doc__.split("\n\nlaunchers.yml ")[0] + "\n"
-    print "For information on the format of launchers.yml, run:\n"
-    print "    %s %s launchers.yml" % tuple(argv[:2])
+    print(__doc__.split("\n\nlaunchers.yml ")[0] + "\n")
+    print("For information on the format of launchers.yml, run:\n")
+    print("    %s %s launchers.yml" % tuple(argv[:2]))
   return 0
  
  config = load_config(
   os.environ.get("MC_LAUNCHERS_PATH", None), os.environ.get("MC_LAUNCHERS_YML", None)
  )
  if not config:
-  print >> sys.stderr, "error: could not load configuration"
+  print("error: could not load configuration", file=sys.stderr)
   return 6
  launchers = config["launchers"]
- if len(launchers) == 0:
-  print >> sys.stderr, "error: no launchers configured in launchers.yml"
+ if len(launchers) == 0 and (len(argv) > 1 and argv[1] != "--hep"):
+  print("error: no launchers configured in launchers.yml", file=sys.stderr)
   return 4
  
  # See if a launcher is requested in argv[1] (must be a key in launchers.yml::launchers).
@@ -174,8 +187,12 @@ def main(argv):
   args = argv[2:]
   if want in launchers:
    launchers = {want: launchers[want]}
+  elif want == "hep":
+   print("Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes.")
+   print("--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s")
+   return 0
   else:
-   print >> sys.stderr, "warning: invalid launcher '%s'" % want
+   print("warning: invalid launcher '%s'" % want, file=sys.stderr)
    return 2
  else:
   want = None
@@ -187,24 +204,25 @@ def main(argv):
  launcher = None
  for name in launchers:
   l = launchers[name]
-  if l.get("cmd") or os.path.isfile(os.path.realpath(l["jar"])):
+  if test_cmd(l, config) or os.path.isfile(os.path.realpath(l["jar"])):
    launcher = l
    break
   elif want:
-   print >> sys.stderr, ("error: the jar file '%s' does not exist or is not a regular file"
-                         % l["jar"])
+   file_type = "executable" if "cmd" in l else "jar"
+   file_path = prog(l, config) if "cmd" in l else l["jar"]
+   print(("error: the %s file '%s' does not exist or is not a regular file"
+          % (file_type, file_path)), file=sys.stderr)
    return 1
  if launcher == None:
-  print >> sys.stderr, "error: no launcher JAR could be found"
+  print("error: no launcher could be found", file=sys.stderr)
   return 5
  
  # On Linux, it is at least sometimes necessary to explicitly add the JRE
  # native library path to LD_LIBRARY_PATH, so we do that, as well as check
  # to see if Java is on the user's PATH (which is necessary on all platforms).
- try:
-  java = which.which("java")
- except which.WhichError:
-  print >> sys.stderr, "error: java is not in your PATH"
+ java = where.first("java")
+ if not java:
+  print("error: java is not in your PATH", file=sys.stderr)
   return 3
  java_home = re.sub(r"[\\/]bin[\\/]java$", "", os.path.realpath(java))
  ld_library_path = None
@@ -213,18 +231,20 @@ def main(argv):
    ld_library_path = os.path.join(java_home, "lib/amd64")
   elif platform.architecture()[0] == "32bit":
    ld_library_path = os.path.join(java_home, "lib/i386")
+  if not os.path.isdir(ld_library_path):
+   ld_library_path = None
  
  # Populate the environment
  environ = os.environ.copy()
+ if config.get("env", None):
+  environ.update(OrderedDict([(k, str(config["env"][k])) for k in config["env"]]))
+ if launcher.get("env", None):
+  environ.update(OrderedDict([(k, str(launcher["env"][k])) for k in launcher["env"]]))
  if ld_library_path:
   if "LD_LIBRARY_PATH" in environ:
    environ["LD_LIBRARY_PATH"] = ld_library_path + ":" + environ["LD_LIBRARY_PATH"]
   else:
    environ["LD_LIBRARY_PATH"] = ld_library_path
- if config.get("env", None):
-  environ.update(OrderedDict([(k, str(config["env"][k])) for k in config["env"]]))
- if launcher.get("env", None):
-  environ.update(OrderedDict([(k, str(launcher["env"][k])) for k in launcher["env"]]))
 
  # Get any launcher arguments from launchers.yml and put them *before* the user's arguments
  if launcher.get("args", None):
@@ -237,6 +257,7 @@ def main(argv):
  os.chdir(launcher.get("cwd", config["cwd"]))
  os.execvpe(cmd[0], cmd, environ)
 
+
 def load_config(path=None, yml=None):
  if not path: path = DEFAULT_LAUNCHERS_PATH
  if not yml:  yml  = DEFAULT_LAUNCHERS_YML
@@ -246,10 +267,10 @@ def load_config(path=None, yml=None):
  if not os.path.isabs(yml): yml = os.path.join(path, yml)
  
  if not os.path.exists(path):
-  os.mkdir(path, 0755)
+  os.mkdir(path, 0o755)
  if not os.path.exists(os.path.realpath(yml)):
-  with open(yml, "w") as fo:
-   fo.write(DEFAULT_YML_CONTENTS)
+  with open(yml, "wb") as fo:
+   fo.write(DEFAULT_YML_CONTENTS.encode("utf-8"))
  
  with open(yml, "rb") as fo:
   config = yaml.load(fo.read().decode("utf-8"), OrderedDictYAMLSafeLoader)
@@ -268,18 +289,32 @@ def load_config(path=None, yml=None):
   process_launcher_entry(name, launchers, config)
  return config
 
+
 def process_launcher_entry(name, launchers, config):
  l = launchers[name]
+ # Handle alternate names
+ if isinstance(l, str):
+  launchers[name] = l = dict(extends=l)
  # Handle launchers that extend another launcher
- if isinstance(l, basestring):
-  l = dict(extends=l)
  if "extends" in l:
-  original = l
-  alias = original["extends"]
-  del original["extends"]
-  launchers[name] = l = process_launcher_entry(alias, launchers, config).copy()
-  del l["__values_expanded"]
-  l.update(original)
+  extends = l["extends"]
+  del l["extends"]
+  if isinstance(extends, str):
+   extends = re.sub(r",\s*", ",", extends).split(",")
+  for extend in extends:
+   other = process_launcher_entry(extend, launchers, config).copy()
+   for k in set(list(l.keys()) + list(other.keys())):
+    if k in other:
+     if k not in l:
+      l[k] = other[k]
+     elif isinstance(l[k], dict):
+      l[k].update(other[k])
+     elif isinstance(l[k], (list, tuple)):
+      l[k] = list(l[k])
+      l[k][-1:-1] = other[k]
+     else:
+      l[k] = other[k]
+   del l["__values_expanded"]
  if "__values_expanded" not in l:
   if "jar" not in l:
    l["jar"] = ""
@@ -291,13 +326,13 @@ def process_launcher_entry(name, launchers, config):
    cmd = normalize_yaml_list(l["cmd"])
    # Make sure it has at least one argument
    if len(cmd) < 1 or cmd[0] == "":
-    print >> sys.stderr, "error: launcher commands in launchers.yml cannot be empty"
+    print("error: launcher commands in launchers.yml cannot be empty", file=sys.stderr)
     return False
    # Expand first argument of the command (the path to the executable)
    cmd[0] = os.path.expanduser(cmd[0])
    # Expand other arguments if this isn't disabled for the launcher
    if l.get("expand-args", True):
-    for i in xrange(1, len(cmd)):
+    for i in range(1, len(cmd)):
      cmd[i] = os.path.expanduser(cmd[i])
    # Save result
    l["cmd"] = cmd
@@ -314,14 +349,35 @@ def process_launcher_entry(name, launchers, config):
   l["__values_expanded"] = True
  return l
 
+
 def normalize_yaml_list(l):
  # Normalize type
- if isinstance(l, basestring):
+ if isinstance(l, str):
   l = [l]
  if not isinstance(l, (list, tuple)):
   l = [str(l)]
  l = list(l)
  return l
+
+
+def prog(l, config):
+ if "cmd" not in l:
+  return None
+ if not len(l["cmd"]):
+  return None
+ prog = l["cmd"][0]
+ if not os.path.isabs(prog):
+  prog = os.path.join(l.get("cwd", config.get("cwd", ".")), prog)
+ return prog
+
+
+def test_cmd(l, config):
+ if "cmd" not in l:
+  return False
+ if not len(l["cmd"]):
+  return False
+ return os.path.isfile(prog(l, config))
+
 
 # We need to load YAML mappings as OrderedDicts in order to preserve the ordering
 # of launcher entries while keeping the launchers.yml schema clean and easy to
@@ -335,8 +391,8 @@ class OrderedDictYAMLSafeLoader(yaml.SafeLoader):
  def __init__(self, *args, **kwargs):
   yaml.SafeLoader.__init__(self, *args, **kwargs)
 
-  self.add_constructor(u'tag:yaml.org,2002:map', type(self).construct_yaml_map)
-  self.add_constructor(u'tag:yaml.org,2002:omap', type(self).construct_yaml_map)
+  self.add_constructor('tag:yaml.org,2002:map', type(self).construct_yaml_map)
+  self.add_constructor('tag:yaml.org,2002:omap', type(self).construct_yaml_map)
 
  def construct_yaml_map(self, node):
   data = OrderedDict()
@@ -356,20 +412,16 @@ class OrderedDictYAMLSafeLoader(yaml.SafeLoader):
    key = self.construct_object(key_node, deep=deep)
    try:
     hash(key)
-   except TypeError, exc:
+   except TypeError as exc:
     raise yaml.constructor.ConstructorError('while constructing a mapping',
      node.start_mark, 'found unacceptable key (%s)' % exc, key_node.start_mark)
    value = self.construct_object(value_node, deep=deep)
    mapping[key] = value
   return mapping
 
-def to_unicode(s, encoding="utf8"):
- """Returns a Unicode version of the given object."""
- if isinstance(s, unicode):
-  return s
- if isinstance(s, (str, buffer)):
-  return unicode(s, encoding)
- return unicode(s)
 
 if __name__ == "__main__":
- sys.exit(main(sys.argv))
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
