@@ -44,7 +44,7 @@ launchers.yml should look like this (as an example):
       extends: stock, msvmc-env
      usb:
       extends: stock
-      args:    ["-workDir", "/media/USB/Minecraft/.minecraft"]
+      args:    ["-w", "/media/USB/Minecraft/.minecraft"]  # or --workDir=<path>
      portable: usb
      
      stock-old:
