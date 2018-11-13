@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Copyright (c) 2014-2016 Scott Zeid.
+# Copyright (c) 2014-2018 Scott Zeid.
 # Released under the X11 License:  <https://tldrlegal.com/l/x11>
 
 DEFAULT_USER=root
@@ -29,15 +29,17 @@ reorder_args_cmd() {
  local positional=
  local flags=
  local n=1
+ local n_var=
  local arg=
  local n_positional=0
  while [ $n -le $# ]; do
-  eval "arg=\$$n"
+  n_var=$([ $n -lt 10 ] && echo $n || echo "{$n}")
+  eval "arg=\$$n_var"
   if ([ $positional_max -gt 0 ] && [ $n_positional -ge $positional_max ]) || \
      (printf '%s' "$arg" | head -n 1 | grep -q -e '^-'); then
-   flags="$flags \"\$$n\""
+   flags="$flags \"\$$n_var\""
   else
-   positional="$positional \"\$$n\""
+   positional="$positional \"\$$n_var\""
    n_positional=$((n_positional + 1))
   fi
   n=$((n + 1))
@@ -57,13 +59,15 @@ UNINSTALL_FIRST=0
 # extract -U flag
 PM_OPTIONS=
 n=1
+n_var=
 arg=
 while [ $n -le $# ]; do
- eval "arg=\$$n"
+ n_var=$([ $n -lt 10 ] && echo $n || echo "{$n}")
+ eval "arg=\$$n_var"
  if [ x"$arg" = x"-U" ]; then
   UNINSTALL_FIRST=1
  else
-  PM_OPTIONS="$PM_OPTIONS \"\$$n\""
+  PM_OPTIONS="$PM_OPTIONS \"\$$n_var\""
  fi
  n=$((n + 1))
 done
