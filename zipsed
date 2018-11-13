@@ -1,20 +1,22 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
-"Rename files in a ZIP archive."
+"""Rename files in a ZIP archive.
+
+If neither --regex nor --search are set, then search and replace
+are treated as exact file names, including path components.
+"""
+
 
 import argparse
+import io
 import os
 import re
 import sys
 import zipfile
 
-try:
- from cStringIO import StringIO
-except ImportError:
- from StringIO import StringIO
 
 def zipsed(in_file, search, replace, exact=False, regex=False):
- out_file = StringIO()
+ out_file = io.BytesIO()
  in_zip   = zipfile.ZipFile(in_file, "r")
  out_zip  = zipfile.ZipFile(out_file, "w", zipfile.ZIP_DEFLATED)
  
@@ -34,40 +36,57 @@ def zipsed(in_file, search, replace, exact=False, regex=False):
  out_file.seek(0)
  return out_file
 
+
 def main(argv):
  parser = argparse.ArgumentParser(
-  description="Rename files in a ZIP archive.",
-  epilog="If neither --regex nor --search are set, then search and replace are"
-         " treated as exact file names, including path components."
+  description=__doc__.split("\n", 1)[0].strip(),
+  epilog=__doc__.split("\n", 1)[1].strip(),
+  formatter_class=argparse.RawDescriptionHelpFormatter,
  )
  parser.add_argument("--regex", "-r", default=False, action="store_true",
   help="Treat old-name as a regular expression.  new-name may contain"
        " references.")
  parser.add_argument("--search", "-s", default=False, action="store_true",
   help="Treat old-name and new-name as plain search and replace patterns.")
- parser.add_argument("--input", "-i", default=sys.stdin,
+ parser.add_argument("--input", "-i", default="-",
   help="Input file (default is standard input)")
- parser.add_argument("--output", "-o", default=sys.stdout,
+ parser.add_argument("--output", "-o", default="-",
   help="Output file (default is standard output)")
  parser.add_argument("old_name", metavar="old-name",
   help="The filename or search string to rename")
  parser.add_argument("new_name", metavar="new-name",
   help="The new name or replacement pattern")
- args = parser.parse_args(argv[1:])
+ 
+ try:
+  args = parser.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ args.input = sys.stdin.buffer if args.input == "-" else args.input
+ args.output = sys.stdout.buffer if args.output == "-" else args.output
  
  if args.regex:
   old_name = re.compile(args.old_name, re.MULTILINE|re.UNICODE)
  else:
   old_name = args.old_name
- result = zipsed(StringIO(args.input.read()) if args.input==sys.stdin else args.input,
-                 old_name, args.new_name,
+ 
+ if isinstance(args.input, io.BufferedIOBase):
+  in_file = io.BytesIO(args.input.read())
+ else:
+  in_file = args.input
+ 
+ result = zipsed(in_file, old_name, args.new_name,
                  exact=(not args.search and not args.regex), regex=args.regex)
  
- if args.output == sys.stdout:
+ if isinstance(args.output, io.BufferedIOBase):
   args.output.write(result.read())
  else:
-  with open(args.output) as out:
+  with open(args.output, "wb") as out:
    out.write(result.read())
 
+
 if __name__ == "__main__":
- sys.exit(main(sys.argv))
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
