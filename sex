@@ -8,10 +8,13 @@
 import re
 import sys
 
+
 class Fuck:
  num_times = 0
+ 
  def get_some(sex):
   sex.num_times += 1
+ 
  def how_good_was_it(sex):
   return {
    0: "I shat on their face",
@@ -21,6 +24,7 @@ class Fuck:
    4: "Goooooooood",
    5: "AAAAAAAAAAAAAAAAAAAAAAAAAAAHHHHHHHHHHH"
   }.get(sex.num_times, "damn that was AAAAAAAAAAAAAAAAAHHHHHHHHHHHHHHH!")
+
 
 class SexParty:
  @staticmethod
@@ -35,8 +39,10 @@ class SexParty:
     sex.get_some()
     print(sex.how_good_was_it())
 
+
 def main(argv):
  SexParty(parties=argv)
+
 
 if __name__ == "__main__":
  try:
