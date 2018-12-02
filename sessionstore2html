@@ -477,18 +477,21 @@ def main(argv: List[str]) -> int:  #{{{1
 
  if isinstance(sessionstore_js, str):
   if sessionstore_js == "-":
-   sessionstore_js = sys.stdin
+   sessionstore_js = sys.stdin.buffer
   else:
    sessionstore_js = open(sessionstore_js, "rb")
  
  session = Session(sessionstore_js)
  print(make_html(session.windows))
  
- if sessionstore_js != sys.stdin:
+ if sessionstore_js != sys.stdin.buffer:
   sessionstore_js.close()
  
  return 0
 
 
 if __name__ == "__main__":  #{{{1
- sys.exit(main(sys.argv))
+ try:
+  sys.exit(main(sys.argv))
+ except (KeyboardInterrupt, BrokenPipeError):
+  pass
