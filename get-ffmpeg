@@ -1,0 +1,247 @@
+#!/bin/sh
+
+# Copyright (c) 2016, 2019 S. Zeid.
+# Released under the X11 License:  <https://tldrlegal.com/l/x11>
+
+
+set -e
+
+
+usage() {
+ cat <<USAGE
+Usage: $0 \\
+           [-h|--help] [-a <arch>|list|ls] \\
+           [-b (use -hide_banner in AppImage)] \\
+           [-o <output-path>] [-e <extract-path>] [-i <appimage-path>]
+
+Note: -i generates a multi-call AppImage.  Run \`<appimage-path> --help\`
+for details.
+USAGE
+}
+
+
+lsarch() {
+ printf '%s\n' \
+  'x86_64, amd64'  'x86, i686'  'aarch64, arm64'  'arm, armhf'  'armel'
+}
+
+
+main() {
+ if [ x"$1" = x"-h" ] || [ x"$1" = x"--help" ] || [ x"$1" = x"-help" ]; then
+  usage
+  return 0
+ elif [ x"$1" = x"--hep" ] || [ x"$1" = x"-hep" ]; then
+  echo "Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes."
+  echo "--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s"
+  return 0
+ fi
+ 
+ local arch="$(uname -m)"
+ local output_path
+ local extract_path
+ local hide_banner=
+ 
+ while getopts 'o:e:i:ba:h' opt; do
+  case "$opt" in
+   o) output_path="$OPTARG";;
+   e) extract_path="$OPTARG";;
+   i) appimage_path="$OPTARG";;
+   a) arch="$OPTARG";;
+   b) hide_banner=-hide_banner;;
+   h) usage; return 0;;
+   ?) usage >&2; return 2;;
+  esac
+ done
+ 
+ arch="$(printf %s "$arch" | sed -e 's/-/_/g' | tr A-Z a-z)"
+ case "$arch" in
+  x86_64|amd64) arch=amd64;;
+  x86|i686) arch=i686;;
+  aarch64|arm64) arch=arm64;;
+  arm|armhf) arch=armhf;;
+  armel) arch=armel;;
+  list|ls)
+   lsarch
+   return 0
+   ;;
+  *)
+   echo "$0: unsupported architecture \`$arch\`" >&2
+   echo >&2
+   (echo 'Supported architectures:'; lsarch | sed -e 's/^/    /g') >&2
+   return 1
+   ;;
+ esac
+ 
+ if [ x"$extract_path" != x"" ]; then
+  mkdir -p "$extract_path"
+  get "$arch" | tar_ -C "$extract_path" -x
+  if [ x"$output_path" != x"" ]; then
+   cp -p "$extract_path"/ffmpeg "$output_path"
+  fi
+ 
+ elif [ x"$output_path" != x"" ]; then
+  if [ -d "$output_path" ]; then
+   output_path="$output_path/ffmpeg"
+  fi
+  get "$arch" | tar_ -O -x '*/ffmpeg' > "$output_path"
+  chmod +x "$output_path"
+ 
+ elif [ x"$appimage_path" != x"" ]; then
+  # these vars must be global so that appimage_cleanup() can see them at exit
+  appimage_tmpdir="$(mktemp -d "/tmp/get-ffmpeg_u$(id -u)_build.XXXXXX")"
+  appimage_tmpfile=
+  trap 'appimage_cleanup' INT TERM 0
+  
+  get "$arch" | tar_ -C "$appimage_tmpdir" -x
+  
+  F_AppRun | sed -e "s/___HIDE_BANNER___/$hide_banner/g" > "$appimage_tmpdir/AppRun"
+  chmod +x "$appimage_tmpdir/AppRun"
+  
+  touch "$appimage_tmpdir/.dummy.png" "$appimage_tmpdir/.DirIcon"
+  cat > "$appimage_tmpdir/.dummy.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=FFmpeg
+Categories=
+Exec=false
+Icon=.dummy
+Terminal=true
+DESKTOP
+  
+  appimage_tmpfile="$(mktemp "/tmp/get-ffmpeg_u$(id -u)_img.XXXXXX")"
+  appimagetool --no-appstream "$appimage_tmpdir" "$appimage_tmpfile"
+  mv "$appimage_tmpfile" "$appimage_path"
+ 
+ else
+  echo "$0: at least one of the folowing are required: -o, -e, -i" >&2
+  usage >&2
+  return 2
+ 
+ fi
+}
+
+
+get() {
+ curl -L \
+  "https://johnvansickle.com/ffmpeg/builds/ffmpeg-git-${1}-static.tar.xz"
+}
+
+
+tar_() {
+ tar --strip-components=1 -J "$@"
+}
+
+
+F_AppRun() {
+ cat <<"APPRUN"
+#!/bin/sh
+
+# Copyright (c) 2019 S. Zeid.
+# Released under the X11 License:  <https://tldrlegal.com/l/x11>
+
+
+default_cmd=ffmpeg
+hide_banner=___HIDE_BANNER___
+
+
+argv0_cmd=$(basename -- "$ARGV0")
+argv0_cmd=${argv0_cmd%%.*}
+argv0_cmd=$(printf %s "${argv0_cmd:-$default_cmd}" | tr A-Z a-z)
+
+if ! ([ -f "$APPDIR/$argv0_cmd" ] && [ -x "$APPDIR/$argv0_cmd" ]); then
+ argv0_cmd=$default_cmd
+fi
+
+
+cmd=
+case "$1" in
+ --) shift;;
+ --*)
+  cmd=${1#--}; cmd=$(printf %s "$cmd" | tr A-Z a-z); shift
+  case "$cmd" in
+   help)
+    echo "Usage: $ARGV0 [--<command>] [args [...]]"; echo
+    echo "Commands:"
+    cd "$APPDIR"
+    (
+     find . -maxdepth 1 -type f -perm -a=x -exec basename -- {} \; | sort
+     printf '%s\n' -- help license 'man [<manpage>|list|ls]' readme
+    ) | grep -v AppRun | sed -e 's/^/  /g'; echo
+    echo "This is a multi-call binary.  If called as any of the commands"
+    echo "listed above the \`--\` divider, that program will be invoked"
+    echo "instead of $argv0_cmd."
+    exit;;
+   hep)
+    echo "Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes."
+    echo "--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s"
+    exit;;
+   license)
+    (
+     printf '%s\n' \
+      'FFmpeg AppImage Licenses' '========================' '' \
+      'AppRun script' '-------------' '' \
+       'Copyright (c) 2019 S. Zeid.  ' \
+       'Released under the X11 License:  <https://tldrlegal.com/l/x11>  ' \
+       '<https://code.s.zeid.me/bin/blob/master/get-ffmpeg>' \
+       '' '' \
+      'FFmpeg (built by John Van Sickle; <https://johnvansickle.com/ffmpeg/>)' \
+      '----------------------------------------------------------------------' ''
+     cat "$APPDIR/GPLv3.txt"
+    ) | less
+    exit;;
+   man)
+    page_arg=$1
+    page=${page_arg#.txt}
+    if [ x"$page" = x"list" ] || [ x"$page" = x"ls" ]; then
+     ls "$APPDIR/manpages" | sed -e 's/\.txt$//g' | sort | sed -e 's/^ffmpeg-/-/g'
+     exit
+    elif [ x"$page" = x"" ]; then
+     if ! [ -f "$APPDIR/manpages/$argv0_cmd.txt" ]; then
+      echo "$ARGV0: error: $argv0_cmd does not have a man page" >&2
+      exit 2
+     fi
+     page=$argv0_cmd
+    elif ! [ -f "$APPDIR/manpages/$page.txt" ]; then
+     page="ffmpeg-${page#-}"
+    fi
+    if ! [ -f "$APPDIR/manpages/$page.txt" ]; then
+     echo "$ARGV0: error: invalid man page \`$page_arg\`" >&2; echo >&2
+     echo "List of man pages:" >&2
+     ("$0" --man list | sed -e 's/^/    /g') >&2
+     exit 2
+    fi
+    less "$APPDIR/manpages/$page.txt"
+    exit;;
+   readme)
+    less "$APPDIR/readme.txt"
+    exit;;
+   *)
+    if ! ([ -f "$APPDIR/$cmd" ] && [ -x "$APPDIR/$cmd" ]); then
+     echo "$ARGV0: error: invalid command \`$cmd\`" >&2; echo >&2
+     "$0" --help >&2
+     exit 2
+    fi
+    ;;
+  esac;;
+esac
+
+
+cmd=${cmd:-$argv0_cmd}
+
+case "$cmd" in
+ ffmpeg|ffprobe)
+  exec "$APPDIR/$cmd" $hide_banner "$@";;
+ *)
+  exec "$APPDIR/$cmd" "$@";;
+esac
+APPRUN
+}
+
+
+appimage_cleanup() {
+ rm -rf "$appimage_tmpdir"
+ [ x"$appimage_tmpfile" != x"" ] && rm -f "$appimage_tmpfile" || true
+}
+
+
+main "$@"
