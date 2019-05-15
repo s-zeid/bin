@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+
+import argparse
+import random
+import sys
+
+
+def main(argv):
+ p = argparse.ArgumentParser()
+ p.add_argument("--hep", dest="_hep_easter_egg", action="store_true",
+                help=argparse.SUPPRESS)
+ p.add_argument("-i", "--integer", action="store_true",
+                help="print integer instead of word (heads=0, tails=1)")
+ p.add_argument("-q", "--quiet", action="store_true",
+                help="do not print anything (only return integer value)")
+ p.add_argument("heads", nargs="?", default="heads",
+                help="custom word/phrase for heads")
+ p.add_argument("tails", nargs="?", default="tails",
+                help="custom word/phrase for tails")
+ 
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ if options._hep_easter_egg:
+  print("Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes.")
+  print("--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s")
+  return 0
+ 
+ result = random.choice([0, 1])
+ 
+ if options.quiet:
+  pass
+ elif options.integer:
+  print(result)
+ else:
+  print([options.heads, options.tails][result])
+ 
+ return result
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
