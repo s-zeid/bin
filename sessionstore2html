@@ -17,11 +17,16 @@ sessionstore file.
 To read jsonlz4 files used in newer versions of Firefox, you will need to run
 `pip3 install lz4` (or install that package some other way).
 
+If a tab contains an unsaved note from my Note Tab webapp
+(<https://code.s.zeid.me/note-tab>), then the tab's URL will be rewritten to
+contain the unsaved note.  The original URL will be saved to a data attribute.
+
 """
 
 # Plumbing {{{1
 
 import argparse
+import base64
 import configparser
 import html
 import io
@@ -30,6 +35,7 @@ import os
 import platform
 import string
 import sys
+import warnings
 
 from typing import *
 
@@ -111,7 +117,7 @@ $tabs
 </section>""", 2).compile()
 
 TAB_TEMPLATE = Template("""<li class="tab$extra_classes">
- <a href="$url" target="_blank" class="link">
+ <a href="$url"$data_attributes target="_blank" class="link">
   <img src="$icon" alt="$material_icon" class="icon material-icons"
   /><span class="title">$title</span>
  </a>
@@ -125,11 +131,14 @@ TABS_WORD = ("tab", "tabs")
 
 class Tab:  #{{{2
  _src: dict
+ _entry: dict
  
  icon: str
  title: str
  url: str
  _pinned: bool
+ _structured_clone_state: bytes
+ _original_url: Optional[str]
  _children: List["Tab"]
  _parent: Optional["Tab"]
  _processed: Union[bool, int, float]
@@ -149,12 +158,13 @@ class Tab:  #{{{2
    raise ValueError("source dict must have an \"entries\" key")
   
   self._src = src
+  self._entry = entry = src["entries"][src["index"] - 1]
  
   self.icon = src.get("image", src.get("attributes", {}).get("image", "")) or ""
-  self.title = src["entries"][src["index"] - 1].get("title",
-                os.path.basename(src["entries"][src["index"] - 1]["url"]))
-  self.url = src["entries"][src["index"] - 1]["url"]
+  self.title = entry.get("title", os.path.basename(entry["url"]))
+  self.url = entry["url"]
   self._pinned = src.get("pinned", False)
+  self._original_url = None
   self._children = []
   self._parent = cast(None, ...)
   self._processed = False
@@ -175,6 +185,23 @@ class Tab:  #{{{2
   else:
    self._tree.ancestors = []
    self._tree.children = []
+  
+  self._structured_clone_state = b""
+  try:
+   self._structured_clone_state = base64.b64decode(entry.get("structuredCloneState", ""))
+  except Exception:
+   warnings.warn("could not decode structuredCloneState")
+  
+  note_tab_magic = b"urn:uuid:46e56985-cff3-45fd-b1b7-c5f84fbb921c"
+  if note_tab_magic in self._structured_clone_state:
+   note_tab_start = self._structured_clone_state.index(note_tab_magic)
+   note_tab_end = self._structured_clone_state.find(b"\0", note_tab_start)
+   if note_tab_end >= 0:
+    note_tab_urn = self._structured_clone_state[note_tab_start:note_tab_end]
+    if b"#" in note_tab_urn:
+     note_tab_hash = note_tab_urn[note_tab_urn.index(b"#"):].decode("utf-8")
+     self._original_url = self.url
+     self.url = self.url[:self.url.find("#")] + note_tab_hash
  
  @staticmethod
  def count(tabs: List["Tab"]) -> int:
@@ -347,6 +374,11 @@ def make_tab(tab: Tab, tab_tpl: string.Template = TAB_TEMPLATE) -> str:
   url=html.escape(tab.url),
  )
  
+ data_attributes: List[str] = []
+ if tab._original_url:
+  data_attributes += ['data-original-url="%s"' % html.escape(tab._original_url)]
+ params["data_attributes"] = " " + " ".join(data_attributes) if data_attributes else ""
+ 
  params["material_icon"] = "tab"
  if tab.url == tab.icon:
   params["icon"] = ""
@@ -355,10 +387,10 @@ def make_tab(tab: Tab, tab_tpl: string.Template = TAB_TEMPLATE) -> str:
  extra_classes: List[str] = []
  if tab._pinned:
   extra_classes += ["pinned"]
- params["extra_classes"] = " " + " ".join(extra_classes) if len(extra_classes) else ""
+ params["extra_classes"] = " " + " ".join(extra_classes) if extra_classes else ""
  
  params["children"] = "\n".join([make_tab(i, tab_tpl) for i in tab._children])
- if len(params["children"]):
+ if params["children"]:
   params["children"] = indent("\n%s\n   " % params["children"], 2)
  
  return tab_tpl.substitute(params)
