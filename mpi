@@ -1,6 +1,7 @@
 #!/bin/bash
 
 input_conf='
+MBTN_LEFT ignore
 SPACE ignore
 p ignore
 '
