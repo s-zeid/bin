@@ -200,8 +200,10 @@ class Tab:  #{{{2
     note_tab_urn = self._structured_clone_state[note_tab_start:note_tab_end]
     if b"#" in note_tab_urn:
      note_tab_hash = note_tab_urn[note_tab_urn.index(b"#"):].decode("utf-8")
-     self._original_url = self.url
-     self.url = self.url[:self.url.find("#")] + note_tab_hash
+     note_tab_url = self.url[:self.url.find("#")] + note_tab_hash
+     if note_tab_url != self.url:
+      self._original_url = self.url
+      self.url = note_tab_url
  
  @staticmethod
  def count(tabs: List["Tab"]) -> int:
