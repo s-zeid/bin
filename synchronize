@@ -293,7 +293,7 @@ def gen_message(message):
 def load_yaml_file(filename):
  fo = open(filename)
  data = fo.read()
- out = yaml.load(data)
+ out = yaml.safe_load(data)
  fo.close()
  return out
 
