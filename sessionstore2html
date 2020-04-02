@@ -472,6 +472,8 @@ def main(argv: List[str]) -> int:  #{{{1
                 help=argparse.SUPPRESS)
  p.add_argument("-l", "--print-path", action="store_true",
                 help="print the detected path to the session store file and exit")
+ p.add_argument("-o", "--output",
+                help="write to the given filename instead of standard output")
  p.add_argument("sessionstore_or_profile_path", default=None, nargs="?",
                 help="the session store file or profile path (default: autodetect)")
 
@@ -516,7 +518,12 @@ def main(argv: List[str]) -> int:  #{{{1
    sessionstore_js = open(sessionstore_js, "rb")
  
  session = Session(sessionstore_js)
- print(make_html(session.windows))
+ html = make_html(session.windows)
+ if options.output:
+  with open(options.output, "w") as f:
+   f.write(html)
+ else:
+  print(html)
  
  if sessionstore_js != sys.stdin.buffer:
   sessionstore_js.close()
