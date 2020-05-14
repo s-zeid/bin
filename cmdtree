@@ -1,0 +1,347 @@
+#!/bin/sh
+# vim: set fdm=marker fmr=[[[,]]]:
+
+# README  #[[[1
+
+# cmdtree  
+# Converts one or more trees of command line arguments into a shell script.
+# 
+# Copyright (c) 2014-2020 S. Zeid.  Released under the X11 License.  
+# <https://code.s.zeid.me/bin/blob/master/cmdtree>
+# 
+# 
+# Usage
+# -----
+# 
+# `cmdtree [-n|--dry-run] {script} [...]`
+# 
+# * If `-n/--dry-run` is set, then the generated script will be printed
+#   to standard output instead of executed.
+# * If a filename ends in `.gui`, then it will be ignored if `$DISPLAY`
+#   is empty or unset.
+# 
+# 
+# Example script
+# --------------
+# 
+#     #!/usr/bin/env cmdtree
+#     # vim: set fdm=marker ft=sh:
+#     
+#     # Get cmdtree and its author's other utilities  #{{{1
+#     #/*
+#     set -ex; bin="$HOME/bin"
+#     which git >/dev/null 2>&1 || (sudo apt update && sudo apt install -y git)
+#     [ -d "$bin" ] || git clone 'https://gitlab.com/scottywz/bin.git' "$bin"
+#     exec "$bin/cmdtree" "$0" "$@"
+#     #*/
+#     
+#     $ sudo apt update  #{{{1
+#     $ sudo apt install -y  #{{{1
+#     curl
+#     # expands to `python3 python3-pil python3-pil.imagetk python3-pip
+#     # python3-setproctitle python3-tk python3-yaml`
+#     python3,-  #{{{2
+#      pil,.
+#       imagetk
+#      pip
+#      setproctitle
+#      tk
+#      yaml
+#      #}}}
+#     # expands to `x11-apps x11-utils x11-xserver-utils`
+#     x11-,  #{{{2
+#      apps
+#      utils
+#      xserver-utils
+#     $ cat  #{{{1
+#     /etc/,
+#      machine-id
+#      os-release
+#     $ printf '%s\n'  #{{{1
+#     "$HOME"
+#     "$(curl 'https://icanhazip.com/')"
+# 
+# Expands to:
+# 
+#     set -ex
+#     sudo apt update
+#     sudo apt install -y curl python3 python3-pil python3-pil.imagetk python3-pip python3-setproctitle python3-tk python3-yaml x11-apps x11-utils x11-xserver-utils
+#     cat /etc/machine-id /etc/os-release
+#     printf '%s\n' "$HOME" "$(curl 'https://icanhazip.com/')"
+# 
+# 
+# Extended comments
+# -----------------
+# 
+# Extended comments consist of a `#/*` line, a `#*/` line, and zero or
+# more lines in between.  These extended comments will be ignored by
+# cmdtree.  An extended comment at the start of the script, as seen in
+# the example script, can allow the script to be executed directly by
+# a shell, which in the example script is used to install cmdtree and
+# restart the script using it.
+# 
+# More than one of these extended comment sections may exist in a cmdtree
+# script.  The delimiter lines may also have zero or more `#`, space,
+# or tab characters at the end.
+# 
+# 
+# Syntax limitations
+# ------------------
+# 
+# * Tabs are not supported for indentation.
+# * Comment parsing is very simple, so in shell literals (lines which start
+#   with a `$`), any `#` character is treated as the start of a comment
+#   and will be removed along with the rest of the line.  Shell literals
+#   which start with `$$` will not be altered.
+# * To use a shell variable or command substitution in an argument tree,
+#   it muse be wrapped in double quotes.
+
+
+# Constants and awk wrapper  #[[[1
+
+PROG=$(basename -- "$0")
+
+export ARCH="$(uname -m)"
+export IS_GUI="$([ x"$DISPLAY" != x"" ] && echo 1 || echo 0)"
+
+posix_flag=$([ x"${CMDTREE_POSIX:-0}" != x"0" ] && printf '%s\n' '--posix' || true)
+
+awk() { command awk $posix_flag "$@"; }
+
+
+main() {  #[[[1
+ if [ $# -lt 1 ]; then
+  echo "Usage: $PROG [-n|--dry-run] {script} [...]"
+  return 2
+ fi
+ 
+ if [ x"$1" = x"--test" ]; then
+  test_parser
+  return $?
+ fi
+ 
+ local dry; dry=0
+ if [ x"$1" = x"-n" ] || [ x"$1" = x"--dry-run" ]; then
+  dry=1
+  shift
+ fi
+ local first_arg="$1"; shift
+ if [ x"$1" = x"-n" ] || [ x"$1" = x"--dry-run" ]; then
+  dry=1
+  shift
+ fi
+ 
+ if [ $dry -eq 0 ] && [ x"${CMDTREE_NOCOLLAPSE:-0}" = x"0" ]; then
+  local OLDIFS=$IFS
+  IFS=""
+  sh -c "$(generate_script "$first_arg" "$@")"
+  IFS=$OLD_IFS
+ else
+  generate_script "$first_arg" "$@"
+ fi
+}
+
+
+convert_argument_list() {  #[[[1
+ local list="$(cat)"
+ local levels="$(printf '%s\n' "$list" | count_indent_levels)"
+ printf '%s\n' "$list" | expand_args "$levels" | collapse_commands
+}
+
+
+expand_args() {  #[[[1
+ local list="$(cat)"
+ local levels="$1"
+ local n=0
+ while [ $n -lt $levels ]; do
+  list=$(
+   printf '%s\n' "$list" | \
+   awk '
+    # Strip `#/*\n...\n#*/` sections
+    BEGIN { in_ignored_section = 0 }
+    /^#\/\*(#| |\t)*$/ { in_ignored_section = 1 }
+    /^#\*\/(#| |\t)*$/ { in_ignored_section = 2 }
+    { if (in_ignored_section == 0) print }
+    { if (in_ignored_section == 2) in_ignored_section = 0 }
+   ' | \
+   awk '{ if (match($0, /^ *#/) == 0) { print } }  # Strip comment-only lines' | \
+   awk '
+    # Reset on start, top-level arguments, and shell literals
+    BEGIN {
+     prefix = ""
+     glue = ""
+     indent = ""
+    }
+    /^[^ #]/ {
+     prefix = ""
+     glue = ""
+     indent = ""
+    }
+    
+    # Remove comments, except in raw shell literals
+    /^([^$]|\$[^$])/ {
+     sub(/ *#.*$/, "", $0)
+    }
+    
+    # Top-level arguments without children
+    /^[^ $#][^,]*$/ {
+     prefix = $0
+     print $0
+    }
+    
+    # Top-level arguments with children
+    /^[^ $#][^,]*,/ {
+     prefix = $0
+     sub(/,.*$/, "", prefix)
+     glue = $0
+     sub(/^[^,]+,/, "", glue)
+     if (glue != "") {
+      print prefix
+     }
+    }
+    
+    /^ / {
+     # Track indentation
+     this_indent = $0
+     sub(/[^ ].*$/, "", this_indent)
+     if (indent == "") {
+      indent = this_indent
+     }
+     # Remove leading whitespace and print arguments
+     if (indent == this_indent) {
+      suffix = $0
+      sub(/^(\t| )*/, "", suffix)
+      print prefix glue suffix
+     } else {
+      print $0
+     }
+    }
+    
+    # Print shell literals
+    /^\$/ {
+     print ""
+     print $0
+    }
+   '
+  )
+  n=$((n + 1))
+ done
+ printf '%s\n' "$list"
+}
+
+
+collapse_commands() {  #[[[1
+ if [ x"${CMDTREE_NOCOLLAPSE:-0}" = x"0" ]; then
+  awk '
+   BEGIN { line = "" }
+   /./   { line = line " " $0; }  # Buffer non-empty lines and join with spaces
+         { sub(/^ /, "", line) }  # Remove leading space from line buffer
+   /^$/  { if (line != "") { print line }; line = "" }  # Flush on empty line
+   END   { print line }  # Flush buffer on exit
+  ' | awk '
+   { gsub(/^\$(\$)? */, "", $0) }  # Remove shell literal line prefixes
+   { print $0 }
+  '
+ else
+  cat
+ fi
+}
+
+
+count_indent_levels() {  #[[[1
+ local list="$(cat)"
+ printf '%s\n' "$list" | awk '
+  BEGIN { indent_length = 0; max_level = 0 }
+  /^[^ ]/ { indent_length = 0 }
+  /^ / {
+   this_indent = $0
+   sub(/[^ ].*$/, "", this_indent)
+   old_length = indent_length
+   indent_length = length(this_indent)
+   if (indent_length > old_length) {
+    max_level += 1
+   }
+  }
+  END { print max_level }
+ '
+}
+
+
+generate_script() {  #[[[1
+ for i; do
+  local error="$({ head -n 1 "$i" | head -n 0; } 2>&1 | grep -o '[^: ][^:]\+$')"
+  if [ x"$error" != x"" ]; then
+   echo "$PROG: error: cannot open \`$i\`: $error" >&2
+   return 1
+  fi
+ done 
+ echo 'set -ex'
+ for i; do
+  if [ $IS_GUI -ne 0 ] || (printf '%s' "$i" | grep -q -v -e '\.gui$'); then
+   if [ -x "$i" ] && (cat "$i" | head -n 1 | grep -q -v '^#![^ ]* *cmdtree'); then
+    echo ". $i"
+   else
+    cat "$i" | convert_argument_list
+   fi
+  fi
+ done
+}
+
+
+test_parser() {  #[[[1
+ local expected='a-b1 a-b2-c1 a-b2-c2-d1 a-b2-c2-d2-e1 a-b2-c2-d2-e2-f a-b3 a-b3-c3 a-b3-c3-d3 a-b3-c3-d3-e3 g-h-i-j g-h-i-j-k g-h-i-l-m'
+ local script="$(cat <<'END'
+#/*
+should not be here
+#*/
+# comment
+a-,  # comment
+ b1
+ b2-,
+  c1
+  c2-,  # comment
+   d1
+# comment
+   d2-,
+    e1
+#/*#
+also should not be here (below line has trailing spaces and tabs)
+#*/  	#		     #  	
+    e2-,
+     f
+ b3,-  # comment
+  c3,-
+   d3,-  # comment
+    e3
+# comment
+g-,
+ h-,
+  i-,  # comment
+   j,-
+# comment
+    k
+   l-,
+    m  # comment
+# comment
+END
+ )"
+ local result="$(printf '%s\n' "$script" | convert_argument_list)"
+ 
+ if [ x"${CMDTREE_NOCOLLAPSE:-0}" = x"0" ]; then
+  printf '%s\n' "Expected: $expected" '' "  Result: $result" ''
+  
+  local passed="$([ x"$expected" = x"$result" ] && echo 1 || echo 0)"
+  if [ $passed -eq 1 ]; then
+   echo "PASSED"
+   return 0
+  else
+   echo "FAILED"
+   return 1
+  fi
+ else
+  printf '%s\n' "$result"
+ fi
+}
+
+
+main "$@"  #[[[1
