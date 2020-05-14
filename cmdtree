@@ -35,6 +35,11 @@
 #     exec "$bin/cmdtree" "$0" "$@"
 #     #*/
 #     
+#     # Check for Raspbian  #{{{1
+#     #%if grep -q -e raspbian /etc/apt/sources.list
+#     #% define RASPBIAN
+#     #%fi
+#     
 #     $ sudo apt update  #{{{1
 #     $ sudo apt install -y  #{{{1
 #     curl
@@ -53,6 +58,9 @@
 #      apps
 #      utils
 #      xserver-utils
+#     #%if %RASPBIAN
+#     omxplayer
+#     #%endif
 #     $ cat  #{{{1
 #     /etc/,
 #      machine-id
@@ -69,30 +77,62 @@
 #     cat /etc/machine-id /etc/os-release
 #     printf '%s\n' "$HOME" "$(curl 'https://icanhazip.com/')"
 # 
+# On Raspbian installations, the `sudo apt install` line will also end with
+# ` omxplayer`.
 # 
-# Extended comments
-# -----------------
 # 
-# Extended comments consist of a `#/*` line, a `#*/` line, and zero or
-# more lines in between.  These extended comments will be ignored by
-# cmdtree.  An extended comment at the start of the script, as seen in
-# the example script, can allow the script to be executed directly by
-# a shell, which in the example script is used to install cmdtree and
-# restart the script using it.
+# Preprocessor
+# ------------
 # 
-# More than one of these extended comment sections may exist in a cmdtree
-# script.  The delimiter lines may also have zero or more `#`, space,
-# or tab characters at the end.
+# cmdtree includes a preprocessing stage which supports the following
+# directives:
+# 
+# * **Extended comments**  
+#   Extended comments consist of a `#/*` line, a `#*/` line, and zero or
+#   more lines in between.  These extended comments will be ignored by
+#   cmdtree.  An extended comment at the start of the script, as seen in
+#   the example script, can allow the script to be executed directly by
+#   a shell, which in the example script is used to install cmdtree and
+#   restart the script using it.
+#   
+#   More than one of these extended comment sections may exist in a cmdtree
+#   script.  The delimiter lines may also have zero or more `#`, space,
+#   or tab characters at the end.
+# 
+# * **Conditionals**  
+#   A section starting with `#%if`, ending with `#%fi` or `#%endif`,
+#   and with zero or more `#%elif` sections in between, causes the code
+#   inside each subsection to be executed only if its condition is true.
+#   The condition may be a shell expression or a macro expression.
+#   
+#   A macro expression is either `%{MACRO}` or `!%{MACRO}`.  In the
+#   former case, `{MACRO}` must have been defined and not equal to `0`;
+#   in the latter case, `{MACRO}` must be `0` or undefined.
+#   
+#   Nested conditionals and checking for specific macro values are currently
+#   unsupported.
+# 
+# * **Macros**  
+#   A macro may be defined with `#%define {NAME} [VALUE]`.  If the value
+#   is omitted, it defaults to `1`.  `#%undef {NAME}` and `#%undefine {NAME}`
+#   will undefine a macro.  For all of these directives, `{NAME}` and `%{NAME}`
+#   mean the same thing.  Macro names must start with a letter or underscore.
+#   Macro definitions or undefinitions may be nested in conditional clauses.
+# 
+# For directives starting with `#%`, zero or more spaces may exist between
+# the `#%` and the name of the directive.
 # 
 # 
 # Syntax limitations
 # ------------------
 # 
 # * Tabs are not supported for indentation.
+# 
 # * Comment parsing is very simple, so in shell literals (lines which start
 #   with a `$`), any `#` character is treated as the start of a comment
 #   and will be removed along with the rest of the line.  Shell literals
 #   which start with `$$` will not be altered.
+# 
 # * To use a shell variable or command substitution in an argument tree,
 #   it muse be wrapped in double quotes.
 
@@ -145,7 +185,75 @@ main() {  #[[[1
 convert_argument_list() {  #[[[1
  local list="$(cat)"
  local levels="$(printf '%s\n' "$list" | count_indent_levels)"
- printf '%s\n' "$list" | expand_args "$levels" | collapse_commands
+ printf '%s\n' "$list" | preprocess | expand_args "$levels" | collapse_commands
+}
+
+
+preprocess() {  #[[[1
+ cat | \
+ awk '
+  # Strip `#/*\n...\n#*/` sections
+  BEGIN { in_ignored_section = 0 }
+  /^#\/\*(#| |\t)*$/ { in_ignored_section = 1 }
+  /^#\*\/(#| |\t)*$/ { in_ignored_section = 2 }
+  { if (in_ignored_section == 0) print }
+  { if (in_ignored_section == 2) in_ignored_section = 0 }
+ ' | \
+ awk '
+  # `#%if` preprocessing
+  BEGIN { in_if_section = 0; is_true = 0 }
+  /^#% *(el)?if / {
+   in_if_section = 1
+   condition = $0
+   sub(/^# *%(el)?if +/, "", condition)
+   sub(/(#| |\t)*$/, "", condition)
+   sub(/(; *then)?$/, "", condition)
+   if (substr(condition, 1, 1) == "%") {
+    name = condition
+    sub(/^%/, "", name)
+    is_true = (definitions[name] != "" && definitions[name] != "0")
+   } else if (substr(condition, 1, 2) == "!%") {
+    name = condition
+    sub(/^!%/, "", name)
+    is_true = (definitions[name] == "" || definitions[name] == "0")
+   } else {
+    is_true = (system(condition) == 0) ? 1 : 0
+   }
+  }
+  /^#%else(#| |\t)*$/ {
+   in_if_section = 1
+   is_true = (is_true == 0) ? 1 : 0
+  }
+  /^#%(fi|endif)(#| |\t)*$/ { in_if_section = 0 }
+  /^#% *define +%?[a-zA-Z_]/ {
+   if (!in_if_section || (in_if_section == 2 && is_true)) {
+    in_if_section = 3
+    definition = $0
+    sub(/^#% *define +%?/, "", definition)
+    sub(/(#| |\t)*$/, "", definition)
+    name = definition
+    sub(/ .*$/, "", name)
+    if (match(definition, / /)) {
+     value = definition
+     sub(/^[^ ]+ +/, "", value)
+    } else {
+     value = "1"
+    }
+    definitions[name] = value
+   }
+  }
+  /^#% *undef(ine)? +%?[a-zA-Z_]/ {
+   if (!in_if_section || (in_if_section == 2 && is_true)) {
+    in_if_section = 3
+    name = $0
+    sub(/^#% *undef(ine)? +%?/, "", name)
+    sub(/(#| |\t)*$/, "", name)
+    delete definitions[name]
+   }
+  }
+  { if (!in_if_section || (in_if_section == 2 && is_true)) print }
+  { if (in_if_section == 1) in_if_section = 2 }
+ '
 }
 
 
@@ -156,14 +264,6 @@ expand_args() {  #[[[1
  while [ $n -lt $levels ]; do
   list=$(
    printf '%s\n' "$list" | \
-   awk '
-    # Strip `#/*\n...\n#*/` sections
-    BEGIN { in_ignored_section = 0 }
-    /^#\/\*(#| |\t)*$/ { in_ignored_section = 1 }
-    /^#\*\/(#| |\t)*$/ { in_ignored_section = 2 }
-    { if (in_ignored_section == 0) print }
-    { if (in_ignored_section == 2) in_ignored_section = 0 }
-   ' | \
    awk '{ if (match($0, /^ *#/) == 0) { print } }  # Strip comment-only lines' | \
    awk '
     # Reset on start, top-level arguments, and shell literals
@@ -289,7 +389,7 @@ generate_script() {  #[[[1
 
 
 test_parser() {  #[[[1
- local expected='a-b1 a-b2-c1 a-b2-c2-d1 a-b2-c2-d2-e1 a-b2-c2-d2-e2-f a-b3 a-b3-c3 a-b3-c3-d3 a-b3-c3-d3-e3 g-h-i-j g-h-i-j-k g-h-i-l-m'
+ local expected='a-b1 a-b2-c1 a-b2-c2-d1 a-b2-c2-d2-e1 a-b2-c2-d2-e2-f a-b3 a-b3-c3 a-b3-c3-d3 a-b3-c3-d3-e3 g-h-i-j g-h-i-j-k g-h-i-l-m if-1 if-2 if-3 if-4 if-5 if-6 if-7 if-8 if-9 if-10 if-11 if-12 if-13 n'
  local script="$(cat <<'END'
 #/*
 should not be here
@@ -322,6 +422,126 @@ g-,
     k
    l-,
     m  # comment
+# comment
+
+#%if false
+if-x
+#%fi
+
+#%if true
+if-1
+#%else
+if-x
+#%fi
+
+#%if false
+if-x
+#%elif true
+if-2
+#%fi
+
+#%if false
+if-x
+#%else
+if-3
+#%fi
+
+#%if false
+if-x
+#%elif false
+if-x
+#%else
+if-4
+#/*
+SPAM EGG AND BACON
+#*/
+#%fi
+
+#%if false
+if-x
+#%elif false
+if-x
+#%elif %SPAM
+if-x
+#%elif false
+if-x
+#%elif false
+if-x
+#%else
+# comment
+if-5
+#%fi
+
+#%if false
+if-x
+#%elif false
+if-x
+#%elif false
+if-x
+#%elif true
+if-6
+#% define SPAM 1
+#%elif false
+if-x
+#%else
+#if-x
+#%fi
+
+#%if false
+if-x
+#%elif false
+if-x
+#%elif false
+if-x
+#%elif %SPAM
+if-7
+#%elif false
+if-x
+#%else
+#if-x
+#%fi
+
+#%define EGG 0
+#%if %EGG
+if-x
+#%define BACON 1
+#%else
+if-8
+#%fi
+
+#%if %BACON
+if-x
+#%else
+if-9
+#%fi
+
+#%define %LOBSTER_THERMIDOR
+#%if %LOBSTER_THERMIDOR
+if-10
+#% undef %SPAM
+#%fi
+
+#%if %SPAM
+if-x
+#%else
+if-11
+#%fi
+
+#%if !%SPAM
+if-12
+#%else
+if-x
+#%endif
+
+#%undefine LOBSTER_THERMIDOR
+#%if !%LOBSTER_THERMIDOR
+if-13
+#%else
+if-x
+#%fi
+
+n
+
 # comment
 END
  )"
