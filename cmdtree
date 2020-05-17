@@ -259,7 +259,12 @@ preprocess() {  #[[[1
 
 expand_args() {  #[[[1
  local list="$(cat)"
+ 
  local levels="$1"
+ if [ $levels -lt 1 ]; then
+  levels=1
+ fi
+ 
  local n=0
  while [ $n -lt $levels ]; do
   list=$(
