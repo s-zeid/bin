@@ -123,18 +123,32 @@
 # the `#%` and the name of the directive.
 # 
 # 
-# Syntax limitations
-# ------------------
+# Syntax notes
+# ------------
 # 
 # * Tabs are not supported for indentation.
+# 
+# * To use a shell variable or command substitution in an argument tree,
+#   it muse be wrapped in double quotes.
 # 
 # * Comment parsing is very simple, so in shell literals (lines which start
 #   with a `$`), any `#` character is treated as the start of a comment
 #   and will be removed along with the rest of the line.  Shell literals
-#   which start with `$$` will not be altered.
+#   which start with `$$` (called raw shell literals) will not be altered.
 # 
-# * To use a shell variable or command substitution in an argument tree,
-#   it muse be wrapped in double quotes.
+# * In shell literals, only one space after the `$` character(s) will be
+#   removed.
+# 
+# * To end a here-document in a shell literal without messing up syntax
+#   highlighting, the delimiter may be placed on a separate line, e.g.:
+# 
+#   ```sh
+#   $ cat <<EOF
+#   $$ spam
+#   $$
+#   EOF
+#   # vim: set ft=sh:
+#   ```
 
 
 # Constants and awk wrapper  #[[[1
@@ -339,12 +353,14 @@ collapse_commands() {  #[[[1
  if [ x"${CMDTREE_NOCOLLAPSE:-0}" = x"0" ]; then
   awk '
    BEGIN { line = "" }
-   /./   { line = line " " $0; }  # Buffer non-empty lines and join with spaces
-         { sub(/^ /, "", line) }  # Remove leading space from line buffer
+         # Buffer lines and join with spaces, except that empty lines and
+         # lines with empty shell literals are joined with the empty string.
+         # Empty shell literals include lines that equal `$ ` or `$$ `.
+   /./   { line = (line && !match(line, /^\$\$? ?$/)) ? line " " $0 : line $0 }
    /^$/  { if (line != "") { print line }; line = "" }  # Flush on empty line
    END   { print line }  # Flush buffer on exit
   ' | awk '
-   { gsub(/^\$(\$)? */, "", $0) }  # Remove shell literal line prefixes
+   { gsub(/^\$\$? ?/, "", $0) }  # Remove shell literal line prefixes
    { print $0 }
   '
  else
