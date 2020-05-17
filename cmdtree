@@ -369,7 +369,7 @@ count_indent_levels() {  #[[[1
 
 generate_script() {  #[[[1
  for i; do
-  local error="$({ head -n 1 "$i" | head -n 0; } 2>&1 | grep -o '[^: ][^:]\+$')"
+  local error="$(set +x; { head -n 1 "$i" | head -n 0; } 2>&1 | grep -o '[^: ][^:]\+$')"
   if [ x"$error" != x"" ]; then
    echo "$PROG: error: cannot open \`$i\`: $error" >&2
    return 1
