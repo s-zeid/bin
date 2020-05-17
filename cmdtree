@@ -383,11 +383,7 @@ generate_script() {  #[[[1
  echo 'set -ex'
  for i; do
   if [ $IS_GUI -ne 0 ] || (printf '%s' "$i" | grep -q -v -e '\.gui$'); then
-   if [ -x "$i" ] && (cat "$i" | head -n 1 | grep -q -v '^#![^ ]* *cmdtree'); then
-    echo ". $i"
-   else
-    cat "$i" | convert_argument_list
-   fi
+   cat "$i" | convert_argument_list
   fi
  done
 }
