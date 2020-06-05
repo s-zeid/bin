@@ -1,0 +1,68 @@
+#!/bin/sh
+
+# tmux-name
+# Starts or resumes a tmux session with the given name and a minimal status bar.
+# 
+# Copyright (c) 2018-2020 S. Zeid.  Released under the X11 License.  
+# <https://code.s.zeid.me/bin/blob/master/tmux-name>
+
+
+STATUS_LEFT=$TMUX_NAME
+STATUS_RIGHT='To detach, press Ctrl-Alt-C'
+STATUS_POSITION=top
+STATUS_BG=white
+STATUS_FG=black
+
+
+main() {
+ if [ $# -lt 1 ]; then
+  echo "Usage: $0 <session-name> [cmd [args [...]]]" >&2
+  exit 2
+ fi
+ 
+ export TMUX_NAME="$1"
+ shift
+ 
+ if [ x"$1" = x"__setup_tmux" ]; then
+  setup_tmux
+ elif (tmux -L "$TMUX_NAME" has-session -t "$TMUX_NAME" 2>/dev/null); then
+  tmux -L "$TMUX_NAME" attach -t "$TMUX_NAME"
+ else
+  local cmd=
+  if [ $# -eq 0 ]; then
+   set -- "${SHELL:-/bin/sh}"  # default command
+  fi
+  for i; do
+   cmd="$cmd '$(escape_arg "$i")'"  # escape arguments
+  done
+  
+  tmux -L "$TMUX_NAME" new-session -s "$TMUX_NAME" -n "$TMUX_NAME" \
+   "export TMUX_NAME='$(escape_arg "$TMUX_NAME")'; export TERM=screen-256color;
+    '$(escape_arg "$0")' \"\$TMUX_NAME\" __setup_tmux;
+    $cmd"
+ fi
+}
+
+
+escape_arg() {
+ printf '%s' "$1" | sed -e "s/'/'\\\\''/g"
+}
+
+
+setup_tmux() {
+ tmux bind-key -n C-M-c detach-client
+ tmux set-option -g default-terminal "$TERM"
+ tmux set-option status-bg "$STATUS_BG"
+ tmux set-option status-fg "$STATUS_FG"
+ tmux set-option status-position "$STATUS_POSITION"
+ tmux set-option status-left "$STATUS_LEFT "
+ tmux set-option status-left-length 12
+ tmux set-option status-right "$STATUS_RIGHT"
+ tmux set-option status-right-length 37
+ tmux set-option -w window-status-current-format 'on #H'
+ tmux set-option -w window-status-format 'on #H (window #I)'
+ tmux set-option -w window-status-separator ' '
+}
+
+
+main "$@"
