@@ -68,23 +68,31 @@ PAGE_TEMPLATE = Template("""<!DOCTYPE html>
   <style type="text/css">
    body { background: #f8f8f8; }
    li { line-height: 22px; }
-   .tabs { padding-left: 0.5em; }
+   .tabs { padding-left: 0.5rem; }
    .tab { list-style-type: none; }
    .tab .link { display: table-row; }
-   .tab .icon { display: table-cell; position: relative; top: 0.15em;
+   .tab .icon { display: table-cell; position: relative; top: 0.15rem;
                 width: 16px; max-height: 16px; font-size: 16px; color: #666; }
    .tab .icon[alt^="photo"] { color: #668; }
-   .tab .title { display: table-cell; padding-left: 0.25em; }
+   .tab .title { display: table-cell; padding-left: 0.25rem; }
    .tab.pinned + .tab:not(.pinned) { border-top: 1px solid #ddd;
-                                     margin-top: 0.5em; padding-top: 0.5em; }
+                                     margin-top: 0.5rem; padding-top: 0.5rem; }
    .tab .children { border-left: 1px solid #ddd; margin: 0 0 0 8px; }
-   .tab + .tab, .children > .tab:first-child { margin-top: 0.125em; }
+   .tab + .tab, .children > .tab:first-child { margin-top: 0.125rem; }
+   
+   /* hide broken image icons */
+   .tab .icon { position: relative; font-size: 0; }
+   .tab .icon:after {
+    content: attr(alt); font-size: 16px; background: #f8f8f8;
+    position: absolute; top: 0; left: 0; width: 16px; height: 16px;
+    display: inline-block; border-top: 0.075rem solid #f8f8f8;
+   }
    
    /* workaround for favicons blocked by uBlock Origin
       (e.g. Fanboy's Enhanced Tracking List) */
    .tab .icon[hidden] + .title:before {
     content: "tab"; font: 16px "Material Icons"; color: #666;
-    position: relative; left: -0.25em; top: 0.125em; width: 16px; height: 16px;
+    position: relative; left: -0.25rem; top: 0.125rem; width: 16px; height: 16px;
    }
   </style>
   <!--[if lt IE 9]>
