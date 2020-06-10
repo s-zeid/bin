@@ -20,7 +20,14 @@ main() {
   exit 2
  fi
  
- export TMUX_NAME="$1"
+ local script=
+ if printf '%s\n' "$1" | grep -q -e '/' && [ -x "$1" ]; then
+  if [ x"$(head -n 1 "$1")" = x"#!/usr/bin/env $(basename -- "$0")" ]; then
+   script=$1
+  fi
+ fi
+ 
+ export TMUX_NAME="$(basename -- "$1")"
  shift
  
  if [ x"$1" = x"__setup_tmux" ]; then
@@ -29,7 +36,9 @@ main() {
   tmux -L "$TMUX_NAME" attach -t "$TMUX_NAME"
  else
   local cmd=
-  if [ $# -eq 0 ]; then
+  if [ x"$script" != x"" ]; then
+   set -- '/bin/sh' '-c' '. "$1"' "$TMUX_NAME" "$script"
+  elif [ $# -eq 0 ]; then
    set -- "${SHELL:-/bin/sh}"  # default command
   fi
   for i; do
