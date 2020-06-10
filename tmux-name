@@ -52,16 +52,16 @@ escape_arg() {
 setup_tmux() {
  tmux bind-key -n C-M-c detach-client
  tmux set-option -g default-terminal "$TERM"
- tmux set-option status-bg "$STATUS_BG"
- tmux set-option status-fg "$STATUS_FG"
- tmux set-option status-position "$STATUS_POSITION"
- tmux set-option status-left "$STATUS_LEFT "
- tmux set-option status-left-length 12
- tmux set-option status-right "$STATUS_RIGHT"
- tmux set-option status-right-length 37
- tmux set-option -w window-status-current-format 'on #H'
- tmux set-option -w window-status-format 'on #H (window #I)'
- tmux set-option -w window-status-separator ' '
+ tmux set-option -g status-bg "$STATUS_BG"
+ tmux set-option -g status-fg "$STATUS_FG"
+ tmux set-option -g status-position "$STATUS_POSITION"
+ tmux set-option -g status-left "$STATUS_LEFT "
+ tmux set-option -g status-left-length 24
+ tmux set-option -g status-right "$STATUS_RIGHT"
+ tmux set-option -g status-right-length 37
+ tmux set-window-option window-status-current-format 'on #H'
+ tmux set-window-option window-status-format 'on #H (window #I)'
+ tmux set-window-option window-status-separator ' '
 }
 
 
