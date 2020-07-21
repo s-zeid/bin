@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 """Displays an image without a window border or background.
    
@@ -12,11 +12,17 @@ import sys
 
 from collections import namedtuple
 
-import cairo
-import gtk
-import pygtk
+import gi  # apt install python3-gi
 
-pygtk.require("2.0")
+gi.require_version("cairo", "1.0")  # apt install python3-gi-cairo
+from gi.repository import cairo
+
+gi.require_version("Gtk", "3.0")  # apt install gir1.2-gtk-3.0
+from gi.repository import Gtk as gtk
+
+gi.require_version("Gdk", "3.0")  # same Debian package as for GTK+ 3
+from gi.repository import Gdk as gdk
+from gi.repository import GdkPixbuf as gdk_pixbuf
 
 
 Padding = namedtuple("Padding", "top,right,bottom,left")
@@ -28,30 +34,37 @@ def _close_callback(window, data):
  gtk.main_quit()
 
 
-def _drag_callback(window, e):
+def _drag_callback(window, event):
  """Called when the window is clicked on."""
- window.begin_move_drag(e.button,
-                        int(round(e.x + window.window.get_root_origin()[0])),
-                        int(round(e.y + window.window.get_root_origin()[1])),
-                        e.time)
+ window.begin_move_drag(
+  event.button,
+  int(round(event.x + window.get_window().get_root_origin()[0])),
+  int(round(event.y + window.get_window().get_root_origin()[1])),
+  event.time
+ )
 
-def make_transparent(window, event):
+
+def make_transparent(window, cr):
  """Makes a window transparent."""
- cr = window.window.cairo_create()
- # Sets the operator to clear which deletes everything below where an object is
- # drawn
- cr.set_operator(cairo.OPERATOR_CLEAR)
- # Makes the mask fill the entire window
- cr.rectangle(0.0, 0.0, *window.get_size())
- # Deletes everything in the window (since the compositing operator is clear
- # and mask fills the entire window
- cr.fill()
- # Set the compositing operator back to the default
- cr.set_operator(cairo.OPERATOR_OVER)
+ cr.set_source_rgba(0, 0, 0, 0)
+ cr.set_operator(cairo.Operator.SOURCE)
+ cr.paint()
+ cr.set_operator(cairo.Operator.OVER)
+
+
+def set_window_position(window, x, y):
+ pos = list(window.get_position())
+ if x is not None:
+  pos[0] = int(x)
+ if y is not None:
+  pos[1] = int(y)
+ if x is not None or y is not None:
+  window.move(*pos)
+
 
 def display_transparent(image_filename, size_factor=1, opacity=1,
                         x=None, y=None, padding=None):
- if isinstance(padding, basestring):
+ if isinstance(padding, str):
   padding = [int(i.strip()) for i in padding.split(",")]
  if not padding:
   padding = [0, 0, 0, 0]
@@ -63,13 +76,13 @@ def display_transparent(image_filename, size_factor=1, opacity=1,
   padding = [padding[0], padding[1], padding[2], padding[1]]
  elif len(padding) > 4:
   padding = padding[:4]
- pad = padding = Padding(*[int(round(i)) for i in padding])
+ padding = Padding(*[int(round(i)) for i in padding])
  
  win = gtk.Window()
  win.set_title(os.path.basename(image_filename))
  win.set_decorated(False)
  win.set_resizable(False)
- win.set_opacity(opacity)
+ gtk.Widget.set_opacity(win, opacity)
  
  # Make sure that the main loop terminates when the window is closed
  win.connect("delete-event", _close_callback)
@@ -80,54 +93,50 @@ def display_transparent(image_filename, size_factor=1, opacity=1,
  # This sets the windows colormap, so it supports transparency.
  # This will only work if the wm support alpha channel
  screen = win.get_screen()
- rgba = screen.get_rgba_colormap()
- win.set_colormap(rgba)
+ rgba = screen.get_rgba_visual()
+ win.set_visual(rgba)
  
  # This will actually make the window transparent.
- win.connect("expose-event", make_transparent)
+ #win.connect("draw", make_transparent)
  
  # Load and scale the image
- pixbuf = gtk.gdk.pixbuf_new_from_file(image_filename)
- width = int(round(pixbuf.get_width() * size_factor))
- height = int(round(pixbuf.get_height() * size_factor))
+ pixbuf = gdk_pixbuf.Pixbuf.new_from_file(image_filename)
  if size_factor != 1:
-  pixbuf = gtk.gdk.pixbuf_new_from_file_at_size(image_filename,
-            width, height)
+  pixbuf = gdk_pixbuf.Pixbuf.new_from_file_at_size(
+   image_filename,
+   int(round(pixbuf.get_width() * size_factor)),
+   int(round(pixbuf.get_height() * size_factor))
+  )
  
  # Add the image to a Fixed container for padding purposes
  fixed = gtk.Fixed()
- img = gtk.image_new_from_pixbuf(pixbuf)
+ img = gtk.Image.new_from_pixbuf(pixbuf)
  fixed.add(img)
- fixed.move(img, pad.left, pad.top)
+ fixed.move(img, padding.left, padding.top)
  
  # Add the container to the window
- width_padded = pixbuf.get_width() + pad.left + pad.right
- height_padded = pixbuf.get_height() + pad.top + pad.bottom
+ width_padded = pixbuf.get_width() + padding.left + padding.right
+ height_padded = pixbuf.get_height() + padding.top + padding.bottom
  win.set_size_request(width_padded, height_padded)
  win.add(fixed)
  
  # Make the window draggable
  win.connect("button-press-event", _drag_callback)
- win.add_events(gtk.gdk.BUTTON_PRESS_MASK)
+ win.add_events(gdk.EventMask.BUTTON_PRESS_MASK)
  
- # Position window
- if x or y:
-  x = str(x or "")
-  if x and x[0] != "-":
-   x = "+" + x
-  y = str(y or "")
-  if y and y[0] != "-":
-   y = "+" + y
-  win.parse_geometry(x+y)
+ # Show and position window
+ win.connect("map-event", lambda widget, event: set_window_position(widget, x, y))
+ win.show_all()
  
  # Enter GTK main loop
- win.show_all()
  gtk.main()
 
+
 def main(argv):
- parser = argparse.ArgumentParser(prog=argv[0],
-           description="Displays an image with no background or"
-                       " window decorations.")
+ parser = argparse.ArgumentParser(
+  prog=os.path.basename(argv[0]),
+  description="Displays an image with no background or window decorations."
+ )
  parser.add_argument("filename", help="The image to display")
  parser.add_argument("-s", "--size", type=float, default=100.,
                      help="Desired size of the image as a percentage")
@@ -146,9 +155,15 @@ def main(argv):
  except SystemExit as exit:
   return exit.code
  
- display_transparent(args.filename, size_factor=args.size * 0.01,
-                     opacity=args.opacity * 0.01, x=args.x, y=args.y,
-                     padding=args.padding)
+ display_transparent(
+  args.filename,
+  size_factor=args.size * 0.01,
+  opacity=args.opacity * 0.01,
+  x=args.x,
+  y=args.y,
+  padding=args.padding
+ )
+
 
 if __name__ == "__main__":
  try:

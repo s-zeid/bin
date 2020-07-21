@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 """Causes an image to follow the cursor.
    
@@ -11,24 +11,31 @@ import os
 import sys
 import time
 
-import cairo
-import gtk
-import pygtk
+import gi  # apt install python3-gi
 
-pygtk.require("2.0")
+gi.require_version("cairo", "1.0")  # apt install python3-gi-cairo
+from gi.repository import cairo
 
-class Point(object):
+gi.require_version("Gtk", "3.0")  # apt install gir1.2-gtk-3.0
+from gi.repository import Gtk as gtk
+
+gi.require_version("Gdk", "3.0")  # same Debian package as for GTK+ 3
+from gi.repository import Gdk as gdk
+from gi.repository import GdkPixbuf as gdk_pixbuf
+
+
+class Point:
  __slots__ = ["x", "y", "width", "height", "original_x", "original_y"]
  def __init__(self, x, y=None, width=None, height=None):
-  if not isinstance(x, (int, long, float, basestring)):
+  if not isinstance(x, (int, float, str)):
    raise TypeError("x must be a number or string")
-  if not isinstance(y, (int, long, float, basestring)) and y != None:
+  if not isinstance(y, (int, float, str)) and y != None:
    raise TypeError("y must be a number, string, or None")
   for arg, name in ((y, 'y'), (width, 'width'), (height, 'height')):
-   if not isinstance(arg, (int, long, float)) and arg != None:
+   if not isinstance(arg, (int, float)) and arg != None:
     raise TypeError(name + " must be a number or None")
   
-  if isinstance(x, basestring) and "," in x:
+  if isinstance(x, str) and "," in x:
    parts = [(i if i else 0) for i in x.lower().split(",")]
    if parts[0] in ("top", "bottom"):
     parts.reverse()
@@ -36,7 +43,7 @@ class Point(object):
     parts[1] = y
   else:
    parts = [x, y]
-  parts = [(i.lower() if isinstance(i, basestring) else i) for i in parts]
+  parts = [(i.lower() if isinstance(i, str) else i) for i in parts]
   
   self.original_x = parts[0]
   self.original_y = parts[1]
@@ -61,34 +68,35 @@ class Point(object):
   self.width = width
   self.height = height
 
-def _close_callback(window, data=None):
+
+def _close_callback(window, data):
  """Called when the window is closed."""
  window.hide()
- window.destroy()
+ gtk.main_quit()
 
-def make_transparent(window, event):
+
+def get_pointer_pos(gdk_window, gdk_device):
+ pointer = gdk_window.get_device_position(gdk_device)
+ return [pointer.x, pointer.y]
+
+
+def make_transparent(window, cr):
  """Makes a window transparent."""
- cr = window.window.cairo_create()
- # Sets the operator to clear which deletes everything below where an object is
- # drawn
- cr.set_operator(cairo.OPERATOR_CLEAR)
- # Makes the mask fill the entire window
- cr.rectangle(0.0, 0.0, *window.get_size())
- # Deletes everything in the window (since the compositing operator is clear
- # and mask fills the entire window
- cr.fill()
- # Set the compositing operator back to the default
- cr.set_operator(cairo.OPERATOR_OVER)
+ cr.set_source_rgba(0, 0, 0, 0)
+ cr.set_operator(cairo.Operator.SOURCE)
+ cr.paint()
+ cr.set_operator(cairo.Operator.OVER)
+
 
 def display_follow(image_filename, size_factor=1, opacity=1, hotspot="top,left"):
- win = gtk.Window(type=gtk.WINDOW_POPUP)
+ win = gtk.Window(type=gtk.WindowType.POPUP)
  win.set_title(os.path.basename(image_filename))
- win.set_position(gtk.WIN_POS_MOUSE)
+ win.set_position(gtk.WindowPosition.MOUSE)
  win.set_decorated(False)
  win.set_resizable(False)
  win.set_keep_above(True)
  # Set opacity to 0 until the window is moved for the first time
- win.set_opacity(0)
+ gtk.Widget.set_opacity(win, 0)
  
  win.set_role("display-follow-" + str(time.time()))
  
@@ -98,18 +106,20 @@ def display_follow(image_filename, size_factor=1, opacity=1, hotspot="top,left")
  # This sets the windows colormap, so it supports transparency.
  # This will only work if the wm support alpha channel
  screen = win.get_screen()
- rgba = screen.get_rgba_colormap()
- win.set_colormap(rgba)
+ rgba = screen.get_rgba_visual()
+ win.set_visual(rgba)
  
  # This will actually make the window transparent.
- win.connect("expose-event", make_transparent)
+ win.connect("draw", make_transparent)
  
  # Load and scale the image
- pixbuf = gtk.gdk.pixbuf_new_from_file(image_filename)
+ pixbuf = gdk_pixbuf.Pixbuf.new_from_file(image_filename)
  if size_factor != 1:
-  pixbuf = gtk.gdk.pixbuf_new_from_file_at_size(image_filename,
-            int(round(pixbuf.get_width() * size_factor)),
-            int(round(pixbuf.get_height() * size_factor)))
+  pixbuf = gdk_pixbuf.Pixbuf.new_from_file_at_size(
+   image_filename,
+   int(round(pixbuf.get_width() * size_factor)),
+   int(round(pixbuf.get_height() * size_factor))
+  )
  
  # Calculate the hotspot
  if isinstance(hotspot, Point):
@@ -124,41 +134,47 @@ def display_follow(image_filename, size_factor=1, opacity=1, hotspot="top,left")
  # So move me maybe?
  
  # Add the image
- img = gtk.image_new_from_pixbuf(pixbuf)
+ img = gtk.Image.new_from_pixbuf(pixbuf)
  win.set_size_request(pixbuf.get_width(), pixbuf.get_height())
  win.add(img)
  
  # Show the window
  win.show_all()
  
+ # Get pointer device
+ pointer_device = gdk.Display.get_default().get_default_seat().get_pointer()
+ 
  # Move window for the first time
- root = gtk.gdk.get_default_root_window()
- pos = last = root.get_pointer()[0:2]
- win.window.raise_()
- win.set_opacity(opacity)
- win.window.move(pos[0] - hotspot.x + 1, pos[1] - hotspot.y + 1)
- gtk.main_iteration(False)
+ root = gdk.get_default_root_window()
+ pos = last = get_pointer_pos(root, pointer_device)
+ win.get_window().raise_()
+ gtk.Widget.set_opacity(win, opacity)
+ win.get_window().move(pos[0] - hotspot.x + 1, pos[1] - hotspot.y + 1)
+ gtk.main_iteration_do(False)
  
  # Make sure that the main loop terminates when the window is closed
  win.connect("delete-event", _close_callback)
  
  # Main loop
  try:
-  while win.window != None:
-   gtk.main_iteration(False)
+  while win.get_window() != None:
+   gtk.main_iteration_do(False)
    time.sleep(.025)
-   pos = root.get_pointer()[0:2]
-   gtk.main_iteration(False)
+   pos = get_pointer_pos(root, pointer_device)
+   gtk.main_iteration_do(False)
    if pos != last:
     last = pos
-    win.window.move(pos[0] - hotspot.x + 1, pos[1] - hotspot.y + 1)
+    win.get_window().move(pos[0] - hotspot.x + 1, pos[1] - hotspot.y + 1)
     time.sleep(.025)
- except KeyboardInterrupt:
-  _close_callback(win)
+ except (KeyboardInterrupt, EOFError):
+  win.close()
+
 
 def main(argv):
- parser = argparse.ArgumentParser(prog=argv[0],
-           description="Causes an image follow your cursor.")
+ parser = argparse.ArgumentParser(
+  prog=os.path.basename(argv[0]),
+  description="Causes an image follow your cursor."
+ )
  parser.add_argument("filename", help="The image to display")
  parser.add_argument("-s", "--size", type=float, default=100.,
                      help="Desired size of the image as a percentage")
@@ -172,8 +188,13 @@ def main(argv):
  except SystemExit as exit:
   return exit.code
  
- display_follow(args.filename, size_factor=args.size * 0.01,
-                opacity=args.opacity * 0.01, hotspot=args.hotspot)
+ display_follow(
+  args.filename,
+  size_factor=args.size * 0.01,
+  opacity=args.opacity * 0.01,
+  hotspot=args.hotspot
+ )
+
 
 if __name__ == "__main__":
  try:
