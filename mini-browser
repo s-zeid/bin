@@ -25,8 +25,14 @@ APP_WM_CLASS = "mini-browser"
 APP_ICON_NAME = "emblem-web"
 
 
-def mini_browser(url, title=None, icon=None, wm_class=None,
-                 _args_compat_mode=False):
+def mini_browser(
+ url,
+ *,
+ title=None,
+ icon=None,
+ wm_class=None,
+ _args_compat_mode=False,
+):
  default_wm_class = APP_WM_CLASS
  
  if title is None:
@@ -132,10 +138,10 @@ you should set the -c/--wm-class argument yourself.
  
  mini_browser(
   url,
-  options.title,
-  options.icon,
-  options.wm_class,
-  _args_compat_mode=compat_mode
+  title=options.title,
+  icon=options.icon,
+  wm_class=options.wm_class,
+  _args_compat_mode=compat_mode,
  )
 
 
