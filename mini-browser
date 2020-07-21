@@ -74,14 +74,39 @@ def mini_browser(
  w.connect("delete-event", _close_callback)
  
  s = gtk.ScrolledWindow()
- wv = webkit2.WebView()
- s.add(wv)
  w.add(s)
+ 
+ wv = _setup_webview(wm_class=wm_class)
+ s.add(wv)
  
  wv.load_uri(url)
  
  _show_window(w)
  gtk.main()
+
+
+def _setup_webview(*, wm_class: str):
+ data_dir = os.path.join(
+  os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+  APP_WM_CLASS,
+  wm_class,
+ )
+ os.makedirs(data_dir, 0o700, True)
+ 
+ cache_dir = os.path.join(
+  os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
+  APP_WM_CLASS,
+  wm_class,
+ )
+ os.makedirs(cache_dir, 0o700, True)
+ 
+ data_mgr = webkit2.WebsiteDataManager(
+  base_data_directory=data_dir,
+  base_cache_directory=cache_dir,
+ )
+ ctx = webkit2.WebContext.new_with_website_data_manager(data_mgr)
+ wv = webkit2.WebView.new_with_context(ctx)
+ return wv
 
 
 def _close_callback(window, data):
