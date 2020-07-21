@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import re
 import sys
 import urllib.parse
 
@@ -24,13 +25,18 @@ APP_WM_CLASS = "mini-browser"
 APP_ICON_NAME = "emblem-web"
 
 
-def mini_browser(url, title=None, icon=None, wm_class=None):
+def mini_browser(url, title=None, icon=None, wm_class=None,
+                 _args_compat_mode=False):
  default_wm_class = APP_WM_CLASS
  
  if title is None:
   title = APP_NAME
  else:
-  default_wm_class = title.strip() or default_wm_class
+  if not _args_compat_mode:
+   title_clean = re.sub(r"[^0-9a-zA-Z]", "-", title.strip().lower()).strip("-")
+  else:
+   title_clean = title
+  default_wm_class = title_clean or default_wm_class
  
  if not wm_class:
   wm_class = default_wm_class
@@ -86,7 +92,17 @@ def main(argv):
  p.add_argument("-i", "--icon", default=None,
                 help=f"the window's icon name (default: {APP_ICON_NAME!r})")
  p.add_argument("-c", "--wm-class", default=None,
-                help=f"the window's WM_CLASS hint (default: title or {APP_WM_CLASS!r})")
+                help=f"the window's WM_CLASS hint (default: based on title (*)"
+                     f" or {APP_WM_CLASS!r})")
+ 
+ p.epilog = """
+* If the -c/--wm-class argument is omitted or empty, but -t/--title is set,
+then the default WM_CLASS hint will be a sanitized ASCII form of the title,
+in snake-case.  This behavior is primarily to keep windows with different names
+from being grouped together in desktop environments.  If you wish to rely on
+the value of WM_CLASS (e.g. in your window manager's settings or a program),
+you should set the -c/--wm-class argument yourself.
+""".strip()
  
  if not compat_mode:
   p.parse_args([])  # make sure compat mode won't fail when adding new arguments
@@ -114,7 +130,13 @@ def main(argv):
  if url is None or url == ".":
   url = input("Please enter a URL: ")
  
- mini_browser(url, options.title, options.icon, options.wm_class)
+ mini_browser(
+  url,
+  options.title,
+  options.icon,
+  options.wm_class,
+  _args_compat_mode=compat_mode
+ )
 
 
 if __name__ == "__main__":
