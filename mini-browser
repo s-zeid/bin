@@ -32,6 +32,8 @@ APP_NAME = "Mini Browser"
 APP_WM_CLASS = "mini-browser"
 APP_ICON_NAME = "emblem-web"
 
+DEFAULT_WINDOW_SIZE = "1024x576"
+
 
 def mini_browser(
  url: str,
@@ -40,6 +42,9 @@ def mini_browser(
  icon: str = None,
  wm_class: str = None,
  user_agent: str = None,
+ size: str = None,
+ fullscreen: bool = False,
+ position: str = None,
  _args_compat_mode: bool = False,
 ):
  default_wm_class = APP_WM_CLASS
@@ -72,8 +77,18 @@ def mini_browser(
  w.set_title(title)
  w.set_icon_name(icon)
  w.set_size_request(1, 1)
- w.resize(1024, 576)
  w.connect("delete-event", _close_callback)
+ 
+ size = [int(i) for i in (size or DEFAULT_WINDOW_SIZE).split("x", 1)]
+ w.resize(*size)
+ 
+ if position:
+  position = [int(i) for i in position.split(",", 1)]
+  w.move(*position)
+ 
+ if fullscreen:
+  w.maximize()
+  w.fullscreen()
  
  s = gtk.ScrolledWindow()
  w.add(s)
@@ -172,6 +187,15 @@ def main(argv: List[str]):
  p.add_argument("-u", "--user-agent", default=None,
                 help="the user agent to use (default: auto)")
  
+ g = p.add_mutually_exclusive_group()
+ g.add_argument("-s", "--size", default=DEFAULT_WINDOW_SIZE,
+                help=f"the window's size (default: {DEFAULT_WINDOW_SIZE})")
+ g.add_argument("-F", "--fullscreen", "--fs", action="store_true",
+                help="fill the entire screen")
+ 
+ p.add_argument("-p", "--position", default=None,
+                help="the window's position, as `{x},{y}` (default: auto)")
+ 
  p.epilog = """
 * If the -c/--wm-class argument is omitted or empty, but -t/--title is set,
 then the default WM_CLASS hint will be a sanitized ASCII form of the title,
@@ -213,6 +237,9 @@ you should set the -c/--wm-class argument yourself.
   icon=options.icon,
   wm_class=options.wm_class,
   user_agent=options.user_agent,
+  size=options.size,
+  fullscreen=options.fullscreen,
+  position=options.position,
   _args_compat_mode=compat_mode,
  )
 
