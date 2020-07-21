@@ -1,17 +1,16 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 
 # BnayCert
 # ========
 # Scans a directory for domains for which to generate TLS certificates
 # via the holy, blessèd Let's Encrypt service.
 # 
-# Copyright (c) 2015-2016 Scott Zeid.  
+# Copyright (c) 2015-2020 S. Zeid.  
 # Released under the X11 License:  <https://tldrlegal.com/l/x11>  
 # <https://code.s.zeid.me/bin/blob/master/bnaycert>
 # 
 # BnayCert uses a configuration file.  Its syntax is similar to Windows INI
-# files and is documented at <https://docs.python.org/2/library/configparser.html>.
+# files and is documented at <https://docs.python.org/3/library/configparser.html>.
 # There are a few exceptions:
 # 
 #  * Boolean values may be set to True by having just "<option>" on the line.
@@ -119,7 +118,7 @@
 # [Fuck Eddy Nigg!](https://code.s.zeid.me/un-startssl-ify)
 
 
-import ConfigParser
+import configparser
 import fnmatch
 import glob
 import io
@@ -174,12 +173,12 @@ def get_domains(config):
  base = config[""].get("base")
  real_base = os.path.realpath(base) if base else None
  search = odict([(sub, config[sub]) for sub in config if sub and sub != "."])
- for filename_in_base in reversed(search.keys()):
+ for filename_in_base in reversed(list(search.keys())):
   # build exclusion list
   options = search[filename_in_base]
   if options.get("exclude"):
    excludes += [filename_in_base]
- for filename_in_base in reversed(search.keys()):
+ for filename_in_base in reversed(list(search.keys())):
   # build domain list
   options = search[filename_in_base]
   if not options.get("exclude"):
@@ -290,7 +289,7 @@ def load_config(config, path=""):
     os.chdir(path)
    elif os.path.isdir(os.path.dirname(path) or "."):
     os.chdir(os.path.dirname(path) or ".")
-  with open(filename, "rb") as f:
+  with open(filename, "r") as f:
    result = f.read()
   os.chdir(old_wd)
   return result
@@ -330,8 +329,8 @@ def load_config(config, path=""):
  FALSES = ("0", "false", "no", "off")
  BOOLEANS = TRUES + FALSES
  result = odict()
- cp = ConfigParser.RawConfigParser(dict_type=odict, allow_no_value=True)
- cp.readfp(io.BytesIO("[/]\n" + config))
+ cp = configparser.RawConfigParser(dict_type=odict, allow_no_value=True)
+ cp.read_file(io.StringIO("[/]\n" + config))
  sections = (["/"] + [i for i in cp.sections() if i != "/"])
  spec_sections = []
  special_sections = []
@@ -384,23 +383,23 @@ def post(main_domain, certbot_config_dir, recurse=True):
   cert_dir = os.path.join(DEFAULT_CERTBOT_CONFIG_DIR, "live", main_domain)
   if os.path.exists(os.path.join(cert_dir, "cert.pem")):
    # change permissions
-   os.chmod(os.path.realpath(os.path.join(cert_dir, "privkey.pem")), 0600)
+   os.chmod(os.path.realpath(os.path.join(cert_dir, "privkey.pem")), 0o600)
    
    # concatenate certificate and private key for lighttpd
-   cert_plus_privkey = ""
+   cert_plus_privkey = b""
    with open(os.path.join(cert_dir, "cert.pem"), "rb") as f:
     cert_plus_privkey += f.read()
-   cert_plus_privkey += "\n"
+   cert_plus_privkey += b"\n"
    with open(os.path.join(cert_dir, "privkey.pem"), "rb") as f:
     cert_plus_privkey += f.read()
    with open(os.path.join(cert_dir, "cert+privkey.pem"), "wb") as f:
     f.write(cert_plus_privkey)
-   os.chmod(os.path.join(cert_dir, "cert+privkey.pem"), 0600)
+   os.chmod(os.path.join(cert_dir, "cert+privkey.pem"), 0o600)
    
    # print useful paths
-   print cert_dir
+   print(cert_dir)
    for filename in ("cert", "cert+privkey", "chain", "fullchain", "privkey"):
-    print os.path.join(cert_dir, filename + ".pem")
+    print(os.path.join(cert_dir, filename + ".pem"))
  
  return 0
 
@@ -409,7 +408,7 @@ def catch_main_errors(fn, *args, **kwargs):
  try:
   return fn(*args, **kwargs)
  except BnayCertError as exc:
-  print >> sys.stderr, "error:", exc.message
+  print("error:", exc.message, file=sys.stderr)
   return exc.code if exc.code is not None else 127
 
 
@@ -431,13 +430,13 @@ def main(argv, recurse=True):
   elif argv[1] == "--":
    argv.pop(1)
  if len(argv) < 2:
-  print >> sys.stderr, USAGE
+  print(USAGE, file=sys.stderr)
   return 2
  
  config_filename = argv[1]
  extra_args = argv[2:]
  
- with open(config_filename, "rb") as f:
+ with open(config_filename, "r") as f:
   config = load_config(f.read(), config_filename)
  
  for required in []:
@@ -448,7 +447,7 @@ def main(argv, recurse=True):
  domains = get_domains(config)
  if ls:
   for domain in domains:
-   print domain
+   print(domain)
   return 0
  else:
   if "letsencrypt" in config["."]:
