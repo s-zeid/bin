@@ -1,12 +1,26 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
-import gtk
+import os
 import sys
-import urlparse
-import webkit
+import urllib.parse
+
+import gi  # apt install python3-gi
+
+gi.require_version("Gtk", "3.0")  # apt install gir1.2-gtk-3.0
+from gi.repository import Gtk as gtk
+
+gi.require_version("Gdk", "3.0")  # apt install gir1.2-gtk-3.0
+from gi.repository import Gdk as gdk
+
+gi.require_version("WebKit2", "4.0")  # apt install gir1.2-webkit2-4.0
+from gi.repository import WebKit2 as webkit2
+
+from gi.repository import GLib as glib
+
 
 APP_NAME = "Mini Browser"
 APP_ICON_NAME = "emblem-web"
+
 
 def mini_browser(url, title=None, icon=None, wmclass=None):
  if title == None:
@@ -16,43 +30,46 @@ def mini_browser(url, title=None, icon=None, wmclass=None):
  if wmclass == None:
   wmclass = title
  
- url = list(urlparse.urlsplit(url))
+ url = list(urllib.parse.urlsplit(url))
  if not url[0]:
   url[0] = "http"
   url[1] = "/" + url[1]
- url = urlparse.urlunsplit(url)
+ url = urllib.parse.urlunsplit(url)
+ 
+ glib.set_prgname(wmclass)
+ gdk.set_program_class(wmclass)
  
  w = gtk.Window()
  w.set_title(title)
- w.set_wmclass(wmclass, wmclass)
  w.set_icon_name(icon)
  w.set_size_request(1, 1)
  w.resize(1024, 576)
  w.connect("delete-event", _close_callback)
  
  s = gtk.ScrolledWindow()
- wv = webkit.WebView()
- wv.show()
+ wv = webkit2.WebView()
  s.add(wv)
- s.show()
  w.add(s)
- w.show()
  
- wv.open(url)
+ wv.load_uri(url)
  
+ w.show_all()
  gtk.main()
+
 
 def _close_callback(window, data):
  window.hide()
  gtk.main_quit()
 
+
 def main(argv):
- url = raw_input("Please enter a URL: ") if len(argv) < 2 or argv[1] == "." else argv[1]
+ url = input("Please enter a URL: ") if len(argv) < 2 or argv[1] == "." else argv[1]
  title = argv[2] or None if len(argv) > 2 else None
  icon = argv[3] or None if len(argv) > 3 else None
  wmclass = argv[4] or None if len(argv) > 4 else None
  
  mini_browser(url, title, icon, wmclass)
+
 
 if __name__ == "__main__":
  try:
