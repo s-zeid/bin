@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import os
 import sys
 import urllib.parse
@@ -70,12 +71,50 @@ def _close_callback(window, data):
 
 
 def main(argv):
- url = input("Please enter a URL: ") if len(argv) < 2 or argv[1] == "." else argv[1]
- title = argv[2] or None if len(argv) > 2 else None
- icon = argv[3] or None if len(argv) > 3 else None
- wm_class = argv[4] or None if len(argv) > 4 else None
+ prog = os.path.basename(argv[0])
  
- mini_browser(url, title, icon, wm_class)
+ compat_args_len = len([i for i in argv[1:] if not i.startswith("-")])
+ compat_mode = compat_args_len == len(argv[1:]) and compat_args_len >= 2
+ 
+ p = argparse.ArgumentParser(
+  prog=prog,
+ )
+ p.add_argument("url", nargs="?", default=None,
+                help="the initial URL to load (default: prompt)")
+ p.add_argument("-t", "--title", default=None,
+                help=f"the window's title (default: {APP_NAME!r})")
+ p.add_argument("-i", "--icon", default=None,
+                help=f"the window's icon name (default: {APP_ICON_NAME!r})")
+ p.add_argument("-c", "--wm-class", default=None,
+                help=f"the window's WM_CLASS hint (default: title or {APP_WM_CLASS!r})")
+ 
+ if not compat_mode:
+  p.parse_args([])  # make sure compat mode won't fail when adding new arguments
+  try:
+   options = p.parse_args(argv[1:])
+  except SystemExit as exc:
+   return exc.code
+ else:
+  # backwards compatibility; do not add new arguments here
+  warning = f"{prog}: warning: the positional %s argument is deprecated; use %s instead"
+  if len(argv) > 2:
+   print(warning % ("title", "-t/--title"), file=sys.stderr)
+  if len(argv) > 3:
+   print(warning % ("icon", "-i/--icon"), file=sys.stderr)
+  if len(argv) > 4:
+   print(warning % ("wm-class", "-c/--wm-class"), file=sys.stderr)
+  
+  options = p.parse_args([])
+  options.url = argv[1] or None if len(argv) > 1 else None
+  options.title = argv[2] or None if len(argv) > 2 else None
+  options.icon = argv[3] or None if len(argv) > 3 else None
+  options.wm_class = argv[4] or None if len(argv) > 4 else None
+ 
+ url = options.url
+ if url is None or url == ".":
+  url = input("Please enter a URL: ")
+ 
+ mini_browser(url, options.title, options.icon, options.wm_class)
 
 
 if __name__ == "__main__":
