@@ -73,13 +73,24 @@ def mini_browser(
  
  wv.load_uri(url)
  
- w.show_all()
+ _show_window(w)
  gtk.main()
 
 
 def _close_callback(window, data):
  window.hide()
  gtk.main_quit()
+
+
+def _show_window(window):
+ # Show the window after it has initialized to reduce flashing/repaints.
+ # See <https://github.com/polychromatic/polychromatic/commit/8ac2d6f52f11f346b1258ecbab97b0a0fdec8fb9>.
+ 
+ def callback():
+  window.show_all()
+  return glib.SOURCE_REMOVE
+ 
+ glib.idle_add(callback)
 
 
 def main(argv):
