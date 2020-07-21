@@ -6,6 +6,13 @@ import re
 import sys
 import urllib.parse
 
+from typing import *
+
+if TYPE_CHECKING:
+ # these are repeated here to preserve the installation instruction
+ # comments in the tracebacks for the actual imports
+ import gi, gi.repository  # type: ignore
+
 import gi  # apt install python3-gi
 
 gi.require_version("Gtk", "3.0")  # apt install gir1.2-gtk-3.0
@@ -26,12 +33,12 @@ APP_ICON_NAME = "emblem-web"
 
 
 def mini_browser(
- url,
+ url: str,
  *,
- title=None,
- icon=None,
- wm_class=None,
- _args_compat_mode=False,
+ title: str = None,
+ icon: str = None,
+ wm_class: str = None,
+ _args_compat_mode: bool = False,
 ):
  default_wm_class = APP_WM_CLASS
  
@@ -50,11 +57,11 @@ def mini_browser(
  if not icon:
   icon = APP_ICON_NAME
  
- url = list(urllib.parse.urlsplit(url))
- if not url[0]:
-  url[0] = "http"
-  url[1] = "/" + url[1]
- url = urllib.parse.urlunsplit(url)
+ url_parts = list(urllib.parse.urlsplit(url))
+ if not url_parts[0]:
+  url_parts[0] = "http"
+  url_parts[1] = "/" + url_parts[1]
+ url = urllib.parse.urlunsplit(url_parts)
  
  glib.set_prgname(wm_class)
  gdk.set_program_class(wm_class)
@@ -93,7 +100,7 @@ def _show_window(window):
  glib.idle_add(callback)
 
 
-def main(argv):
+def main(argv: List[str]):
  prog = os.path.basename(argv[0])
  
  compat_args_len = len([i for i in argv[1:] if not i.startswith("-")])
