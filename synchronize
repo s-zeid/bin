@@ -1,10 +1,14 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
+# vim: set fdm=marker:
 
-# Dependencies: PyYaml
-# Optional (but required for GTK+ progress dialog):  PyZenity, zenity
+# Requires PyYAML.
+# The Zenity command is required for GTK+ dialogs.
 
+
+### Imports / constants  {{{1
+
+import argparse
 import os
-import optparse
 import re
 import stat
 import string
@@ -14,13 +18,10 @@ import tempfile
 import time
 
 from decimal import Decimal
+from typing import *
 
 import yaml
 
-try:
- import PyZenity as zenity
-except ImportError:
- zenity = None
 
 DEFAULT_SCRIPT_LOCALS = dict(
  os=os,
@@ -31,11 +32,14 @@ DEFAULT_SCRIPT_LOCALS = dict(
  tempfile=tempfile,
  time=time
 )
+
 PROFILE_PATH = os.path.expanduser("~/.synchronize")
 
-class Profile:
- def __init__(self, name="", path=None, force_device=None, quiet=True,
-              use_gtk=False, verbose=False):
+
+class Profile:  #{{{1
+ def __init__(self, name: str = "", path: str = None,
+              force_device: str = None, quiet: bool = True,
+              use_gtk: bool = False, verbose: bool = False):
   self.name    = name
   self.quiet   = quiet
   self.use_gtk = use_gtk and not quiet
@@ -54,41 +58,43 @@ class Profile:
   script = setattrs(script_dict)
   
   Vars_dict.update(script_dict.get("Vars", dict()))
-  if force_device != None:
+  if force_device is not None:
    Vars_dict["device"] = force_device
   
   self.steps = script.steps
   self.Vars = setattrs(Vars_dict)
   self.update_vars()
  
- def do_step(self, index, number, message, num_steps=None, quiet=True,
-             progress_dialog=None):
+ def do_step(self, index: Optional[int], number: Union[int, float, None],
+             message: str,
+             num_steps: int = None, quiet: bool = True,
+             progress_dialog: "_zenity.Progress" = None):
   if progress_dialog or not quiet:
    if num_steps is None:
     num_steps = len(self.steps)
-   if isinstance(number, (int, float, long)) and number < 0:
+   if isinstance(number, (int, float)) and number < 0:
     percent = 100 - number
    elif number is None:
     percent = 100
    else:
-    percent = (Decimal(str(number)) / Decimal(str(num_steps))) * Decimal("100")
+    percent = float((Decimal(str(number)) / Decimal(str(num_steps))) * Decimal("100"))
    percent = int(round(percent))
    message = gen_message(message)
-   if isinstance(number, (int, float, long)) and number >= 0:
+   if isinstance(number, (int, float)) and number >= 0:
     message += " (step %s of %s)" % (number + 1, num_steps)
    if progress_dialog:
-    progress_dialog(percent, message)
+    progress_dialog.update(percent, message)
    if not quiet:
-    print message
-  if isinstance(index, (int, long)):
+    print(message)
+  if index is not None:
    rm_tmp = True if self.Vars.tmp is None else False
    self.update_vars()
-   exec self.steps[index]["code"] in {}, ScriptLocals(self.Vars)()
+   exec(self.steps[index]["code"], {}, ScriptLocals(self.Vars)())
    if rm_tmp:
     subprocess.call(["rm", "-r", self.Vars.tmp])
  
- def run(self, steps=None):
-  if isinstance(steps, basestring):
+ def run(self, steps: Union[List[str], str] = None):
+  if isinstance(steps, str):
    steps = expand_steps_string(steps)
   if steps:
    manual = True
@@ -102,7 +108,7 @@ class Profile:
   # GTK+ Zenity progress dialog if --gtk and PyZenity is available and not quiet
   progress_dialog = None
   if self.use_gtk:
-   progress_dialog = zenity.Progress(text="Synchronizing...", auto_close=False)
+   progress_dialog = zenity.progress(text="Synchronizing...", auto_close=False)
    time.sleep(5)
   
   # Synchronize
@@ -136,40 +142,46 @@ class Profile:
   if not self.Vars.tmp:
    self.Vars.tmp = tempfile.mkdtemp()
 
-class ScriptLocals:
- def __call__(self):
+
+class ScriptLocals:  #{{{1
+ def __call__(self) -> dict:
   items = ("Vars", "call", "cp", "join", "mv", "process_playlists", "replace",
            "resolve", "rm", "run_profile", "sanitize_dir", "sync", "sync_from",
            "sync_to", "verbose", "warn")
-  ret = dict()
-  ret.update(DEFAULT_SCRIPT_LOCALS)
-  ret.update(dict([(i, getattr(self, i)) for i in items]))
-  return ret
- def __init__(self, Vars=None):
+  result = dict()
+  result.update(DEFAULT_SCRIPT_LOCALS)
+  result.update(dict([(i, getattr(self, i)) for i in items]))
+  return result
+ 
+ def __init__(self, Vars: Type = None):
   self.Vars = Vars or setattrs(dict())
+ 
  def call(self, *args, **kwargs):
   subprocess.call(*args, **kwargs)
- def cp(self, source, dest):
+ 
+ def cp(self, source: str, dest: str):
   cmd = ["cp", "-r", self.resolve(source), self.resolve(dest)]
   subprocess.call(cmd)
- def join(self, *paths):
-  if isinstance(paths, basestring):
-   return paths
-  paths = list(paths)
-  for n in range(1, len(paths)):
-   if paths[n].startswith(os.path.sep):
-    paths[n] = paths[n].split(os.path.sep, 1)[1]
-    paths[n-1] += os.path.sep
-  return os.path.join(*paths)
- def mv(self, source, dest):
+ 
+ def join(self, *paths: str) -> str:
+  paths_list = list(paths)
+  for i in range(1, len(paths_list)):
+   if paths_list[i].startswith(os.path.sep):
+    paths_list[i] = paths_list[i].split(os.path.sep, 1)[1]
+    paths_list[i-1] += os.path.sep
+  return os.path.join(*paths_list)
+ 
+ def mv(self, source: str, dest: str):
   cmd = ["mv", self.resolve(source), self.resolve(dest)]
   subprocess.call(cmd)
- def process_playlists(self, original_root, replace_with, in_dir, out_dir=None,
-                       name_callback=None):
+ 
+ def process_playlists(self, original_root: str, replace_with: str,
+                       in_dir: str, out_dir: str = None,
+                       name_callback: Callable[[str], str] = None):
   in_dir = os.path.abspath(self.resolve(in_dir))
   out_dir = os.path.abspath(self.resolve(out_dir)) if out_dir else in_dir
   files = os.listdir(in_dir)
-  playlists = []
+  playlists: List[str] = []
   for root, dirs, files in os.walk(in_dir, followlinks=True):
    dirs.sort()
    for f in sorted(files):
@@ -187,10 +199,11 @@ class ScriptLocals:
    text = text.replace("\r\n", "\n").replace("\r", "\n")
    text = text.replace(original_root, replace_with)
    lines = text.split("\n")
-   new_lines = []
+   new_lines: List[str] = []
    with open(new_path, 'w') as fo:
     fo.write(text)
- def replace(self, filename, search, replace, encoding="utf8"):
+ 
+ def replace(self, filename: str, search: str, replace: str, encoding: str = "utf-8"):
   filename = self.resolve(filename)
   with open(filename, "rb") as f:
    t = f.read().decode(encoding)
@@ -200,21 +213,25 @@ class ScriptLocals:
    t = t.replace(search, replace)
   with open(filename, "wb") as f:
    f.write(t.encode(encoding))
- def resolve(self, *paths):
+ 
+ def resolve(self, *paths: str) -> str:
   path = self.join(*paths)
   path = string.Template(path).substitute(self.Vars.__dict__)
   return os.path.expanduser(path)
- def rm(self, path):
+ 
+ def rm(self, path: str):
   cmd = ["rm", "-r", self.resolve(path)]
   subprocess.call(cmd)
- def run_profile(self, profile, steps, device=None):
+ 
+ def run_profile(self, profile: str, steps: List[str], device: str = None):
   Profile(profile, force_device=device).run(steps)
- def sanitize_dir(self, directory, level=0):
+ 
+ def sanitize_dir(self, directory: str, level: int = 0):
   success = True
   try:
    ls = os.listdir(directory)
    ls.sort()
-  except EnvironmentError:
+  except OSError:
    self.warn("sanitize_dir(): could not access", directory)
    success = False
    return False
@@ -224,31 +241,30 @@ class ScriptLocals:
     if os.path.isfile(path):
      try:
       os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
-     except EnvironmentError:
+     except OSError:
       self.warn("sanitize_dir(): could not set permissions on", path)
       success = False
     elif os.path.isdir(path):
      try:
       os.chmod(path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-     except EnvironmentError:
+     except OSError:
       self.warn("sanitize_dir(): could not set permissions on", path)
       success = False
      self.sanitize_dir(path, level=level + 1)
- def sync(self, source, dest, delete=None, fat=None, opts=[]):
-  if delete == None:
+ 
+ def sync(self, source: str, dest: str,
+          delete: bool = None, fat: bool = None,
+          opts: List[str] = None):
+  if delete is None:
    delete = getattr(self.Vars, "delete", False)
-  if fat == None:
+  if fat is None:
    fat = getattr(self.Vars, "fat", False)
+  if opts is None:
+   opts = []
   cmd = ["rsync", "-L", "-r", "-s", "-t"]
   cmd += getattr(self.Vars, "default_rsync_opts", [])
   cmd += opts
-  # XXX DOES NOT WORK
-  #for i in opts:
-  # if i.startswith("!-") and len(i) > 2:
-  #  if i[1:] in opts:
-  #   opts.remove(i)
-  #   opts.remove(i[1:])
-  # (Below does work)
+  # TODO: implement a way to disable specific hardcoded/default rsync options
   if delete:
    cmd += ["--del"]
   if fat:
@@ -264,95 +280,238 @@ class ScriptLocals:
   cmd += [source, dest]
   self.verbose(source, "->", dest)
   subprocess.call(cmd)
- def sync_from(self, source, dest, delete=None, fat=None, opts=[]):
+ 
+ def sync_from(self, source: str, dest: str,
+               delete: bool = None, fat: bool = None,
+               opts: List[str] = None):
+  if opts is None:
+   opts = []
   if "--chmod" not in opts:
    opts.append("--chmod=Du=rwX,Dgo=rX,Fu=rw,Fgo=r")
   self.sync(self.resolve(self.Vars.device, source), dest, delete=delete,
             fat=fat, opts=opts)
   #sanitize_dir(dest)
- def sync_to(self, source, dest, delete=None, fat=None, opts=[]):
+ 
+ def sync_to(self, source: str, dest: str,
+             delete: bool = None, fat: bool = None,
+             opts: List[str] = None):
   self.sync(source, self.resolve(self.Vars.device, dest), delete=delete,
             fat=fat, opts=opts)
- def verbose(self, *text):
+ 
+ def verbose(self, *text: str):
   if self.Vars.verbose:
-   print u" ".join(text).encode("utf_8")
- def warn(self, *text):
+   print(" ".join(text).encode("utf-8"))
+ 
+ def warn(self, *text: str):
   if not self.Vars.quiet:
-   print u" ".join(text).encode("utf_8")
+   print(" ".join(text).encode("utf-8"))
 
-### Functions
 
-def expand_steps_string(s):
+### Utilities  {{{1
+
+def expand_steps_string(s: str) -> List[str]:
  return re.split(r"[\s,]+", s)
 
-def gen_message(message):
+
+def gen_message(message: str) -> str:
  if not message.endswith(".") and not message.endswith("!"):
   message = "Synchronizing %s..." % message
  return message
 
-def load_yaml_file(filename):
- fo = open(filename)
- data = fo.read()
- out = yaml.safe_load(data)
- fo.close()
- return out
 
-def setattrs(d, _cls = None):
- setattrs_class = _cls
- if _cls == None:
-  class setattrs_class: pass
+def load_yaml_file(filename: str) -> Any:
+ with open(filename) as f:
+  return yaml.safe_load(f.read())
+
+
+def setattrs(d: dict, _cls: Type = None) -> Type:
+ """Recursively converts a dictionary to a class, or adds the dictionary's items to the given class."""
+ if _cls is None:
+  setattrs_class = type("setattrs_class", (object,), {})
+ else:
+  setattrs_class = _cls
  for i in d:
   if isinstance(d[i], dict):
    setattr(setattrs_class, i, setattrs(d[i]))
   else:
    setattr(setattrs_class, i, d[i])
- if _cls == None:
+ if _cls is None:
   return setattrs_class
+ else:
+  return _cls
 
-### Main code
 
-def main(argv=None):
- argv = argv or sys.argv
- # Command line parsing
- usage = "Usage: %s [options] [sync-profile]" % argv[0]
- p = optparse.OptionParser(prog=argv[0], usage=usage)
- p.add_option("--device", "-d", default=None, help="override the device variable in the sync profile")
- p.add_option("--gtk", "-g", action="store_true", default=False, help="use a GTK+ window to display progress")
- p.add_option("--quiet", "-q", action="store_true", default=False, help="only print error messages")
- p.add_option("--prompt", "-p", action="store_true", default=False, help="prompts for which steps you want to perform")
- p.add_option("--steps", "-s", default=None, help="perform only these steps, separated by a comma only")
- p.add_option("--verbose", "-v", action="store_true", default=False, help="print extra information to stdout")
- options, args = p.parse_args(argv[1:])
- use_gtk = options.gtk and zenity is not None
+class _zenity:  #{{{1
+ def dialog(cls, mode: str, **kwargs) -> Union[List[str], None]:
+  if mode == "progress":
+   raise ValueError("mode `progress` cannot be used with this method")
+  return cast(Union[List[str], None], cls(mode, **kwargs))
+ 
+ def progress(cls, **options) -> "_zenity.Progress":
+  return cast("_zenity.Progress", cls("progress", **options))
+ 
+ def __call__(cls, mode: str, *, items: List[str] = None, **options) \
+     -> Union[List[str], "_zenity.Progress", None]:
+  """Run Zenity with the given mode and options.
+
+If the mode is `progress`, then items is a list of strings to pass as items,
+and a `zenity.Progress` object will be returned.  For other modes, a list
+of strings will be returned if the exit code was 0, and `None` if a
+RuntimeError was not raised (see below).
+
+The options kwargs correspond to Zenity options, with underscores
+replaced with hyphens and trailing underscores stripped.  Boolean
+options are passed as `--option-name`, list/tuple options are passed
+as `--name value-1 --name value-2 ... --name value-N`, and string
+options are passed as `--name value`.
+
+When the `multiple` or `checklist` options are used, or the mode is `forms`,
+the `separator` option is set to `\x1F` (an ASCII unit separator).  When this
+happens, the `separator` option cannot be overridden.  The results are always
+split on unit separators.
+
+Zenity errors (standard error when Zenity returns exit code 255) will
+be raised as `RuntimeError`s.
+"""
+  
+  if "multiple" in options or "checklist" in options or mode == "forms":
+   if "separator" in options:
+    raise ValueError(f"the separator option is not allowed for mode `{mode}`")
+   else:
+    options["separator"] = "\x1F"
+  
+  cmd = ["zenity"]
+  cmd += ["--" + mode.replace("_", "-")]
+  
+  for name, value in options.items():
+   flag = "--" + name.replace("_", "-")
+   if isinstance(value, bool):
+    if value:
+     cmd += [flag]
+   elif isinstance(value, (list, tuple)):
+    for i in value:
+     cmd += [flag + "=" + str(i)]
+   else:
+    cmd += [flag + "=" + str(value)]
+  
+  cmd += [str(i) for i in items] if items is not None else []
+  
+  if mode == "progress":
+   return cls.Progress(cls, cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+  else:  # mode == _
+   p = cls._Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+   if p._wait_checked():
+    return None
+   else:
+    result = p.stdout.read().decode("utf-8")
+    if result.endswith(os.linesep):
+     result = result[:-len(os.linesep)]
+    return result.split("\x1F")
+ 
+ class Progress:
+  def __init__(self, cls, cmd: Union[list, tuple], **kwargs):
+   """Called by `zenity()` to open the progress dialog.
+
+The command will be tested by adding the `--auto-close` option,
+immediately updating (not initially setting) the percentage to 100,
+and waiting for the test process to exit.  If this test process
+exits with a Zenity error (exit code 255), then a `RuntimeError`
+will be raised.
+
+The `subprocess.Popen` object is available as a `process` attribute.
+"""
+   test_process = cls._Popen(list(cmd) + ["--auto-close"], **kwargs)
+   test_process.stdin.write(b"100\n")
+   test_process.stdin.flush()
+   test_process._wait_checked()
+   self.process = cls._Popen(cmd, **kwargs)
+  
+  def update(self, percent: int, message: str = None) -> int:
+   """Update the progress dialog.  Returns the process's exit code, if any.
+
+If the dialog was closed prior to calling this method, the process's
+exit code will be returned.  A canceled dialog will have exit code 1, and
+a dialog closed with the OK button will have exit code 0.
+"""
+   if message:
+    message = message.replace("\\", r"\\").replace("\n", "\\n").replace("\r", "\\r")
+   try:
+    self.process.stdin.write(f"{percent}\n".encode("utf-8"))
+    self.process.stdin.flush()
+    if message:
+     self.process.stdin.write(f"#{message}\n".encode("utf-8"))
+     self.process.stdin.flush()
+   except BrokenPipeError:
+    pass
+   return self.process.poll()
+ 
+ class _Popen(subprocess.Popen):
+  def __init__(self, cmd: Union[list, tuple], **kwargs):
+   kwargs = kwargs.copy()
+   for kwarg in ("stdin", "stdout", "stderr"):
+    kwargs[kwarg] = subprocess.PIPE
+   return super().__init__(cmd, **kwargs)
+  
+  def _wait_checked(self):
+   result = self.wait()
+   if result == 255:
+    raise RuntimeError(self.stderr.read().decode("utf-8").rstrip("\r\n"))
+   return result
+
+zenity = _zenity()
+
+
+### Entry point  {{{1
+
+def main(argv: List[str]):
+ p = argparse.ArgumentParser(prog=os.path.basename(argv[0]))
+ p.add_argument("--device", "-d", default=None,
+                help="override the device variable in the sync profile")
+ p.add_argument("--gtk", "-g", action="store_true", default=False,
+                help="use a GTK+ window to display progress (requires Zenity)")
+ p.add_argument("--quiet", "-q", action="store_true", default=False,
+                help="only print error messages")
+ p.add_argument("--prompt", "-p", action="store_true", default=False,
+                help="prompts for which steps you want to perform")
+ p.add_argument("--steps", "-s", default=None,
+                help="perform only these steps, separated by a comma only")
+ p.add_argument("--verbose", "-v", action="store_true",
+                default=False, help="print extra information to stdout")
+ p.add_argument("profile", metavar="sync-profile", nargs="?", default="default",
+                help="the sync profile to use")
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ use_gtk = options.gtk
  steps_partial = options.steps.split(",") if options.steps else None
  
- if len(args) < 1:
-  args.append("default")
-  #print usage % sys.argv[0]
-  #exit(2)
- 
- profile = Profile(args[0], force_device=options.device, quiet=options.quiet,
-                   use_gtk=use_gtk, verbose=options.verbose)
+ profile = Profile(
+  options.profile,
+  force_device=options.device,
+  quiet=options.quiet,
+  use_gtk=use_gtk,
+  verbose=options.verbose,
+ )
  steps = profile.steps
  
  if options.prompt:
+  steps_list = ["all"]
+  steps_list.extend([steps[i]["name"] for i in range(len(steps))])
   if use_gtk:
-   rows = [("", "all")]
-   rows += [("", steps[i]["name"]) for i in range(len(steps))]
-   steps_partial = zenity.List(("", "Name"), boolstyle="checklist", select_col=2, data=rows)
-   if "all" in steps_partial:
-    rows.remove(("", "all"))
-    steps_partial = [rows[i][1] for i in range(len(rows))]
+   rows: List[str] = []
+   for step in steps_list:
+    rows += ["", step]
+   steps_partial = zenity.dialog("list", column=("", "Name"), checklist=True, print_column=2, items=rows)
   else:
-   steps_list = ["all"]
-   steps_list.extend([steps[i]["name"] for i in range(len(steps))])
-   print "Choose one or more of the steps below by typing their names, separated by"
-   print "commas or spaces:"
-   print " " + " ".join(steps_list)
-   steps_partial = expand_steps_string(raw_input("Step(s): "))
-   if "all" in steps_partial:
-    steps_list.remove("all")
-    steps_partial = steps_list
+   print("Choose one or more of the steps below by typing their names, separated by")
+   print("commas or spaces:")
+   print(" " + " ".join(steps_list))
+   steps_partial = expand_steps_string(input("Step(s): "))
+  if "all" in steps_partial:
+   steps_list.remove("all")
+   steps_partial = steps_list
  elif options.steps:
   steps_partial = expand_steps_string(options.steps)
  else:
@@ -360,8 +519,9 @@ def main(argv=None):
  
  profile.run([i for i in steps_partial if i])
 
+
 if __name__ == "__main__":
  try:
-  main()
+  sys.exit(main(sys.argv))
  except KeyboardInterrupt:
   pass
