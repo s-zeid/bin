@@ -226,7 +226,7 @@ class ScriptLocals:  #{{{1
  def run_profile(self, profile: str, steps: List[str], device: str = None):
   Profile(profile, force_device=device).run(steps)
  
- def sanitize_dir(self, directory: str, level: int = 0):
+ def sanitize_dir(self, directory: str, level: int = 0) -> bool:
   success = True
   try:
    ls = os.listdir(directory)
@@ -250,7 +250,8 @@ class ScriptLocals:  #{{{1
      except OSError:
       self.warn("sanitize_dir(): could not set permissions on", path)
       success = False
-     self.sanitize_dir(path, level=level + 1)
+     success = self.sanitize_dir(path, level=level + 1)
+  return success
  
  def sync(self, source: str, dest: str,
           delete: bool = None, fat: bool = None,
