@@ -1,13 +1,12 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
-import argparse
-import subprocess
 import os
 import sys
 
+
 def main(argv):
  if len(argv) < 3 or "--" not in argv[2:]:
-  print >> sys.stderr, "Usage: %s {arguments to isolate [...]} -- [arguments to check]"
+  print("Usage: %s {arguments to isolate [...]} -- [arguments to check]", file=sys.stderr)
   return 2
  remove = os.environ.get("REMOVE", "") in ("1", "true", "yes")
  
@@ -15,9 +14,10 @@ def main(argv):
  found, values, other_args = isolate_argument(argv[pivot + 1:], *argv[1:pivot])
  if found:
   for arg in (values if not remove else other_args):
-   print arg
+   print(arg)
   return 0
  return 1
+
 
 def isolate_argument(args, *prefixes):
  other_args = []
@@ -43,6 +43,7 @@ def isolate_argument(args, *prefixes):
   if want == 0:
    other_args += [arg]
  return found, values, other_args
+
 
 if __name__ == "__main__":
  try:
