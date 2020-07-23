@@ -1,18 +1,22 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import argparse
+import decimal
 import os
 import socket
-import SocketServer
+import socketserver
 import sys
 
 from collections import OrderedDict
+from typing import *
+
 
 POWER_SUPPLY_ROOT = "/sys/class/power_supply"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 33579
 
-def main(argv):
+
+def main(argv: List[str]) -> int:
  p = argparse.ArgumentParser(description="Display or serve power status.")
  p.add_argument("--daemon", "-d", dest="daemon", action="store_true",
                 help="run as a daemon")
@@ -44,9 +48,9 @@ def main(argv):
   s = s.replace("hostport", "[host][:port]")
   return s
  __format_help = p.format_help
- p.format_help = lambda: fixup(__format_help())
+ p.format_help = lambda: fixup(__format_help())  # type: ignore
  __format_usage = p.format_usage
- p.format_usage = lambda: fixup(__format_usage())
+ p.format_usage = lambda: fixup(__format_usage())  # type: ignore
  
  try:
   args = p.parse_args(argv[1:])
@@ -60,17 +64,19 @@ def main(argv):
  host, port = hostport.split(":")
  
  if args._hep_easter_egg:
-  print "Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes."
-  print "--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s"
+  print("Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes.")
+  print("--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s")
   return 0
+ 
  elif args.daemon:
   # TODO: background
   daemon(host=host, port=int(port) if port else None)
   return 0
+ 
  else:
   status = power(root=root, host=host, port=int(port) if port else None)
   if args.all_fields:
-   print format_power(status)
+   print(format_power(status))
   else:
    only_fields = args.only_fields or ["human"]
    for k in only_fields:
@@ -78,33 +84,40 @@ def main(argv):
     if len(only_fields) != 1:
      out += k + "="
     out += str(status[k])
-    print out
+    print(out)
+  return 0
 
-class PowerHandler(SocketServer.BaseRequestHandler):
+
+class PowerHandler(socketserver.BaseRequestHandler):
  def handle(self):
-  self.request.send(format_power(power()) + "\n")
+  self.request.send(format_power(power()).encode("utf-8") + b"\n")
   self.request.shutdown(socket.SHUT_RDWR)
   self.request.close()
 
-class PowerServer(SocketServer.ThreadingMixIn, SocketServer.TCPServer):
+
+class PowerServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
  allow_reuse_address = True
 
-def daemon(host=None, port=None):
+
+def daemon(host: str = None, port: int = None):
  server = PowerServer((host or DEFAULT_HOST, port or DEFAULT_PORT), PowerHandler)
  try:
   server.serve_forever()
  finally:
   server.shutdown()
 
-def format_power(power):
+
+def format_power(power: dict) -> str:
  return "\n".join(["%s=%s" % (k, power[k]) for k in power])
 
-def power(root=None, host=None, port=None):
+
+def power(root: str = None, host: str = None, port: int = None) -> dict:
  if host or port:
   return power_remote(host, port)
  return power_local(root)
 
-def power_remote(host=None, port=None):
+
+def power_remote(host: str = None, port: int = None) -> dict:
  s = ""
  sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
  try:
@@ -113,7 +126,7 @@ def power_remote(host=None, port=None):
    data = sock.recv(1024)
    if not data:
     break
-   s += data
+   s += data.decode("utf-8")
  finally:
   sock.close()
  
@@ -123,10 +136,12 @@ def power_remote(host=None, port=None):
   r[key] = value
  return r
 
-def make_status_dict(help_text=False):
+
+def make_status_dict(help_text: bool = False) -> dict:
  def help(s):
   return s if help_text else None
- d = OrderedDict()
+ 
+ d: dict = OrderedDict()
  d["human"]         = help("human-readable status")
  d["supply"]        = help("the power supply source")
  d["status"]        = help("the general state of the power supply")
@@ -139,22 +154,23 @@ def make_status_dict(help_text=False):
  d["total_seconds"] = help("how much time is remaining in seconds")
  return d
 
-def power_local(root=None):
+
+def power_local(root: str = None) -> dict:
  power_supplies = sorted(os.listdir(root or POWER_SUPPLY_ROOT))
  ac = None
  battery = None
  status = make_status_dict()
  for i in power_supplies:
   type_ = read(i, "type").lower()
-  if type_ == "mains" and ac == None:
+  if type_ == "mains" and ac is None:
    ac = i
-  elif type_ == "battery" and battery == None:
+  elif type_ == "battery" and battery is None:
    battery = i
   if ac and battery:
    break
  
  battery_status = ""
- if ac == None and battery == None:
+ if ac is None and battery is None:
   status["supply"] = status["status"] = "Unknown"
  else:
   current_now = float(read(battery, "current_now") or 0)
@@ -162,18 +178,18 @@ def power_local(root=None):
   charge_full = float(read(battery, "charge_full") or 0)
   capacity    = float(read(battery, "capacity") or 0)
   if capacity:
-   status["percent"] = int(round(capacity))
+   status["percent"] = round_half_up(capacity)
   elif charge_full > 0:
-   status["percent"] = int(round(charge_now / charge_full) * 100)
+   status["percent"] = round_half_up(charge_now / charge_full) * 100
   
   battery_status = read(battery, "status").lower()
   if battery_status in ("discharging", "charging"):
    if current_now > 0:
     top = charge_full - charge_now if battery_status == "charging" else charge_now
-    status["total_seconds"] = int(round(3600 * top / current_now))
-    status["hours"]         = int(round(status["total_seconds"] / 3600))
-    status["minutes"]       = int(round(status["total_seconds"] / 60)) % 60
-    status["seconds"]       = int(round(status["total_seconds"] % 60))
+    status["total_seconds"] = round_half_up(3600 * top / current_now)
+    status["hours"]         = round_half_up(status["total_seconds"] / 3600)
+    status["minutes"]       = round_half_up(status["total_seconds"] / 60) % 60
+    status["seconds"]       = round_half_up(status["total_seconds"] % 60)
     status["remaining"]     = "%02d:%02d" % (status["minutes"], status["seconds"])
     if status["hours"]:
      status["remaining"]    = str(status["hours"]) + ":" + status["remaining"]
@@ -204,12 +220,18 @@ def power_local(root=None):
  
  return status
 
-def read(supply, field, root=None):
+
+def read(supply: Optional[str], field: Optional[str], root: str = None) -> str:
  path = os.path.join(root or POWER_SUPPLY_ROOT, supply or "", field or "")
  if os.path.exists(path):
   with open(path, "rb") as f:
-   return f.read().strip()
+   return f.read().decode("utf-8").strip()
  return ""
+
+
+def round_half_up(n: Union[int, float, decimal.Decimal]) -> int:
+ return int(decimal.Decimal(n).quantize(1, rounding=decimal.ROUND_HALF_UP))
+
 
 if __name__ == "__main__":
  try:
