@@ -1,16 +1,17 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import os
 import stat
 import sys
 
-def sanitize_dir(directory, level=0):
+
+def sanitize_dir(directory: str, level: int = 0) -> bool:
  success = True
  try:
   ls = os.listdir(directory)
   ls.sort()
- except Exception:
-  print >> sys.stderr, "sanitize_dir(): could not access", directory
+ except OSError:
+  print("sanitize_dir(): could not access", directory, file=sys.stderr)
   success = False
   return False
  else:
@@ -19,26 +20,28 @@ def sanitize_dir(directory, level=0):
    if os.path.isfile(path):
     try:
      os.chmod(path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
-    except Exception:
-     print >> sys.stderr, "sanitize_dir(): could not set permissions on", path
+    except OSError:
+     print("sanitize_dir(): could not set permissions on", path, file=sys.stderr)
      success = False
    elif os.path.isdir(path):
     try:
      os.chmod(path, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-    except Exception:
-     print >> sys.stderr, "sanitize_dir(): could not set permissions on", path
+    except OSError:
+     print("sanitize_dir(): could not set permissions on", path, file=sys.stderr)
      success = False
-    sanitize_dir(path, level=level + 1)
+    success = sanitize_dir(path, level=level + 1)
  return success
+
 
 def main(argv):
  if len(argv) < 2:
-  print >> sys.stderr, "Usage: %s [directory] ..."
+  print("Usage: %s [directory] ..." % os.path.basename(argv[0]), file=sys.stderr)
   return 2
  
  dirs = argv[1:]
  for i in dirs:
   sanitize_dir(i)
+
 
 if __name__ == "__main__":
  try:
