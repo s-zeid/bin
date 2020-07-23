@@ -1,17 +1,18 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import os
 import sys
-import urlparse
+import urllib.parse
 
 try:
  import readline
 except ImportError:
  pass
 
+
 def main(argv):
- server_url = raw_input("Enter server address and port number: ")
- server_url = urlparse.urlparse("//" + server_url)
+ server_url = input("Enter server address and port number: ")
+ server_url = urllib.parse.urlparse("//" + server_url)
 
  args = ["ssh"] + sys.argv[1:]
  if server_url.port and server_url.port != 22:
@@ -22,10 +23,11 @@ def main(argv):
 
  try:
   os.system("clear")
- except EnvironmentError:
+ except OSError:
   pass
 
  os.execvp("ssh", args)
+
 
 if __name__ == "__main__":
  try:
