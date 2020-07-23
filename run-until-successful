@@ -1,8 +1,9 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import os
 import subprocess
 import sys
+
 
 def run_until_successful(cmd):
  r = None
@@ -11,9 +12,11 @@ def run_until_successful(cmd):
 
 def main(argv):
  if len(argv) < 2:
-  print >> sys.stderr, "Usage: %s command [args [...]]" % os.path.basename(argv[0])
+  print("Usage: %s command [args [...]]" % os.path.basename(argv[0]), file=sys.stderr)
   return 2
+ 
  run_until_successful(argv[1:])
+
 
 if __name__ == "__main__":
  try:
