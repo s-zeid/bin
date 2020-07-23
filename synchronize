@@ -20,6 +20,11 @@ import time
 from decimal import Decimal
 from typing import *
 
+try:
+ import readline
+except ImportError:
+ pass
+
 import yaml
 
 
