@@ -71,7 +71,7 @@ def main(argv: List[str]) -> int:
  
  elif args.daemon:
   # TODO: background
-  daemon(host=host, port=int(port) if port else None)
+  PowerServer(host=host, port=int(port) if port else None).daemon()
   return 0
  
  else:
@@ -94,23 +94,24 @@ def main(argv: List[str]) -> int:
   return 0
 
 
-class PowerHandler(socketserver.BaseRequestHandler):
- def handle(self):
-  self.request.send(Power.local().format().encode("utf-8") + b"\n")
-  self.request.shutdown(socket.SHUT_RDWR)
-  self.request.close()
-
-
-class PowerServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
- allow_reuse_address = True
-
-
-def daemon(host: str = None, port: int = None):
- server = PowerServer((host or DEFAULT_HOST, port or DEFAULT_PORT), PowerHandler)
- try:
-  server.serve_forever()
- finally:
-  server.shutdown()
+class PowerServer:
+ class Handler(socketserver.BaseRequestHandler):
+  def handle(self):
+   self.request.send(Power.local().format().encode("utf-8") + b"\n")
+   self.request.shutdown(socket.SHUT_RDWR)
+   self.request.close()
+ 
+ class TCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+  allow_reuse_address = True
+ 
+ def __init__(self, host: str = None, port: int = None):
+  self.server = self.TCPServer((host or DEFAULT_HOST, port or DEFAULT_PORT), self.Handler)
+ 
+ def daemon(self):
+  try:
+   self.server.serve_forever()
+  finally:
+   self.server.shutdown()
 
 
 class DocumentedAttributes(type):
