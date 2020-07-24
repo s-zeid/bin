@@ -5,6 +5,7 @@ import decimal
 import os
 import socket
 import socketserver
+import stat
 import sys
 
 from collections import OrderedDict
@@ -36,16 +37,19 @@ def main(argv: List[str]) -> int:
                  help="show all fields")
  p.add_argument("--hep", dest="_hep_easter_egg", action="store_true",
                 help=argparse.SUPPRESS)
- p.add_argument("hostport", nargs="?", default="",
-                help="the host and port number to connect or bind to"
+ p.add_argument("server_spec", metavar="server_spec_metavar_1234567890",
+                nargs="?", default="",
+                help="the host and port number or path to a Unix socket"
+                     " (if it contains a slash) to connect or bind to"
                      " (defaults to %s:%d)" % (DEFAULT_HOST, DEFAULT_PORT))
  
- # Make it say "[host][:port]" for hostport in the help and usage text
+ # Make it say "[host][:port]|[socket]" for hostport in the help and usage text
  # Trying to do it with metavar causes an AssertionError
  def fixup(s):
-  s = s.replace("[hostport]", "hostport")
-  s = s.replace("hostport     ", "hostport")
-  s = s.replace("hostport", "[host][:port]")
+  s = s.replace("server_spec_metavar_1234567890", "server_spec")
+  s = s.replace("[server_spec]", "server_spec")
+  s = s.replace("server_spec     ", "server_spec")
+  s = s.replace("server_spec", "[host][:port]|[socket]")
   return s
  __format_help = p.format_help
  p.format_help = lambda: fixup(__format_help())  # type: ignore
@@ -57,12 +61,15 @@ def main(argv: List[str]) -> int:
  except SystemExit as exc:
   return exc.code
  
- host = port = root = None
- hostport = args.hostport
- if ":" not in hostport:
-  hostport += ":"
- host, port = hostport.split(":")
- port = int(port) if port else None
+ host = port = unix = root = None
+ server_spec = args.server_spec
+ if "/" in server_spec or "\\" in server_spec:
+  unix = server_spec
+ else:
+  if ":" not in server_spec:
+   server_spec += ":"
+  host, port = server_spec.split(":")
+  port = int(port) if port else None
  
  if args._hep_easter_egg:
   print("Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes.")
@@ -71,12 +78,17 @@ def main(argv: List[str]) -> int:
  
  elif args.daemon:
   # TODO: background
-  PowerServer(host=host, port=int(port) if port else None).daemon()
+  if unix:
+   PowerServer(unix=unix).daemon()
+  else:
+   PowerServer(host=host, port=int(port) if port else None).daemon()
   return 0
  
  else:
   if host or port:
    power = Power.remote(host=host, port=port)
+  elif unix:
+   power = Power.remote(unix=unix)
   else:
    power = Power.local(root=root)
   
@@ -95,6 +107,8 @@ def main(argv: List[str]) -> int:
 
 
 class PowerServer:
+ server: Union["TCPServer", "UnixServer"]
+ 
  class Handler(socketserver.BaseRequestHandler):
   def handle(self):
    self.request.send(Power.local().format().encode("utf-8") + b"\n")
@@ -104,14 +118,24 @@ class PowerServer:
  class TCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
   allow_reuse_address = True
  
- def __init__(self, host: str = None, port: int = None):
-  self.server = self.TCPServer((host or DEFAULT_HOST, port or DEFAULT_PORT), self.Handler)
+ class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+  pass
+ 
+ def __init__(self, host: str = None, port: int = None, unix: str = None):
+  family, address = parse_server_args(host, port, unix)
+  if unix:
+   self.server = self.UnixServer(unix, self.Handler)  # type: ignore
+  else:
+   self.server = self.TCPServer((host or DEFAULT_HOST, port or DEFAULT_PORT), self.Handler)
  
  def daemon(self):
   try:
    self.server.serve_forever()
   finally:
    self.server.shutdown()
+   if isinstance(self.server, self.UnixServer):
+    if stat.S_ISSOCK(os.stat(self.server.server_address).st_mode):
+     os.unlink(self.server.server_address)
 
 
 class DocumentedAttributes(type):
@@ -167,21 +191,23 @@ class Power(metaclass=DocumentedAttributes):
   return "\n".join(["%s=%s" % (k, v) for k, v in self.to_dict().items()])
  
  @classmethod
- def remote(cls, host: str = None, port: int = None) -> "Power":
-  s = ""
-  sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+ def remote(cls, host: str = None, port: int = None, unix: str = None) -> "Power":
+  family, address = parse_server_args(host, port, unix)
+  
+  response = ""
+  sock = socket.socket(family, socket.SOCK_STREAM)
   try:
-   sock.connect((host or DEFAULT_HOST, port or DEFAULT_PORT))
+   sock.connect(address)
    while True:
     data = sock.recv(1024)
     if not data:
      break
-    s += data.decode("utf-8")
+    response += data.decode("utf-8")
   finally:
    sock.close()
   
   result = cls()
-  for line in s.splitlines():
+  for line in response.splitlines():
    attr, value = line.split("=")
    setattr(result, attr, value)
   return result
@@ -261,6 +287,16 @@ def get_sysfs(supply: Optional[str], field: Optional[str], root: str = None) -> 
   with open(path, "rb") as f:
    return f.read().decode("utf-8").strip()
  return ""
+
+
+def parse_server_args(host: str = None, port: int = None, unix: str = None) \
+    -> Tuple[socket.AddressFamily, Union[Tuple[str, int], str]]:
+ if unix:
+  if host or port:
+   raise ValueError("socket and host/port are mutually exclusive")
+  return socket.AF_UNIX, unix
+ else:
+  return socket.AF_INET, (host or DEFAULT_HOST, port or DEFAULT_PORT)
 
 
 def round_half_up(n: Union[int, float, decimal.Decimal]) -> int:
