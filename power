@@ -27,7 +27,7 @@ def main(argv: List[str]) -> int:
                            " equals sign.  Fields will be printed in the order"
                            " given.  If no field names are given, then only the"
                            " `human` field will be shown.")
- fields = make_status_dict(help_text=True)
+ fields = Power._attr_docs
  for k in fields:
   fg.add_argument("--" + k.replace("_", "-"), dest="only_fields", 
                  action="append_const", const=k,
@@ -83,7 +83,7 @@ def main(argv: List[str]) -> int:
     out = ""
     if len(only_fields) != 1:
      out += k + "="
-    out += str(status[k])
+    out += str(getattr(status, k))
     print(out)
   return 0
 
@@ -107,17 +107,18 @@ def daemon(host: str = None, port: int = None):
   server.shutdown()
 
 
-def format_power(power: dict) -> str:
- return "\n".join(["%s=%s" % (k, power[k]) for k in power])
+def format_power(power: "Power") -> str:
+ return "\n".join(["%s=%s" % (k, v) for k, v in power.to_dict().items()])
 
 
-def power(root: str = None, host: str = None, port: int = None) -> dict:
+def power(root: str = None, host: str = None, port: int = None) -> "Power":
  if host or port:
   return power_remote(host, port)
- return power_local(root)
+ else:
+  return power_local(root)
 
 
-def power_remote(host: str = None, port: int = None) -> dict:
+def power_remote(host: str = None, port: int = None) -> "Power":
  s = ""
  sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
  try:
@@ -130,36 +131,75 @@ def power_remote(host: str = None, port: int = None) -> dict:
  finally:
   sock.close()
  
- r = make_status_dict()
+ result = Power()
  for line in s.splitlines():
-  key, value = line.split("=")
-  r[key] = value
- return r
+  attr, value = line.split("=")
+  setattr(result, attr, value)
+ return result
+
+
+class DocumentedAttributes(type):
+ # this metaclass is public domain where possible, or licensed under CC0
+ """A metaclass that allows attributes to be documented.
+
+Attribute values in the class body are transformed as follows:
+
+* `str`: removed; becomes the attribute's documentation
+* `tuple`: first item is the attribute's value; second item is its documentation
+* `other`: left unchanged
+
+Attribute documentation is available as a `<class>._attr_docs` dictionary.
+
+If type annotations are used, a `# type: ignore` comment should be added to
+the same line as the type annotation.  Mypy will still check accesses to/from
+such attributes.
+"""
+ _attr_docs: Dict[str, str]
+ def __new__(cls, name: str, bases: tuple, attrs: dict):
+  orig_attrs, attrs, docs = attrs, {}, {}
+  for attr, value in orig_attrs.items():
+   if not (attr[:2] == attr[-2:] == "__") and isinstance(value, (str, tuple)):
+    if isinstance(value, tuple):
+     attrs[attr], docs[attr] = value
+    else:
+     docs[attr] = value
+   else:
+    attrs[attr] = value
+  attrs["_attr_docs"] = docs
+  return super().__new__(cls, name, bases, attrs)
+
+
+class Power(metaclass=DocumentedAttributes):
+ human: str         = "human-readable status"  # type: ignore
+ supply: str        = "the power supply source"  # type: ignore
+ status: str        = "the general state of the power supply"  # type: ignore
+ percent: int       = (None, "the percentage of power available")  # type: ignore
+ remaining: str     = (None, "how much time is remaining to charge"  # type: ignore
+                             " or discharge in H:MM:SS format")
+ hours: int         = (None, "the hours component of the time remaining")  # type: ignore
+ minutes: int       = (None, "the minutes component of the time remaining")  # type: ignore
+ seconds: int       = (None, "the seconds component of the time remaining")  # type: ignore
+ total_seconds: int = (None, "how much time is remaining in seconds")  # type: ignore
+ 
+ def to_dict(self) -> dict:
+  result = {}
+  for attr in self.__class__._attr_docs:
+   result[attr] = getattr(self, attr)
+  return result
 
 
 def make_status_dict(help_text: bool = False) -> dict:
- def help(s):
-  return s if help_text else None
+ if help_text:
+  return Power._attr_docs.copy()
+ return Power().to_dict()
+
+
+def power_local(root: str = None) -> Power:
+ result = Power()
  
- d: dict = OrderedDict()
- d["human"]         = help("human-readable status")
- d["supply"]        = help("the power supply source")
- d["status"]        = help("the general state of the power supply")
- d["percent"]       = help("the percentage of power available")
- d["remaining"]     = help("how much time is remaining to charge or discharge"
-                           " in H:MM:SS format")
- d["hours"]         = help("the hours component of the time remaining")
- d["minutes"]       = help("the minutes component of the time remaining")
- d["seconds"]       = help("the seconds component of the time remaining")
- d["total_seconds"] = help("how much time is remaining in seconds")
- return d
-
-
-def power_local(root: str = None) -> dict:
  power_supplies = sorted(os.listdir(root or POWER_SUPPLY_ROOT))
  ac = None
  battery = None
- status = make_status_dict()
  for i in power_supplies:
   type_ = read(i, "type").lower()
   if type_ == "mains" and ac is None:
@@ -171,54 +211,55 @@ def power_local(root: str = None) -> dict:
  
  battery_status = ""
  if ac is None and battery is None:
-  status["supply"] = status["status"] = "Unknown"
+  result.supply = result.status = "Unknown"
  else:
   current_now = float(read(battery, "current_now") or 0)
   charge_now  = float(read(battery, "charge_now") or 0)
   charge_full = float(read(battery, "charge_full") or 0)
   capacity    = float(read(battery, "capacity") or 0)
   if capacity:
-   status["percent"] = round_half_up(capacity)
+   result.percent = round_half_up(capacity)
   elif charge_full > 0:
-   status["percent"] = round_half_up(charge_now / charge_full) * 100
+   result.percent = round_half_up(charge_now / charge_full) * 100
   
   battery_status = read(battery, "status").lower()
   if battery_status in ("discharging", "charging"):
    if current_now > 0:
     top = charge_full - charge_now if battery_status == "charging" else charge_now
-    status["total_seconds"] = round_half_up(3600 * top / current_now)
-    status["hours"]         = round_half_up(status["total_seconds"] / 3600)
-    status["minutes"]       = round_half_up(status["total_seconds"] / 60) % 60
-    status["seconds"]       = round_half_up(status["total_seconds"] % 60)
-    status["remaining"]     = "%02d:%02d" % (status["minutes"], status["seconds"])
-    if status["hours"]:
-     status["remaining"]    = str(status["hours"]) + ":" + status["remaining"]
+    result.total_seconds = round_half_up(3600 * top / current_now)
+    result.hours         = round_half_up(result.total_seconds / 3600)
+    result.minutes       = round_half_up(result.total_seconds / 60) % 60
+    result.seconds       = round_half_up(result.total_seconds % 60)
+    result.remaining     = "%02d:%02d" % (result.minutes, result.seconds)
+    if result.hours:
+     result.remaining    = str(result.hours) + ":" + result.remaining
   if battery_status == "discharging":
-   status["supply"] = "Battery"
-   status["status"] = "Discharging"
+   result.supply = "Battery"
+   result.status = "Discharging"
   elif read(ac, "online") == "1":
-   status["supply"] = "AC Adapter"
+   result.supply = "AC Adapter"
    if battery_status != "":
-    if status["percent"] < 100 or battery_status == "charging":
-     status["status"] = "Charging"
+    if result.percent < 100 or battery_status == "charging":
+     result.status = "Charging"
     else:
-     status["status"] = "Charged"
+     result.status = "Charged"
    else:
-    status["status"] = "Plugged in"
+    result.status = "Plugged in"
  
  if battery_status != "":
-  if status["status"].lower() == "charged":
-   status["human"] = status["status"]
-  elif status["remaining"] is not None:
-   time_type = "until charged" if status["status"].lower() == "charging" else "remaining"
-   status["human"] = "%s, %s%%, %s %s" % (status["status"], status["percent"],
-                                          status["remaining"], time_type)
+  if result.status.lower() == "charged":
+   result.human = result.status
+  elif result.remaining is not None:
+   time_type = "until charged" if result.status.lower() == "charging" else "remaining"
+   result.human = "%s, %s%%, %s %s" % (result.status, result.percent,
+                                       result.remaining, time_type)
   else:
-   status["human"] = "%s, %s%%" % (status["status"], status["percent"])
+   result.human = "%s, %s%%" % (result.status, result.percent)
  else:
-  status["human"] = status["status"]
+  result.human = result.status
  
- return status
+ result.to_dict()  # check that all attributes are defined
+ return result
 
 
 def read(supply: Optional[str], field: Optional[str], root: str = None) -> str:
