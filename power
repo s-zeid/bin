@@ -62,6 +62,7 @@ def main(argv: List[str]) -> int:
  if ":" not in hostport:
   hostport += ":"
  host, port = hostport.split(":")
+ port = int(port) if port else None
  
  if args._hep_easter_egg:
   print("Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes.")
@@ -74,23 +75,28 @@ def main(argv: List[str]) -> int:
   return 0
  
  else:
-  status = power(root=root, host=host, port=int(port) if port else None)
+  if host or port:
+   power = Power.remote(host=host, port=port)
+  else:
+   power = Power.local(root=root)
+  
   if args.all_fields:
-   print(format_power(status))
+   print(power.format())
   else:
    only_fields = args.only_fields or ["human"]
    for k in only_fields:
     out = ""
     if len(only_fields) != 1:
      out += k + "="
-    out += str(getattr(status, k))
+    out += str(getattr(power, k))
     print(out)
+  
   return 0
 
 
 class PowerHandler(socketserver.BaseRequestHandler):
  def handle(self):
-  self.request.send(format_power(power()).encode("utf-8") + b"\n")
+  self.request.send(Power.local().format().encode("utf-8") + b"\n")
   self.request.shutdown(socket.SHUT_RDWR)
   self.request.close()
 
@@ -105,37 +111,6 @@ def daemon(host: str = None, port: int = None):
   server.serve_forever()
  finally:
   server.shutdown()
-
-
-def format_power(power: "Power") -> str:
- return "\n".join(["%s=%s" % (k, v) for k, v in power.to_dict().items()])
-
-
-def power(root: str = None, host: str = None, port: int = None) -> "Power":
- if host or port:
-  return power_remote(host, port)
- else:
-  return power_local(root)
-
-
-def power_remote(host: str = None, port: int = None) -> "Power":
- s = ""
- sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
- try:
-  sock.connect((host or DEFAULT_HOST, port or DEFAULT_PORT))
-  while True:
-   data = sock.recv(1024)
-   if not data:
-    break
-   s += data.decode("utf-8")
- finally:
-  sock.close()
- 
- result = Power()
- for line in s.splitlines():
-  attr, value = line.split("=")
-  setattr(result, attr, value)
- return result
 
 
 class DocumentedAttributes(type):
@@ -187,79 +162,96 @@ class Power(metaclass=DocumentedAttributes):
    result[attr] = getattr(self, attr)
   return result
 
-
-def make_status_dict(help_text: bool = False) -> dict:
- if help_text:
-  return Power._attr_docs.copy()
- return Power().to_dict()
-
-
-def power_local(root: str = None) -> Power:
- result = Power()
+ def format(self) -> str:
+  return "\n".join(["%s=%s" % (k, v) for k, v in self.to_dict().items()])
  
- power_supplies = sorted(os.listdir(root or POWER_SUPPLY_ROOT))
- ac = None
- battery = None
- for i in power_supplies:
-  type_ = read(i, "type").lower()
-  if type_ == "mains" and ac is None:
-   ac = i
-  elif type_ == "battery" and battery is None:
-   battery = i
-  if ac and battery:
-   break
- 
- battery_status = ""
- if ac is None and battery is None:
-  result.supply = result.status = "Unknown"
- else:
-  current_now = float(read(battery, "current_now") or 0)
-  charge_now  = float(read(battery, "charge_now") or 0)
-  charge_full = float(read(battery, "charge_full") or 0)
-  capacity    = float(read(battery, "capacity") or 0)
-  if capacity:
-   result.percent = round_half_up(capacity)
-  elif charge_full > 0:
-   result.percent = round_half_up(charge_now / charge_full) * 100
+ @classmethod
+ def remote(cls, host: str = None, port: int = None) -> "Power":
+  s = ""
+  sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+  try:
+   sock.connect((host or DEFAULT_HOST, port or DEFAULT_PORT))
+   while True:
+    data = sock.recv(1024)
+    if not data:
+     break
+    s += data.decode("utf-8")
+  finally:
+   sock.close()
   
-  battery_status = read(battery, "status").lower()
-  if battery_status in ("discharging", "charging"):
-   if current_now > 0:
-    top = charge_full - charge_now if battery_status == "charging" else charge_now
-    result.total_seconds = round_half_up(3600 * top / current_now)
-    result.hours         = round_half_up(result.total_seconds / 3600)
-    result.minutes       = round_half_up(result.total_seconds / 60) % 60
-    result.seconds       = round_half_up(result.total_seconds % 60)
-    result.remaining     = "%02d:%02d" % (result.minutes, result.seconds)
-    if result.hours:
-     result.remaining    = str(result.hours) + ":" + result.remaining
-  if battery_status == "discharging":
-   result.supply = "Battery"
-   result.status = "Discharging"
-  elif read(ac, "online") == "1":
-   result.supply = "AC Adapter"
-   if battery_status != "":
-    if result.percent < 100 or battery_status == "charging":
-     result.status = "Charging"
-    else:
-     result.status = "Charged"
-   else:
-    result.status = "Plugged in"
+  result = cls()
+  for line in s.splitlines():
+   attr, value = line.split("=")
+   setattr(result, attr, value)
+  return result
  
- if battery_status != "":
-  if result.status.lower() == "charged":
-   result.human = result.status
-  elif result.remaining is not None:
-   time_type = "until charged" if result.status.lower() == "charging" else "remaining"
-   result.human = "%s, %s%%, %s %s" % (result.status, result.percent,
-                                       result.remaining, time_type)
+ @classmethod
+ def local(cls, root: str = None) -> "Power":
+  result = cls()
+  
+  power_supplies = sorted(os.listdir(root or POWER_SUPPLY_ROOT))
+  ac = None
+  battery = None
+  for i in power_supplies:
+   type_ = read(i, "type").lower()
+   if type_ == "mains" and ac is None:
+    ac = i
+   elif type_ == "battery" and battery is None:
+    battery = i
+   if ac and battery:
+    break
+  
+  battery_status = ""
+  if ac is None and battery is None:
+   result.supply = result.status = "Unknown"
   else:
-   result.human = "%s, %s%%" % (result.status, result.percent)
- else:
-  result.human = result.status
- 
- result.to_dict()  # check that all attributes are defined
- return result
+   current_now = float(read(battery, "current_now") or 0)
+   charge_now  = float(read(battery, "charge_now") or 0)
+   charge_full = float(read(battery, "charge_full") or 0)
+   capacity    = float(read(battery, "capacity") or 0)
+   if capacity:
+    result.percent = round_half_up(capacity)
+   elif charge_full > 0:
+    result.percent = round_half_up(charge_now / charge_full) * 100
+   
+   battery_status = read(battery, "status").lower()
+   if battery_status in ("discharging", "charging"):
+    if current_now > 0:
+     top = charge_full - charge_now if battery_status == "charging" else charge_now
+     result.total_seconds = round_half_up(3600 * top / current_now)
+     result.hours         = round_half_up(result.total_seconds / 3600)
+     result.minutes       = round_half_up(result.total_seconds / 60) % 60
+     result.seconds       = round_half_up(result.total_seconds % 60)
+     result.remaining     = "%02d:%02d" % (result.minutes, result.seconds)
+     if result.hours:
+      result.remaining    = str(result.hours) + ":" + result.remaining
+   if battery_status == "discharging":
+    result.supply = "Battery"
+    result.status = "Discharging"
+   elif read(ac, "online") == "1":
+    result.supply = "AC Adapter"
+    if battery_status != "":
+     if result.percent < 100 or battery_status == "charging":
+      result.status = "Charging"
+     else:
+      result.status = "Charged"
+    else:
+     result.status = "Plugged in"
+  
+  if battery_status != "":
+   if result.status.lower() == "charged":
+    result.human = result.status
+   elif result.remaining is not None:
+    time_type = "until charged" if result.status.lower() == "charging" else "remaining"
+    result.human = "%s, %s%%, %s %s" % (result.status, result.percent,
+                                        result.remaining, time_type)
+   else:
+    result.human = "%s, %s%%" % (result.status, result.percent)
+  else:
+   result.human = result.status
+  
+  result.to_dict()  # check that all attributes are defined
+  return result
 
 
 def read(supply: Optional[str], field: Optional[str], root: str = None) -> str:
