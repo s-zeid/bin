@@ -193,7 +193,7 @@ class Power(metaclass=DocumentedAttributes):
   ac = None
   battery = None
   for i in power_supplies:
-   type_ = read(i, "type").lower()
+   type_ = get_sysfs(i, "type").lower()
    if type_ == "mains" and ac is None:
     ac = i
    elif type_ == "battery" and battery is None:
@@ -205,16 +205,16 @@ class Power(metaclass=DocumentedAttributes):
   if ac is None and battery is None:
    result.supply = result.status = "Unknown"
   else:
-   current_now = float(read(battery, "current_now") or 0)
-   charge_now  = float(read(battery, "charge_now") or 0)
-   charge_full = float(read(battery, "charge_full") or 0)
-   capacity    = float(read(battery, "capacity") or 0)
+   current_now = float(get_sysfs(battery, "current_now") or 0)
+   charge_now  = float(get_sysfs(battery, "charge_now") or 0)
+   charge_full = float(get_sysfs(battery, "charge_full") or 0)
+   capacity    = float(get_sysfs(battery, "capacity") or 0)
    if capacity:
     result.percent = round_half_up(capacity)
    elif charge_full > 0:
     result.percent = round_half_up(charge_now / charge_full) * 100
    
-   battery_status = read(battery, "status").lower()
+   battery_status = get_sysfs(battery, "status").lower()
    if battery_status in ("discharging", "charging"):
     if current_now > 0:
      top = charge_full - charge_now if battery_status == "charging" else charge_now
@@ -228,7 +228,7 @@ class Power(metaclass=DocumentedAttributes):
    if battery_status == "discharging":
     result.supply = "Battery"
     result.status = "Discharging"
-   elif read(ac, "online") == "1":
+   elif get_sysfs(ac, "online") == "1":
     result.supply = "AC Adapter"
     if battery_status != "":
      if result.percent < 100 or battery_status == "charging":
@@ -254,7 +254,7 @@ class Power(metaclass=DocumentedAttributes):
   return result
 
 
-def read(supply: Optional[str], field: Optional[str], root: str = None) -> str:
+def get_sysfs(supply: Optional[str], field: Optional[str], root: str = None) -> str:
  path = os.path.join(root or POWER_SUPPLY_ROOT, supply or "", field or "")
  if os.path.exists(path):
   with open(path, "rb") as f:
