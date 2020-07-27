@@ -1,47 +1,56 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Thanks to Aleksandar Jovanov:
 # <http://aleksandarjovanov.blogspot.com/2012/10/having-fun-with-gnome-shell.html>
 
-import json
 import os
 import sys
 
-import dbus
+from typing import *
 
-class ShellJSError(Exception):
- def __init__(self, data):
-  self.data = json.loads(data)
- def __str__(self):
-  error  = "%s\n" % self.data.get("message", "unknown error")
-  keys = ["message", "fileName", "lineNumber", "stack"]
-  names = {"fileName":"Filename", "lineNumber": "Line number", "stack": "Stack trace"}
-  sep = {"stack": "\n"}
-  for key in keys[1:]:
-   error += "%s:%s%s\n" % (names[key], sep.get(key, " "), self.data.get(key, "unknown"))
-  for key in self.data.keys():
-   if key not in keys:
-    error += "%s: %s\n" % (key, self.data[key])
-  return error.rstrip()
+import dbus  # type: ignore
 
-def gnome_shell_eval(js):
+
+class ShellJSError(RuntimeError):
+ pass
+
+
+def gnome_shell_eval(js: str, dir: bool = False) -> str:
+ if dir:
+  js = """(function(obj) {
+   let result = [];
+   for (let prop in obj) {
+    result.push(prop);
+   };
+   result.sort();
+   return result;
+  })(%s);""" % (js or "globalThis")
+ 
  bus = dbus.SessionBus()
  Shell = bus.get_object("org.gnome.Shell", "/org/gnome/Shell")
  success, result = Shell.Eval(js, dbus_interface="org.gnome.Shell")
  if not success:
   raise ShellJSError(result)
+ return result
 
-def main(argv):
- if len(argv) != 2:
-  print >> sys.stderr, "Usage: %s {js, or - to read from stdin}" % argv[0]
+
+def main(argv: List[str]) -> int:
+ if not (len(argv) == 2 or (len(argv) == 3 and argv[1] in ("-d", "--dir"))):
+  prog = os.path.basename(argv[0])
+  print("Usage: %s [-d|--dir] {js, or - to read from stdin}" % prog, file=sys.stderr)
   return 2
  
- js = sys.stdin.read() if argv[1] == "-" else argv[1]
+ dir = argv[1] in ("-d", "--dir")
+ js_arg = argv[1] if not dir else (argv[2] if len(argv) > 2 else "")
+ 
+ js = sys.stdin.read() if js_arg == "-" else js_arg
  try:
-  gnome_shell_eval(js)
+  print(gnome_shell_eval(js, dir))
+  return 0
  except ShellJSError as exc:
-  print >> sys.stderr, "JS error: %s" % exc
+  print("JS error: %s" % exc, file=sys.stderr)
   return 1
+
 
 if __name__ == "__main__":
  try:
