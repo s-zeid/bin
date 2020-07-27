@@ -1,57 +1,81 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 """Sets the GNOME wallpaper or outputs the absolute path to the current one.
 
-Usage: gnome-wallpaper [filename]
+Usage: gnome-wallpaper [{path}|'']
 
-If the filename is omitted, then the absolute path to the current wallpaper
-is printed to standard output.
+If the path argument is omitted, then the absolute path to the current
+wallpaper is printed to standard output.  If the path argument is an empty
+string, the wallpaper will be unset.
 
 """
+
 
 import os
 import subprocess
 import sys
 import time
-import urllib
+import urllib.error
+import urllib.parse
+import urllib.request
+
+from typing import *
+
 
 DCONF_WALLPAPER_KEY = "/org/gnome/desktop/background/picture-uri"
 
-def get_wallpaper_gnome():
+
+def get_wallpaper_gnome() -> str:
  process = subprocess.Popen(["dconf", "read", DCONF_WALLPAPER_KEY], stdout=subprocess.PIPE)
  if process.wait() == 0:
-  uri_gvariant = process.communicate()[0]
+  uri_gvariant = process.communicate()[0].decode("utf-8")
  else:
-  raise RuntimeError("error: dconf returned a non-zero exit code.  Output:\n\n"
-                      + process.communicate()[1])
+  raise RuntimeError("dconf returned a non-zero exit code.  Output:\n\n"
+                     + process.communicate()[1].decode("utf-8"))
  
  if ((uri_gvariant.startswith("'") and uri_gvariant.endswith("'\n")) or
      (uri_gvariant.startswith('"') and uri_gvariant.endswith('"\n'))) \
     and uri_gvariant[1:8] == "file://":
-  uri = urllib.unquote(uri_gvariant[1:-2].replace(r"\'", "'").replace(r'\"', '"'))[7:]
+  uri = urllib.parse.unquote(uri_gvariant[1:-2].replace(r"\'", "'").replace(r'\"', '"'))[7:]
+ elif not uri_gvariant or uri_gvariant in ("''\n", '""\n'):
+  uri = ""  # key empty or not set
  else:
-  raise RuntimeError("error: bad output from `dconf read`:\n\n    " + repr(uri_gvariant))
+  raise RuntimeError("bad output from `dconf read`:\n\n    " + repr(uri_gvariant))
  
  return uri
 
-def set_wallpaper_gnome(filename, sleep=True):
- if not os.path.isfile(filename):
-  raise ValueError("error: '%s' is not a file or does not exist" % filename)
- uri = "file://" + urllib.quote(os.path.abspath(filename))
+
+def set_wallpaper_gnome(filename: str, sleep: Union[bool, int, float] = True):
+ if filename and not os.path.isfile(filename):
+  raise RuntimeError("'%s' is not a file or does not exist" % filename)
+ 
+ uri = "file://" + urllib.parse.quote(os.path.abspath(filename)) if filename else ""
  uri_gvariant = '"%s"' % uri.replace('"', r'\"')
  subprocess.call(["dconf", "write", DCONF_WALLPAPER_KEY, uri_gvariant])
  if sleep:
-  time.sleep(sleep if isinstance(sleep, (int, long, float)) else 0.5)
+  time.sleep(sleep if isinstance(sleep, (int, float)) else 0.5)
 
-def main(argv):
+
+def main(argv: List[str]) -> int:
  try:
   if len(argv) < 2:
-   print get_wallpaper_gnome()
+   print(get_wallpaper_gnome())
+   return 0
+  elif argv[1] in ("-h", "--help"):
+   print(__doc__.rstrip())
+   print()
+   return 0
   else:
    filename = argv[1]
    set_wallpaper_gnome(filename)
+   return 0
  except RuntimeError as exc:
-  print exc
+  print("error:", str(exc), file=sys.stderr)
+  return 1
+
 
 if __name__ == "__main__":
- sys.exit(main(sys.argv))
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
