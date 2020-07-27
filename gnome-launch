@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Thanks to Aleksandar Jovanov:
 # <http://aleksandarjovanov.blogspot.com/2012/10/having-fun-with-gnome-shell.html>
@@ -7,65 +7,84 @@ import json
 import os
 import sys
 
-import dbus
+from typing import *
 
-class AppNotFoundError(Exception): pass
+import dbus  # type: ignore
 
-class ShellJSError(Exception):
- def __init__(self, data):
-  self.data = json.loads(data)
- def __str__(self):
-  error  = "%s\n" % self.data.get("message", "unknown error")
-  keys = ["message", "fileName", "lineNumber", "stack"]
-  names = {"fileName":"Filename", "lineNumber": "Line number", "stack": "Stack trace"}
-  sep = {"stack": "\n"}
-  for key in keys[1:]:
-   error += "%s:%s%s\n" % (names[key], sep.get(key, " "), self.data.get(key, "unknown"))
-  for key in self.data.keys():
-   if key not in keys:
-    error += "%s: %s\n" % (key, self.data[key])
-  return error.rstrip()
 
-def gnome_shell_eval(js):
+class AppNotFoundError(RuntimeError):
+ pass
+
+
+class ShellJSError(RuntimeError):
+ pass
+
+
+def gnome_shell_eval(js: str, dir: bool = False) -> str:
+ if dir:
+  js = """(function(obj) {
+   let result = [];
+   for (let prop in obj) {
+    result.push(prop);
+   };
+   result.sort();
+   return result;
+  })(%s);""" % (js or "globalThis")
+ 
  bus = dbus.SessionBus()
  Shell = bus.get_object("org.gnome.Shell", "/org/gnome/Shell")
  success, result = Shell.Eval(js, dbus_interface="org.gnome.Shell")
  if not success:
   raise ShellJSError(result)
+ return result
 
-def gnome_shell_launch(app):
- name_esc = json.dumps(app)
+
+def gnome_shell_launch(app: str):
+ name_esc = json.dumps(app.strip().lower())
  path_esc = json.dumps(os.path.abspath(os.path.expanduser(app)))
  
- lookup_app_for_path = "Shell.AppSystem.get_default().lookup_app_for_path"
- initial_search      = "Shell.AppSystem.get_default().initial_search"
+ result = gnome_shell_eval("""(function(name_esc, path_esc) {
+  function find_app(name, path) {
+   const apps = imports.gi.Shell.AppSystem.get_default().get_installed();
+   for (let i = 0; i < apps.length; i++) {
+    if (apps[i].get_filename() == path_esc)  // absolute .desktop path (.get_id() for basename)
+     return apps[i];
+   }
+   for (let i = 0; i < apps.length; i++) {
+    if (apps[i].get_name().trim().toLowerCase() == name_esc)  // display name
+     return apps[i];
+   }
+  }
+  
+  const app = find_app(name_esc, path_esc);
+  if (app) {
+   app.launch([], null);
+   return true;
+  }
+  return false;
+ })(%s, %s);""" % (name_esc, path_esc))
  
- try:
-  gnome_shell_eval(lookup_app_for_path + "(%s).launch(0, [], -1)" % path_esc)
- except ShellJSError as exc:
-  message = exc.data.get("message", "")
-  if message.startswith(lookup_app_for_path) and message.endswith(" is null"):
-   try:
-    gnome_shell_eval(initial_search + "([%s])[0].launch(0, [], -1)" % name_esc)
-   except ShellJSError as exc:
-    message = exc.data.get("message", "")
-    if message.startswith(initial_search) and message.endswith(" is undefined"):
-     raise AppNotFoundError("could not find the app '%s'" % app)
-    else:
-     raise
-  else:
-   raise
+ result = json.loads(result)
+ if not result:
+  raise AppNotFoundError("could not find the app '%s'" % app)
 
-def main(argv):
+
+def main(argv: List[str]) -> int:
  if len(argv) != 2:
-  print >> sys.stderr, "Usage: %s {app name or .desktop file}" % argv[0]
+  prog = os.path.basename(argv[0])
+  print("Usage: %s {app name or .desktop file}" % prog, file=sys.stderr)
   return 2
  
  try:
   gnome_shell_launch(argv[1])
- except AppNotFoundError as exc:
-  print >> sys.stderr, "error: %s" % exc
+  return 0
+ except ShellJSError as exc:
+  print("JS error: %s" % exc, file=sys.stderr)
   return 1
+ except RuntimeError as exc:
+  print("error: %s" % exc, file=sys.stderr)
+  return 1
+
 
 if __name__ == "__main__":
  try:
