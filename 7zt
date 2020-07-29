@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+
+"""A tar(1)-like interface for 7z(1)."""
+
+import argparse
+import os
+import subprocess
+import sys
+
+
+from typing import *
+from typing import IO, BinaryIO
+
+
+def print_bytes(
+ *values: bytes,
+ sep: bytes = b" ",
+ end: bytes = b"\n",
+ file: BinaryIO = None,
+):
+ if file is None:
+  file = sys.stdout.buffer
+ 
+ first = True
+ for v in values:
+  if not first:
+   file.write(sep)
+  file.write(v)
+  first = False
+ 
+ if end:
+  file.write(end)
+ 
+ file.flush()
+
+
+def run(
+ cmd: List[str],
+ pipe: bool = True,
+ stdin: Union[IO[Any], int] = None,
+ **kwargs
+) -> subprocess.CompletedProcess:
+ return subprocess.run(
+  cmd,
+  stdin=stdin,
+  stdout=subprocess.PIPE if pipe else None,
+  check=True,
+  **kwargs
+ )
+
+
+def main(argv: List[str]) -> int:
+ p = argparse.ArgumentParser(description=__doc__)
+ c = p.add_argument_group("commands")
+ m = c.add_mutually_exclusive_group()
+ m.add_argument("-c", "--create", action="store_true",
+                help="create a new archive")
+ m.add_argument("-r", "--append", action="store_true",
+                help="append files to the archive")
+ m.add_argument("-t", "--list", action="store_true",
+                help="list the archive's contents")
+ m.add_argument("-u", "--update", action="store_true",
+                help="append files which are newer")
+ m.add_argument("-x", "--extract", "--get", action="store_true",
+                help="extract the archive or files from it")
+ 
+ p.add_argument("-f", "--file", dest="archive", metavar="ARCHIVE", default="-",
+                help="the archive to manipulate")
+ p.add_argument("files", nargs=argparse.REMAINDER,
+                help="the files to maniuplate")
+ 
+ p.add_argument("-O", "--to-stdout", action="store_true",
+                help="write files to standard output")
+ p.add_argument("-P", "--absolute-names", action="store_true",
+                help="store leading slashes when creating archives")
+ 
+ p.add_argument("--hep", dest="_hep_easter_egg", action="store_true",
+                help=argparse.SUPPRESS)
+ 
+ try:
+  options = p.parse_args(argv[1:])
+  
+  if options._hep_easter_egg:
+   print("Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes.")
+   print("--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s")
+   return 0
+  
+  have_command = any([
+   options.list, options.extract, options.update, options.append, options.create
+  ])
+  
+  if not have_command:
+   p.error("a command must be given")
+  
+  if options.archive == "-":
+   p.error("7z does not support reading archives from standard input")
+  
+  if options.list:
+   r = run(["7z", "l", "-slt", options.archive] + options.files)
+   have_files = False
+   filename = None
+   for l in r.stdout.splitlines():
+    if l == b"----------":
+     have_files = True
+    if have_files and l.startswith(b"Path = "):
+     if filename is not None:
+      print_bytes(filename)
+      filename = None
+     filename = l[7:]
+    if filename is not None and l.startswith(b"Folder = "):
+     if l[-1] == ord(b"+"):
+      filename = None
+   if filename is not None:
+    print_bytes(filename)
+   return 0
+  
+  if options.extract:
+   so_arg = ["-so"] if options.to_stdout else []
+   run(["7z", "x"] + so_arg + [options.archive] + options.files, pipe=not bool(so_arg))
+   return 0
+  
+  if options.update:
+   run(["7z", "u", options.archive] + options.files)
+   return 0
+  
+  if options.append or options.create:
+   if options.create and os.path.exists(options.archive):
+    os.unlink(options.archive)
+   
+   run(["7z", "a", options.archive] + options.files)
+   return 0
+  
+  raise RuntimeError("BUG: unreachable code reached")
+ 
+ except subprocess.CalledProcessError as exc:
+  if exc.stdout:
+   print(exc.stdout)
+  return exc.returncode
+ 
+ except SystemExit as exc:
+  return exc.code
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
