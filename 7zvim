@@ -1,0 +1,13 @@
+#!/bin/sh
+
+if [ $# -lt 1 ]; then
+ echo "usage: $(basename -- "$0") <archive> [{vim option} [...]]" >&2
+ echo >&2
+ echo "Browse a 7z(1)-compatible archive in Vim." >&2
+ exit 2
+fi
+
+export _7ZVIM_ARCHIVE="$1"
+shift
+
+exec vim +'let g:tar_cmd="7zt"' +'call tar#Browse($_7ZVIM_ARCHIVE)' "$@"
