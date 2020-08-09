@@ -13,19 +13,32 @@ JSONType = Union[None, bool, int, float, str, List["JSONType"], JSONDict]  # typ
 SchemaDict = Dict[str, Union[str, "SchemaDict"]]  # type: ignore
 
 
-def dict_schema(d: JSONDict) -> SchemaDict:
+JSON_TYPES = dict(
+ NoneType="null",
+ bool="boolean",
+ int="number",
+ float="number",
+ str="string",
+ list="array",
+ dict="object",
+)
+
+
+def dict_schema(d: JSONDict, type_names: Dict[str, str] = None) -> SchemaDict:
+ type_names = type_names or {}
  result: SchemaDict = {}
  for k in d:
   if isinstance(d[k], dict):
-   result[k] = dict_schema(cast(JSONDict, d[k]))
+   result[k] = dict_schema(cast(JSONDict, d[k]), type_names)
   else:
-   result[k] = type(d[k]).__name__
+   type_name = type(d[k]).__name__
+   result[k] = type_names.get(type_name, type_name)
  return result
 
 
 def json_schema(s: str) -> str:
  d = json.loads(s, object_pairs_hook=OrderedDict)
- schema = dict_schema(d)
+ schema = dict_schema(d, JSON_TYPES)
  return json.dumps(schema, sort_keys=True, indent=2)
 
 
