@@ -1,28 +1,39 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import json
 import os
 import sys
 
 from collections import OrderedDict
+from typing import *
 
-def dict_schema(d):
- d = d.copy()
+
+JSONDict = Dict[str, "JSONType"]  # type: ignore
+JSONType = Union[None, bool, int, float, str, List["JSONType"], JSONDict]  # type: ignore
+SchemaDict = Dict[str, Union[str, "SchemaDict"]]  # type: ignore
+
+
+def dict_schema(d: JSONDict) -> SchemaDict:
+ result: SchemaDict = {}
  for k in d:
   if isinstance(d[k], dict):
-   d[k] = dict_schema(d[k])
+   result[k] = dict_schema(cast(JSONDict, d[k]))
   else:
-   d[k] = type(d[k]).__name__
- return d
+   result[k] = type(d[k]).__name__
+ return result
 
-def json_schema(s):
+
+def json_schema(s: str) -> str:
  d = json.loads(s, object_pairs_hook=OrderedDict)
  schema = dict_schema(d)
  return json.dumps(schema, sort_keys=True, indent=2)
 
-def main(argv):
+
+def main(argv: List[str]) -> int:
+ prog = os.path.basename(argv[0])
+ 
  if len(argv) != 2:
-  print >> sys.stderr, "Usage: %s json-file (- for standard input)"
+  print("Usage: %s json-file (- for standard input)" % prog, file=sys.stderr)
   return 2
  
  filename = argv[1]
@@ -31,13 +42,14 @@ def main(argv):
  if filename == "-":
   json = sys.stdin.read()
  else:
-  with open(filename, "rb") as f:
+  with open(filename, "r") as f:
    json = f.read()
  
  schema = json_schema(json)
- print schema
+ print(schema)
  
  return 0
+
 
 if __name__ == "__main__":
  try:
