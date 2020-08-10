@@ -41,6 +41,7 @@ def mini_browser(
  title: str = None,
  icon: str = None,
  wm_class: str = None,
+ cookies: bool = False,
  user_agent: str = None,
  size: str = None,
  fullscreen: bool = False,
@@ -93,7 +94,7 @@ def mini_browser(
  s = gtk.ScrolledWindow()
  w.add(s)
  
- wv = _setup_webview(wm_class=wm_class, user_agent=user_agent)
+ wv = _setup_webview(wm_class=wm_class, cookies=cookies, user_agent=user_agent)
  s.add(wv)
  
  wv.load_uri(url)
@@ -102,9 +103,15 @@ def mini_browser(
  gtk.main()
 
 
-def _setup_webview(*, wm_class: str, user_agent: Union[str, None]):
+def _setup_webview(
+ *,
+ wm_class: str,
+ cookies: bool,
+ user_agent: Union[str, None],
+):
  param_hash = hashlib.sha512("\0".join([
   wm_class or "",
+  str(bool(cookies)),
   user_agent or "",
  ]).encode("utf-8")).hexdigest().lower()
  
@@ -134,7 +141,15 @@ def _setup_webview(*, wm_class: str, user_agent: Union[str, None]):
   base_data_directory=data_dir,
   base_cache_directory=cache_dir,
  )
+ 
  ctx = webkit2.WebContext.new_with_website_data_manager(data_mgr)
+ if cookies:
+  cookie_mgr = ctx.get_cookie_manager()
+  cookie_mgr.set_persistent_storage(
+   os.path.join(data_dir, "cookies.sqlite"),
+   webkit2.CookiePersistentStorage.SQLITE,
+  )
+ 
  wv = webkit2.WebView.new_with_context(ctx)
  settings = webkit2.Settings()
  wv.set_settings(settings)
@@ -186,6 +201,8 @@ def main(argv: List[str]):
                      f" or {APP_WM_CLASS!r})")
  p.add_argument("-u", "--user-agent", default=None,
                 help="the user agent to use (default: auto)")
+ p.add_argument("-C", "--cookies", action="store_true",
+                help="enable persistent cookies (default: disabled)")
  
  g = p.add_mutually_exclusive_group()
  g.add_argument("-s", "--size", default=DEFAULT_WINDOW_SIZE,
@@ -236,6 +253,7 @@ you should set the -c/--wm-class argument yourself.
   title=options.title,
   icon=options.icon,
   wm_class=options.wm_class,
+  cookies=options.cookies,
   user_agent=options.user_agent,
   size=options.size,
   fullscreen=options.fullscreen,
