@@ -79,12 +79,12 @@ def mini_browser(
  w.set_size_request(1, 1)
  w.connect("delete-event", _close_callback)
  
- size = [int(i) for i in (size or DEFAULT_WINDOW_SIZE).split("x", 1)]
- w.resize(*size)
+ size_args = [int(i) for i in (size or DEFAULT_WINDOW_SIZE).split("x", 1)]
+ w.resize(*size_args)
  
  if position:
-  position = [int(i) for i in position.split(",", 1)]
-  w.move(*position)
+  position_args = [int(i) for i in position.split(",", 1)]
+  w.move(*position_args)
  
  if fullscreen:
   w.maximize()
@@ -102,7 +102,7 @@ def mini_browser(
  gtk.main()
 
 
-def _setup_webview(*, wm_class: str, user_agent: str):
+def _setup_webview(*, wm_class: str, user_agent: Union[str, None]):
  param_hash = hashlib.sha512("\0".join([
   wm_class or "",
   user_agent or "",
