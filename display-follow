@@ -88,7 +88,8 @@ def make_transparent(window, cr):
  cr.set_operator(cairo.Operator.OVER)
 
 
-def display_follow(image_filename, size_factor=1, opacity=1, hotspot="top,left"):
+def display_follow(image_filename, size_factor=1, opacity=1, hotspot="top,left",
+                   nearest=False):
  win = gtk.Window(type=gtk.WindowType.POPUP)
  win.set_title(os.path.basename(image_filename))
  win.set_position(gtk.WindowPosition.MOUSE)
@@ -115,10 +116,10 @@ def display_follow(image_filename, size_factor=1, opacity=1, hotspot="top,left")
  # Load and scale the image
  pixbuf = gdk_pixbuf.Pixbuf.new_from_file(image_filename)
  if size_factor != 1:
-  pixbuf = gdk_pixbuf.Pixbuf.new_from_file_at_size(
-   image_filename,
+  pixbuf = pixbuf.scale_simple(
    int(round(pixbuf.get_width() * size_factor)),
-   int(round(pixbuf.get_height() * size_factor))
+   int(round(pixbuf.get_height() * size_factor)),
+   gdk_pixbuf.InterpType.BILINEAR if not nearest else gdk_pixbuf.InterpType.NEAREST,
   )
  
  # Calculate the hotspot
@@ -178,6 +179,9 @@ def main(argv):
  parser.add_argument("filename", help="The image to display")
  parser.add_argument("-s", "--size", type=float, default=100.,
                      help="Desired size of the image as a percentage")
+ parser.add_argument("-n", "--nearest", action="store_true",
+                     help="Use nearest neighbor sampling when scaling images"
+                          " (results in a pixelated appearance when scaling up)")
  parser.add_argument("-o", "--opacity", type=float, default=100.,
                      help="Desired opacity of the image as a percentage")
  parser.add_argument("-H", "--hotspot", default="top,left",
@@ -192,7 +196,8 @@ def main(argv):
   args.filename,
   size_factor=args.size * 0.01,
   opacity=args.opacity * 0.01,
-  hotspot=args.hotspot
+  hotspot=args.hotspot,
+  nearest=args.nearest,
  )
 
 

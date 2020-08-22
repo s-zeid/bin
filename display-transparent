@@ -63,7 +63,7 @@ def set_window_position(window, x, y):
 
 
 def display_transparent(image_filename, size_factor=1, opacity=1,
-                        x=None, y=None, padding=None):
+                        x=None, y=None, padding=None, nearest=False):
  if isinstance(padding, str):
   padding = [int(i.strip()) for i in padding.split(",")]
  if not padding:
@@ -102,10 +102,10 @@ def display_transparent(image_filename, size_factor=1, opacity=1,
  # Load and scale the image
  pixbuf = gdk_pixbuf.Pixbuf.new_from_file(image_filename)
  if size_factor != 1:
-  pixbuf = gdk_pixbuf.Pixbuf.new_from_file_at_size(
-   image_filename,
+  pixbuf = pixbuf.scale_simple(
    int(round(pixbuf.get_width() * size_factor)),
-   int(round(pixbuf.get_height() * size_factor))
+   int(round(pixbuf.get_height() * size_factor)),
+   gdk_pixbuf.InterpType.BILINEAR if not nearest else gdk_pixbuf.InterpType.NEAREST,
   )
  
  # Add the image to a Fixed container for padding purposes
@@ -140,6 +140,9 @@ def main(argv):
  parser.add_argument("filename", help="The image to display")
  parser.add_argument("-s", "--size", type=float, default=100.,
                      help="Desired size of the image as a percentage")
+ parser.add_argument("-n", "--nearest", action="store_true",
+                     help="Use nearest neighbor sampling when scaling images"
+                          " (results in a pixelated appearance when scaling up)")
  parser.add_argument("-o", "--opacity", type=float, default=100.,
                      help="Desired opacity of the image as a percentage")
  parser.add_argument("-x", type=str, default=None,
@@ -161,7 +164,8 @@ def main(argv):
   opacity=args.opacity * 0.01,
   x=args.x,
   y=args.y,
-  padding=args.padding
+  padding=args.padding,
+  nearest=args.nearest,
  )
 
 
