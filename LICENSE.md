@@ -1,9 +1,22 @@
-NOTE:  Some files here were made by other people, and this license and
-       copyright notice do not apply to them.  See those individual files
-       for copyright and license information.  (They are all Free Software.)  
-   
+## Notes
 
-Copyright (c) Scott Zeid.  <https://s.zeid.me/>
+* Some files in this repository were made by me but have their own copyright
+  and/or licensing terms.  See those individual files for their copyright and
+  license information.  (They are all Free Software.)
+
+* Some files in this repository were made by other people, and this license and
+  copyright notice do not apply to them.  See those individual files for their
+  copyright and license information.  (They are all Free Software.)
+
+* This repository is not a single copyrighted work, but a collection of works.
+  The below license applies to each file in this repository on an individual
+  basis unless otherwise noted.
+
+
+## X11 License
+
+Copyright (c) 2008- S. Zeid.  
+<https://code.s.zeid.me/bin>
 
 ```
 Permission is hereby granted, free of charge, to any person obtaining a copy
