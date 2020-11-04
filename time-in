@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+# vim: set fdm=marker:
+
+# Imports  {{{1
+
+import argparse
+import datetime
+import os
+import re
+import sys
+import time
+
+from decimal import Decimal
+from typing import *
+
+if not TYPE_CHECKING:
+ import astral  # pip3 install astral; apt install python3-astral
+ import dateutil.parser  # pip3 install dateutil; apt install python3-dateutil
+ try:
+  import astral.geocoder
+  _astral_gte_v2 = True
+ except ImportError:
+  _astral_gte_v2 = False
+else:
+ _astral_gte_v2 = ...
+
+
+def main(argv):  #{{{1
+ #print(f"_astral_gte_v2 = {_astral_gte_v2}", file=sys.stderr)
+ 
+ prog = os.path.basename(argv[0])
+ 
+ p = argparse.ArgumentParser(
+  prog=prog,
+ )
+ p.add_argument("-L", "--list-locations", action="store_true",
+                help="list the supported location names and exit")
+ p.add_argument("location", default="", nargs="?",
+                help="the location to use (use `-L` for a list)")
+                    #" (format: `{location name} [/ {elevation (meters)}]`"
+                    #"  or `{latitude}, {longitude} [/ {elevation (meters)}]`)")
+ p.add_argument("format", metavar="+format", default="", nargs="?",
+                help="the strftime-like output format to use"
+                     " (default: ISO 8601, with space as date/time separator)")
+ p.add_argument("-o", "--offset", dest="print_offset", action="store_true",
+                help="also print the location's offset from UTC")
+ p.add_argument("-t", "--timezone", dest="print_tz", action="store_true",
+                help="also print the location's timezone")
+ p.add_argument("-d", "--date", default="",
+                help="use the given time (ISO 8601 (any character as date/time separator)"
+                     " or `@{Unix timestamp}`) instead of now")
+ p.add_argument("--easter-eggs", action="store_true",
+                help=argparse.SUPPRESS)
+ p.add_argument("--hep", dest="_hep_easter_egg", action="store_true",
+                help=argparse.SUPPRESS)
+ 
+ def fix_usage(s):
+  s = s.split("\n\n", 1)
+  for i in ("location",):
+   s[0] = s[0].replace("[%s]" % i, i)
+  return "\n\n".join(s)
+ _format_usage = p.format_usage
+ _format_help = p.format_help
+ p.format_usage = lambda: fix_usage(_format_usage())  #type: ignore
+ p.format_help = lambda: fix_usage(_format_help())  #type: ignore
+ 
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ if options.format.strip():
+  if options.location.strip().startswith("+") and not options.format.startswith("+"):
+   options.location, options.format = options.format, options.location
+  if not options.format.strip().startswith("+"):
+   print(f"{prog}: error: format argument must start with a `+`", file=sys.stderr)
+   return 2
+ 
+ if options._hep_easter_egg:
+  print("Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes.")
+  print("--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s")
+  return 0
+ 
+ if options.list_locations:
+  print_astral_locations(coordinates=False)
+  print("# Special")
+  print("UTC")
+  print("Z")
+  print(". (local time)")
+  print()
+  return 0
+ 
+ if not options.location.strip():
+  print(f"{prog}: error: location is required; run `{prog} -L` for a list", file=sys.stderr)
+  return 2
+ 
+ in_dt = None
+ out_fmt = re.sub(r"^\+", "", options.format.strip())
+ default_out_fmt = "%Y-%m-%d %H:%M:%S"
+ 
+ if options.date:
+  try:
+   in_dt = parse_date(options.date)
+  except ValueError:
+   print(f"{prog}: error: invalid date `{options.date}`", file=sys.stderr)
+   return 2
+ else:
+  in_dt = datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0)
+ 
+ tz = find_tzinfo(options.location)
+ if tz:
+  out_dt = in_dt.astimezone(tz)
+  if (re.search(r"[0-9]+:[0-9]+:[0-9]+\.[0-9]+", options.date)
+      or re.search(r"@[+-]?[0-9]*\.[0-9]+$", options.date.strip())
+      or (out_dt.tzinfo.utcoffset(out_dt) or datetime.timedelta(0)).microseconds
+      or out_dt.microsecond):
+   default_out_fmt += ".%f"
+  
+  prefix = ""
+  if options.print_tz:
+   prefix += str(tz)
+  if options.print_offset:
+   offset_str = "UTC" + seconds_to_human(
+    out_dt.tzinfo.utcoffset(out_dt).total_seconds(),
+    omit_zero_seconds=True,
+    omit_positive_sign=False,
+   )
+   prefix += f" ({offset_str})" if options.print_tz else offset_str
+  if prefix:
+   print(f"{prefix}: ", end="")
+  
+  print(out_dt.strftime(out_fmt or default_out_fmt))
+  return 0
+ else:
+  print(f"{prog}: error: unknown location `{options.location}`", file=sys.stderr)
+  return 1
+
+
+def print_astral_locations(*, coordinates: bool = True):  #{{{1
+ if _astral_gte_v2:
+  database = astral.geocoder.database()  # type: ignore
+ else:
+  database = astral.AstralGeocoder().groups  # type: ignore
+ 
+ for group_key in sorted(database.keys()):
+  group_info = database[group_key]
+  
+  if group_key in ("utc", "us"):
+   print("# " + group_key.upper())
+  else:
+   print("# " + group_key.title())
+  
+  for location_key in sorted(group_info.keys()):
+   loc_list = group_info[location_key]
+   if not _astral_gte_v2:
+    loc_list = [loc_list]
+   for loc_info in loc_list:
+    print("%s, %s%s [%s]" % (
+     loc_info.name, loc_info.region,
+     (" (%f, %f)" % (loc_info.latitude, loc_info.longitude)) if coordinates else "",
+     location_key,
+    ))
+  
+  print()
+
+
+def find_tzinfo(location: str) -> Optional[datetime.tzinfo]:  #{{{1
+ """Parse location argument, and return the corresponding timezone or None."""
+ 
+ elevation = 0.0
+ if "/" in location:
+  location, elevation_str = location.split("/", 1)
+  elevation = float(elevation_str.strip())
+ 
+ location = re.sub(r"\s*,\s*", ",", location.strip())
+ lat_long: Optional[List[Union[float, str, None]]] = None
+ if len(location.split(",", 1)) == 2:
+  lat_long = []
+  lat_long_test = location.split(",", 1)
+  for i in lat_long_test:
+   is_float_loc = bool(re.search(r"^[+-]?[0-9]+(\.[0-9]*)?$", i))
+   is_str_loc = "\u00B0" in i  # degree sign
+   if not is_float_loc and not is_str_loc:
+    lat_long = None
+    break
+   if is_float_loc:
+    lat_long += [float(i)]
+   else:
+    lat_long += [re.sub(r"""\s*(\u00B0|'|")\s*""", r"\1", i)]
+ 
+ if lat_long is not None:
+  raise ValueError("location cannot be a coordinate pair")
+ 
+ result = None
+ 
+ if location.lower() in ("utc", "z"):
+  result = datetime.timezone.utc
+ elif location == ".":
+  result = datetime.timezone(datetime.timedelta(seconds=time.localtime().tm_gmtoff))
+ elif _astral_gte_v2:
+  try:
+   loc_info = astral.geocoder.lookup(location, astral.geocoder.database())  # type: ignore
+  except KeyError:
+   return None
+  result = loc_info.tzinfo
+ else:
+  try:
+   loc_obj = astral.AstralGeocoder()[location]  # type: ignore
+   result = loc_obj.tz
+  except (KeyError, astral.AstralError):  # type: ignore
+   return None
+ 
+ return result
+
+
+def parse_date(date: str) -> datetime.datetime:  #{{{1
+ date = date.strip()
+ if date.startswith("@"):
+  unixtime = float(date[1:])
+  result = datetime.datetime.fromtimestamp(unixtime)
+ else:
+  result = dateutil.parser.isoparse(date)  # type: ignore
+ 
+ return result
+
+
+def seconds_to_human(  #{{{1
+ total_seconds: Union[int, float, Decimal],
+ *,
+ omit_zero_seconds: bool = False,
+ omit_positive_sign: bool = True,
+) -> str:
+ sign = ("" if omit_positive_sign else "+") if total_seconds >= 0 else "-"
+ abs_seconds = abs(Decimal(str(total_seconds)))
+ minutes, seconds = int(abs_seconds // 60), abs_seconds % 60
+ hours, minutes = int(minutes // 60), int(minutes % 60)
+ seconds_pad = "0" if seconds < 10 else ""
+ 
+ result = "%s%02d:%02d" % (sign, hours, minutes)
+ if seconds or not omit_zero_seconds:
+  result += ":%s" % (seconds_pad + str(seconds))
+ 
+ return result
+
+
+if __name__ == "__main__":  # {{{1
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
