@@ -115,50 +115,73 @@ TEMPLATES = """
 <?word TAB tab,tabs ?>
 
 
-<?template PAGE 0 append-newline ?>
-<!DOCTYPE html>
-
-<ht${}ml>
- <head>
-  <meta charset="utf-8" />
-  <title>$page_name - $date</title>
-  <meta name="generator" content="sessionstore2html (https://code.s.zeid.me/bin/blob/master/sessionstore2html)" />
-  <link rel="stylesheet" type="text/css" href="https://s.zeid.me/styles/basic.css" />
-  <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Material+Icons" />
-  <style type="text/css">
-   body { background: #f8f8f8; }
+<?template STYLES 0 ?>
+  <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1" />
+  <style>
+   html { font-family: sans-serif;
+          background: var(--background, #fff); color: var(--color, #000); }
+   body { margin: 0 auto; padding: 4rem 2rem; max-width: 800px; box-sizing: border-box; }
+   a { color: var(--accent, #00b); }
+   a:not(:hover):not(:focus) { text-decoration: none; }
+   a:focus { outline: none; }
+   h1 { margin-top: 0; }
+   h1, h2 { font-weight: normal; }
+   pre, code { font-family: monospace; font-size: 1.25em; }
+   footer { margin-top: 4rem; }
+  </style>
+  <style>
+   :root { --background: #fdfdfd; --accent: #c03; }
+   html { font-family: "Ubuntu", "Trebuchet MS", sans-serif; }
+   body { padding: 1rem 1rem; }
+   body > header time { display: inline-block; letter-spacing: 0.125em; }
+   h1, h2 { text-transform: uppercase; letter-spacing: 0.25em; }
+   ul { padding-left: calc(0.5rem + 16px + 0.25rem); }
    li { line-height: 22px; }
    .tabs { padding-left: 0.5rem; }
    .tab { list-style-type: none; }
    .tab .link { display: table-row; }
-   .tab .icon { display: table-cell; position: relative; top: 0.15rem;
-                width: 16px; max-height: 16px; font-size: 16px; color: #666; }
-   .tab .icon[alt^="photo"] { color: #668; }
    .tab .title { display: table-cell; padding-left: 0.25rem; }
    .tab.pinned + .tab:not(.pinned) { border-top: 1px solid #ddd;
                                      margin-top: 0.5rem; padding-top: 0.5rem; }
    .tab .children { border-left: 1px solid #ddd; margin: 0 0 0 8px; }
    .tab + .tab, .children > .tab:first-child { margin-top: 0.125rem; }
    
-   /* hide broken image icons */
-   .tab .icon { position: relative; font-size: 0; }
-   .tab .icon:after {
-    content: attr(alt); font-size: 16px; background: #f8f8f8;
-    position: absolute; top: 0; left: 0; width: 16px; height: 16px;
-    display: inline-block; border-top: 0.075rem solid #f8f8f8;
+   .tab .icon {
+    display: table-cell; width: 16px; max-height: 16px; position: relative; top: 0.15rem;
+    font-size: 0; line-height: 1; color: #666;
    }
    
-   /* workaround for favicons blocked by uBlock Origin
-      (e.g. Fanboy's Enhanced Tracking List) */
-   .tab .icon[hidden] + .title:before {
-    content: "tab"; font: 16px "Material Icons"; color: #666;
-    position: relative; left: -0.25rem; top: 0.125rem; width: 16px; height: 16px;
+   /* replace broken tab icons */
+   .tab .icon::after {
+    content: var(--icon-alt, none);
+    display: inline-block; width: 16px; height: 16px; position: absolute; top: 0; left: 0;
+    background: var(--background, #fff); border-top: .075rem solid var(--background, #fff);
+   }
+   :root {
+    --icon-tab: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0,0 16,16' color='%23666' stroke='currentColor' stroke-width='2' fill='none'><path d='M1,1 v12 h14 v-10 h-6 v-2 h-8 Z' /><path opacity='0.5' d='M2,3 h6' /><path d='M4,6.5 h8 m-8,1 h8 m-8,2 h6' stroke-width='1' /></svg>");
+    --icon-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0,0 16,16' color='%23666' stroke='currentColor' stroke-width='2' fill='none'><path d='M1,1 v12 h14 v-12 Z' /><path fill='currentColor' d='M0,12 l5,-5 l6,6 m-4,0 l4,-4 l4,4 Z' /><circle cx='12' cy='4' r='0.05' /></svg>");
+   }
+   .tab .icon[alt="tab"] { --icon-alt: var(--icon-tab); }
+   .tab .icon[alt="image"], .tab .icon[alt^="photo"] { --icon-alt: var(--icon-image); }
+   
+   /* workaround for favicons blocked by uBlock Origin */
+   .tab .icon[hidden] + .title::before {
+    content: var(--icon-tab);
+    display: inline-block; width: 16px; height: 16px;
+    position: relative; left: -0.25rem; top: 0.25rem;
    }
   </style>
-  <!--[if lt IE 9]>
-   <script type="text/javascript" src="https://s.zeid.me/html5shiv.js"></script>
-   <script type="text/javascript" src="https://s.zeid.me/html5shiv-printshiv.js"></script>
-  <![endif]-->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0,0 16,16' color='%23808080' stroke='currentColor' stroke-width='2' fill='white' fill-opacity='0.875'><path d='M1,1 v14 h14 v-12 h-6 v-2 h-8 Z' /><path opacity='0.5' d='M2,3 h6' /><path d='M4,6.5 h8 m-8,1 h8 m-8,2 h1 m1,0 h4 m-6,2 h1 m1,0 h6' stroke-width='1' /></svg>" />
+
+
+<?template PAGE 0 append-newline ?>
+<!DOCTYPE html>
+<ht${}ml>
+ <head>
+  <meta charset="utf-8" />
+  <title>$page_name - $date</title>
+  <meta name="generator" content="sessionstore2html (https://code.s.zeid.me/bin/blob/master/sessionstore2html)" />
+$styles
  </head>
  <body>
   <header><h1>$page_name: <time>$date</time></h1></header>
@@ -191,7 +214,7 @@ $tabs
 <?template TAB 4 ?>
 <li class="tab$extra_classes">
  <a href="$url"$data_attributes target="_blank" class="link">
-  <img src="$icon" alt="$material_icon" class="icon material-icons"
+  <img src="$icon" alt="$icon_alt" class="icon"
   /><span class="title">$title</span>
  </a>
  <ul class="children tabs">$children</ul>
@@ -423,6 +446,7 @@ class Session:  #{{{2
 def make_html(windows: List[Window],
               date: str = "",
               page_name: str = PAGE_NAME,
+              styles_tpl: string.Template = Templates.get("STYLES"),
               page_tpl: string.Template = Templates.get("PAGE"),
               window_list_tpl: string.Template = Templates.get("WINDOW_LIST"),
               window_tpl: string.Template = Templates.get("WINDOW"),
@@ -431,6 +455,7 @@ def make_html(windows: List[Window],
  return page_tpl.substitute(
   page_name=page_name,
   date=date,
+  styles=styles_tpl.substitute(),
   windows="\n".join([
    window_tpl.substitute(
     n=str(i+1),
@@ -460,10 +485,10 @@ def make_tab(tab: Tab, tab_tpl: string.Template = Templates.get("TAB")) -> str:
   data_attributes += ['data-original-url="%s"' % html.escape(tab._original_url)]
  params["data_attributes"] = " " + " ".join(data_attributes) if data_attributes else ""
  
- params["material_icon"] = "tab"
+ params["icon_alt"] = "tab"
  if tab.url == tab.icon:
   params["icon"] = ""
-  params["material_icon"] = "photo_size_select_actual"
+  params["icon_alt"] = "image"
  
  extra_classes: List[str] = []
  if tab._pinned:
