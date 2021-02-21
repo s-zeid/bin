@@ -184,7 +184,7 @@ $windows
  <ul class="tabs">
 $tabs
  </ul>
- <p><a href="#">Back to top</a></p>
+ <p><a href="#" onclick="window.scrollTo(0, 0); event.preventDefault();">Back to top</a></p>
 </section>
 
 
