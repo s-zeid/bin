@@ -28,6 +28,7 @@ contain the unsaved note.  The original URL will be saved to a data attribute.
 import argparse
 import base64
 import configparser
+import datetime
 import html
 import io
 import json
@@ -107,6 +108,9 @@ class Templates:
 
 # Templates {{{1
 
+PAGE_NAME = "Saved Tabs"
+
+
 TEMPLATES = """
 <?word TAB tab,tabs ?>
 
@@ -117,7 +121,7 @@ TEMPLATES = """
 <ht${}ml>
  <head>
   <meta charset="utf-8" />
-  <title>Firefox Tabs</title>
+  <title>$page_name - $date</title>
   <meta name="generator" content="sessionstore2html (https://code.s.zeid.me/bin/blob/master/sessionstore2html)" />
   <link rel="stylesheet" type="text/css" href="https://s.zeid.me/styles/basic.css" />
   <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Material+Icons" />
@@ -157,7 +161,7 @@ TEMPLATES = """
   <![endif]-->
  </head>
  <body>
-  <h1>Firefox Tabs</h1>
+  <header><h1>$page_name: <time>$date</time></h1></header>
   <section id="windows">
    <ul>
 $window_list
@@ -417,12 +421,16 @@ class Session:  #{{{2
 # HTML generation {{{1
 
 def make_html(windows: List[Window],
+              date: str = "",
+              page_name: str = PAGE_NAME,
               page_tpl: string.Template = Templates.get("PAGE"),
               window_list_tpl: string.Template = Templates.get("WINDOW_LIST"),
               window_tpl: string.Template = Templates.get("WINDOW"),
               tab_tpl: string.Template = Templates.get("TAB"),
               tab_word: Tuple[str, str] = Templates.WORDS.get("TAB")) -> str:
  return page_tpl.substitute(
+  page_name=page_name,
+  date=date,
   windows="\n".join([
    window_tpl.substitute(
     n=str(i+1),
@@ -588,8 +596,9 @@ def main(argv: List[str]) -> int:  #{{{1
   else:
    sessionstore_js = open(sessionstore_js, "rb")
  
+ date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
  session = Session(sessionstore_js)
- html = make_html(session.windows)
+ html = make_html(session.windows, date)
  if options.output:
   with open(options.output, "w") as f:
    f.write(html)
