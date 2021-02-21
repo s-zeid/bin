@@ -33,16 +33,18 @@ import io
 import json
 import os
 import platform
+import re
 import string
 import sys
 import warnings
 
 from typing import *
 
-import lz4.block  # pip3 install lz4
+if not TYPE_CHECKING:
+ import lz4.block  # pip3 install lz4
 
 
-# Templates and template helpers {{{1
+# Template helpers {{{1
 
 def indent(s: str, n: int) -> str:
  return "\n".join((" " * (n * int(not l.startswith("$")))) + l for l in s.splitlines())
@@ -53,12 +55,66 @@ class Template(NamedTuple):
  indent: int
  
  def compile(self) -> string.Template:
-  return string.Template(indent(self.template, self.indent))
+  return string.Template(indent(self.template.replace("${}", ""), self.indent))
 
 
-PAGE_TEMPLATE = Template("""<!DOCTYPE html>
+class Templates:
+ _TEMPLATE_MAP: Dict[str, string.Template] = {}
+ 
+ @classmethod
+ def get(cls, name: str) -> string.Template:
+  return cls._TEMPLATE_MAP[name];
+ 
+ class WORDS:
+  _WORD_MAP: Dict[str, Tuple[str, str]] = {}
+  
+  @classmethod
+  def get(cls, name: str) -> Tuple[str, str]:
+   return cls._WORD_MAP[name];
+ 
+ @classmethod
+ def _load(cls, data):
+  raw_items = re.split(r"<\?", data)[1:]
+  
+  for raw_item in raw_items:
+   separator_match = re.search(r"\s*\?>\r?\n?", raw_item);
+   separator_start = separator_match.start();
+   separator_end = separator_match.end();
+   
+   spec = re.split(r"\s+", raw_item[0:separator_start])
+   kind = spec[0]
+   
+   if kind == "template":
+    name = spec[1]
+    indent = int(spec[2]) if len(spec) > 2 else 0
+    flags = [flag for flag in (spec[3] if len(spec) > 3 else "").split(",") if flag]
+    
+    template = raw_item[separator_end:]
+    template = template.strip("\n\r")
+    if "append-newline" in flags:
+     template += "\n"
+    
+    if name:
+     cls._TEMPLATE_MAP[name] = Template(template, indent).compile()
+   
+   if kind == "word":
+    name = spec[1]
+    values = tuple((spec[2] if len(spec) > 2 else "").split(","))
+    
+    if name:
+     cls.WORDS._WORD_MAP[name] = values
 
-<ht""" """ml>
+
+# Templates {{{1
+
+TEMPLATES = """
+<?word TAB tab,tabs ?>
+
+
+<?template PAGE 0 append-newline ?>
+<!DOCTYPE html>
+
+<ht${}ml>
  <head>
   <meta charset="utf-8" />
   <title>Firefox Tabs</title>
@@ -110,29 +166,36 @@ $window_list
 $windows
  </body>
 </html>
-""", 0).compile()
 
-WINDOW_LIST_TEMPLATE = Template("""<li>
- <a href="#window-$n">Window $n ($n_tabs $tabs_word)</a>
-</li>""", 4).compile()
 
-WINDOW_TEMPLATE = Template("""<section id="window-$n" class="window">
- <h2>Window $n ($n_tabs $tabs_word)</h2>
+<?template WINDOW_LIST 4 ?>
+<li>
+ <a href="#window-$n">Window $n ($n_tabs $tab_word)</a>
+</li>
+
+
+<?template WINDOW 2 ?>
+<section id="window-$n" class="window">
+ <h2>Window $n ($n_tabs $tab_word)</h2>
  <ul class="tabs">
 $tabs
  </ul>
  <p><a href="#">Back to top</a></p>
-</section>""", 2).compile()
+</section>
 
-TAB_TEMPLATE = Template("""<li class="tab$extra_classes">
+
+<?template TAB 4 ?>
+<li class="tab$extra_classes">
  <a href="$url"$data_attributes target="_blank" class="link">
   <img src="$icon" alt="$material_icon" class="icon material-icons"
   /><span class="title">$title</span>
  </a>
  <ul class="children tabs">$children</ul>
-</li>""", 4).compile()
+</li>
+""".lstrip("\n\r")
 
-TABS_WORD = ("tab", "tabs")
+
+Templates._load(TEMPLATES)
 
 
 # sessionstore parsing {{{1
@@ -344,7 +407,7 @@ class Session:  #{{{2
    src = cast(Any, src).read()
   if isinstance(src, bytes):
    if src.startswith(b"mozLz40\0"):
-    src = lz4.block.decompress(src[8:])
+    src = lz4.block.decompress(src[8:])  # type: ignore
    src = src.decode("utf-8")
   
   self._src = src = json.loads(src)
@@ -354,17 +417,17 @@ class Session:  #{{{2
 # HTML generation {{{1
 
 def make_html(windows: List[Window],
-              page_tpl: string.Template = PAGE_TEMPLATE,
-              window_list_tpl: string.Template = WINDOW_LIST_TEMPLATE,
-              window_tpl: string.Template = WINDOW_TEMPLATE,
-              tab_tpl: string.Template = TAB_TEMPLATE,
-              tabs_word: Tuple[str, str] = TABS_WORD) -> str:
+              page_tpl: string.Template = Templates.get("PAGE"),
+              window_list_tpl: string.Template = Templates.get("WINDOW_LIST"),
+              window_tpl: string.Template = Templates.get("WINDOW"),
+              tab_tpl: string.Template = Templates.get("TAB"),
+              tab_word: Tuple[str, str] = Templates.WORDS.get("TAB")) -> str:
  return page_tpl.substitute(
   windows="\n".join([
    window_tpl.substitute(
     n=str(i+1),
     n_tabs=str(Tab.count(windows[i].tree)),
-    tabs_word=tabs_word[int(Tab.count(windows[i].tree) > 1)],
+    tab_word=tab_word[int(Tab.count(windows[i].tree) > 1)],
     tabs="\n".join([make_tab(tab, tab_tpl) for tab in windows[i].tree])
    )
    for i in range(len(windows))
@@ -372,12 +435,12 @@ def make_html(windows: List[Window],
   window_list="\n".join([window_list_tpl.substitute(
    n=str(i+1),
    n_tabs=str(Tab.count(windows[i].tree)),
-   tabs_word=tabs_word[int(Tab.count(windows[i].tree) > 1)]
+   tab_word=tab_word[int(Tab.count(windows[i].tree) > 1)]
   ) for i in range(len(windows))])
  )
 
 
-def make_tab(tab: Tab, tab_tpl: string.Template = TAB_TEMPLATE) -> str:
+def make_tab(tab: Tab, tab_tpl: string.Template = Templates.get("TAB")) -> str:
  params = dict(
   icon=html.escape(tab.icon),
   title=html.escape(tab.title),
