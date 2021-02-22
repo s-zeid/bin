@@ -130,7 +130,7 @@ TEMPLATES = """
    footer { margin-top: 4rem; }
   </style>
   <style>
-   :root { --background: #fdfdfd; --accent: #c03; }
+   :root { --background: #fdfdfd; --accent: #a02; }
    html { font-family: "Ubuntu", "Trebuchet MS", sans-serif; }
    body { padding: 1rem 1rem; }
    body > header time { display: inline-block; letter-spacing: 0.125em; }
