@@ -141,7 +141,7 @@ TEMPLATES = """
    .tab { list-style-type: none; }
    .tab .link { display: table-row; }
    .tab .title { display: table-cell; padding-left: 0.25rem; }
-   .tab.pinned + .tab:not(.pinned) { border-top: 1px solid #ddd;
+   .tab.pinned + .tab:not(.pinned) { border-top: 1px solid #ccc;
                                      margin-top: 0.5rem; padding-top: 0.5rem; }
    .tab .children { border-left: 1px solid #ddd; margin: 0 0 0 8px; }
    .tab + .tab, .children > .tab:first-child { margin-top: 0.125rem; }
