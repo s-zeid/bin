@@ -3,7 +3,7 @@
 # tmux-name
 # Starts or resumes a tmux session with the given name and a minimal status bar.
 # 
-# Copyright (c) 2018-2020 S. Zeid.  Released under the X11 License.  
+# Copyright (c) 2018-2021 S. Zeid.  Released under the X11 License.  
 # <https://code.s.zeid.me/bin/blob/master/tmux-name>
 
 
@@ -14,9 +14,14 @@ STATUS_BG=white
 STATUS_FG=black
 
 
+usage() {
+ echo "Usage: $0 <session-name>[@host[:port]] [cmd [args [...]]]"
+}
+
+
 main() {
  if [ $# -lt 1 ]; then
-  echo "Usage: $0 <session-name> [cmd [args [...]]]" >&2
+  usage >&2
   exit 2
  fi
  
@@ -29,6 +34,29 @@ main() {
  
  export TMUX_NAME="$(basename -- "$1")"
  shift
+ 
+ if (printf '%s\n' "$TMUX_NAME" | grep -q -e '@'); then
+  local hostname="${TMUX_NAME#*@}"
+  local port=
+  TMUX_NAME=${TMUX_NAME%%@*}
+  if [ x"$TMUX_NAME" = x"" ] || [ x"$hostname" = x"" ]; then
+   usage >&2
+   exit 2
+  fi
+  if [ x"$hostname" != x"" ]; then
+   if (printf '%s\n' "$hostname" | grep -q -e ':'); then
+    port=${hostname##*:}
+    hostname=${hostname%:*}
+    if [ x"$port" = x"" ]; then
+     usage >&2
+     exit 2
+    fi
+   fi
+   exec ssh -t \
+    ${port:+-p} ${port:+$port} "$hostname" \
+    "$(basename -- "$0")" "$TMUX_NAME" "$@"
+  fi
+ fi
  
  if [ x"$1" = x"__setup_tmux" ]; then
   setup_tmux
