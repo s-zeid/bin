@@ -37,6 +37,7 @@ import platform
 import re
 import string
 import sys
+import urllib.parse
 import warnings
 
 from typing import *
@@ -82,7 +83,16 @@ class Templates:
    separator_start = separator_match.start();
    separator_end = separator_match.end();
    
-   spec = re.split(r"\s+", raw_item[0:separator_start])
+   spec = list(map(
+    lambda i: urllib.parse.unquote(re.sub(
+     r'"[^"]+"',
+     lambda m: m.group(0)[1:len(m.group(0)) - 1], i[0],
+    )),
+    re.findall(
+     r'([^\s]*"[^"]*"(,"[^"]*")?[^\s]*|[^\s]+)',
+     raw_item[0:separator_start],
+    ),
+   ))
    kind = spec[0]
    
    if kind == "template":
@@ -102,17 +112,18 @@ class Templates:
     name = spec[1]
     values = tuple((spec[2] if len(spec) > 2 else "").split(","))
     
+    if len(values) == 1:
+     values = (values[0], values[0])
+    
     if name:
      cls.WORDS._WORD_MAP[name] = values
 
 
 # Templates {{{1
 
-PAGE_NAME = "Saved Tabs"
-
-
 TEMPLATES = """
-<?word TAB tab,tabs ?>
+<?word PAGE_NAME "Saved Tabs" ?>
+<?word TAB "tab","tabs" ?>
 
 
 <?template STYLES 0 ?>
@@ -445,7 +456,7 @@ class Session:  #{{{2
 
 def make_html(windows: List[Window],
               date: str = "",
-              page_name: str = PAGE_NAME,
+              page_name: str = Templates.WORDS.get("PAGE_NAME")[0],
               styles_tpl: string.Template = Templates.get("STYLES"),
               page_tpl: string.Template = Templates.get("PAGE"),
               window_list_tpl: string.Template = Templates.get("WINDOW_LIST"),
