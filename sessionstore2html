@@ -37,6 +37,7 @@ import platform
 import re
 import string
 import sys
+import time
 import urllib.parse
 import warnings
 
@@ -191,11 +192,18 @@ TEMPLATES = """
  <head>
   <meta charset="utf-8" />
   <title>$page_name - $date</title>
+  <meta name="filename" content="$filename" />
+  <meta name="created" content="$date_iso" />
   <meta name="generator" content="sessionstore2html (https://code.s.zeid.me/bin/blob/master/sessionstore2html)" />
 $styles
  </head>
  <body>
-  <header><h1>$page_name: <time>$date</time></h1></header>
+  <header>
+   <h1>
+    $page_name:
+    <time datetime="$date_iso">$date</time>
+   </h1>
+  </header>
   <section id="windows">
    <ul>
 $window_list
@@ -456,6 +464,8 @@ class Session:  #{{{2
 
 def make_html(windows: List[Window],
               date: str = "",
+              date_iso: str = "",
+              filename: str = "",
               page_name: str = Templates.WORDS.get("PAGE_NAME")[0],
               styles_tpl: string.Template = Templates.get("STYLES"),
               page_tpl: string.Template = Templates.get("PAGE"),
@@ -466,6 +476,8 @@ def make_html(windows: List[Window],
  return page_tpl.substitute(
   page_name=page_name,
   date=date,
+  date_iso=date_iso,
+  filename=html.escape(filename),
   styles=styles_tpl.substitute(),
   windows="\n".join([
    window_tpl.substitute(
@@ -632,9 +644,22 @@ def main(argv: List[str]) -> int:  #{{{1
   else:
    sessionstore_js = open(sessionstore_js, "rb")
  
- date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+ tz = datetime.timezone(datetime.timedelta(seconds=time.localtime().tm_gmtoff))
+ now = datetime.datetime.now(tz=datetime.timezone.utc).astimezone(tz)
+ tz_str = now.strftime("%z")
+ tz_str = tz_str[0:3] + ":" + tz_str[3:5]
+ date = now.strftime("%Y-%m-%d %H:%M:%S")
+ date_iso = now.strftime("%Y-%m-%dT%H:%M:%S") + tz_str
+ 
+ filename = now.strftime("%Y-%m-%d.%H-%M-%S") + ".html"
+ filename_date_re = r"(^|[._-])[0-9]{4}(-[0-9]{2}){2}.[0-9]{2}([-_:][0-9]{2}){2}([._+-]|$)"
+ if options.output:
+  output_test_name = os.path.basename(options.output).replace(" ", "_")
+  if re.search(filename_date_re, output_test_name):
+   filename = os.path.basename(options.output)
+ 
  session = Session(sessionstore_js)
- html = make_html(session.windows, date)
+ html = make_html(session.windows, date, date_iso, filename)
  if options.output:
   with open(options.output, "w") as f:
    f.write(html)
