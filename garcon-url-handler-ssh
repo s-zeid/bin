@@ -1,0 +1,11 @@
+#!/bin/sh
+
+if [ $# -ne 2 ]; then
+ echo "Usage: $(basename -- "$0") [user@]<host> <url>" >&2
+ exit 2
+fi
+
+host=$1
+url=$2
+
+printf '%s\n' "$url" | ssh "$host" sh -c "'read -r url; garcon-url-handler \"\$url\"'"
