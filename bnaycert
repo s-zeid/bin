@@ -5,7 +5,7 @@
 # Scans a directory for domains for which to generate TLS certificates
 # via the holy, blessèd Let's Encrypt service.
 # 
-# Copyright (c) 2015-2020 S. Zeid.  
+# Copyright (c) 2015-2021 S. Zeid.  
 # Released under the X11 License:  <https://tldrlegal.com/l/x11>  
 # <https://code.s.zeid.me/bin/blob/master/bnaycert>
 # 
@@ -28,14 +28,15 @@
 #    configuration file.
 # 
 # Each section that does not start with a `.` (\*) is a subdirectory of the
-# directory named in the `base` option or a shell wildcard expression that
-# matches one or more subdirectories.  The names of each matched subdirectory,
-# if they are valid domain names, will be included as subject alternate names in
-# the certificate.  If the section name does not exist as a subdirectory or if
-# no base directory is given, then the section name will be used as-is as a
-# domain.  There are also options to search for subdomains, also include or not
-# include domains with the "www." prefix added, or exclude domains from the
-# certificate.
+# directory named in the `base` option, a shell wildcard expression that
+# matches one or more subdirectories, or a wildcard domain name (e.g.
+# `*.example.com`).  The names of each matched subdirectory, if they are valid
+# domain names, will be included as subject alternate names in the certificate.
+# If the section name does not exist as a subdirectory or if no base directory
+# is given, then the section name will be used as-is as a domain.  (Wildcard
+# domains will always be used as-is.)  There are also options to search for
+# subdomains, also include or not include domains with the "www." or "*."
+# prefixes added, or exclude domains from the certificate.
 # 
 # (\*) If a domain or glob starts with a ., then the next character must be a
 #      forward slash or backslash; otherwise it will be treated as a "special"
@@ -50,18 +51,31 @@
 #          ; if True, then `www.<domain>` will also be included unless
 #          ; overridden for a domain, but not for subdomains unless told
 #          ; otherwise
+#     wildcard  ; (boolean, default False)
+#               ; if True, then `*.<domain>` will also be included unless
+#               ; overridden for a domain, but not for subdomains unless told
+#               ; otherwise
 #     
 #     [domain-or-glob (subdirectory of base; basename is used as the domain)]
-#      subdomains = <(optional) a glob to match subdirectories of each directory
-#                    matched by `domain-or-glob`; the basename of each
-#                    subdirectory matched is treated as (just) a subdomain.  If
-#                    this option is given as a boolean (i.e. no glob is given),
-#                    then `*` will be used as the glob.>
+#      subdomains = <(optional) glob>
+#                 ; a glob to match subdirectories of each directory
+#                 ; matched by `domain-or-glob`; the basename of each
+#                 ; subdirectory matched is treated as (just) a subdomain.  If
+#                 ; this option is given as a boolean (i.e. no glob is given),
+#                 ; then `*` will be used as the glob.>  If `wildcard` is True,
+#                 ; then this option will only be used if `wildcard-subdomains`
+#                 ; is True.
 #      www  ; (boolean, default: top-level `www` value)
 #           ; if True, then `www.<domain>` will also be included
-#           ; for non-subdomains
-#      www-subdomains ; (boolean, default: False)
-#                     ; if True, then `www.<subdomain>` will also be included
+#           ; for non-subdomains.  Ignored if `wildcard` is True.
+#      wildcard  ; (boolean, default: False)
+#                ; if True, then `*.<domain>` will also be included
+#                ; for non-subdomains
+#      www-subdomains  ; (boolean, default: False)
+#                      ; if True, then `www.<subdomain>` will also be included.
+#                      ; Ignored if `wildcard-subdomains` is True.
+#      wildcard-subdomains  ; (boolean, default: False)
+#                           ; if True, the `*.<subdomain>` will be included
 #      exclude  ; if True, then any path matching the domain or glob will be
 #               ; excluded from the certificate
 #     
@@ -148,6 +162,8 @@ def get_domains(config):
     return True
   return False
  def is_valid(domain):
+  if domain.startswith("*."):
+   domain = domain[2:]
   if re.search(r"[^.a-zA-Z0-9_-]", domain):
    return False
   if has_bad_tld(domain):
@@ -165,9 +181,15 @@ def get_domains(config):
  
  domains += [main_domain]
  top_add_www = config[""].get("www", True)
+ top_add_wildcard = config[""].get("wildcard", False)
+ if top_add_wildcard:
+  top_add_www = False
  main_domain_www = "www." + main_domain
  if top_add_www:
   domains += [main_domain_www]
+ main_domain_wildcard = "*." + main_domain
+ if top_add_wildcard:
+  domains += [main_domain_wildcard]
  
  excludes = config["."]["exclude"]
  base = config[""].get("base")
@@ -183,7 +205,19 @@ def get_domains(config):
   options = search[filename_in_base]
   if not options.get("exclude"):
    domain_add_www = options.get("www", top_add_www)
-   if base:
+   domain_add_wildcard = options.get("wildcard", top_add_wildcard)
+   if domain_add_wildcard:
+    domain_add_www = False
+   if (
+    filename_in_base.startswith("*.") and
+    os.path.sep not in filename_in_base and
+    (os.path.altsep or os.path.sep) not in filename_in_base
+   ):
+    domain = normalize(os.path.basename(filename_in_base))
+    if domain not in domains and is_valid(domain):
+     domains += [domain]
+    continue
+   elif base:
     path_glob = os.path.abspath(os.path.join(base, filename_in_base))
     paths = glob.glob(path_glob)
     if not len(paths) and not re.search(r"[*?[\]]", path_glob):
@@ -209,10 +243,17 @@ def get_domains(config):
        domain_www = "www." + domain
        if domain_www not in domains and is_valid(domain_www):
         domains += [domain_www]
+      if domain_add_wildcard and (added_domain or domain == main_domain):
+       domain_wildcard = "*." + domain
+       if domain_wildcard not in domains and is_valid(domain_wildcard):
+        domains += [domain_wildcard]
       if added_domain:
        # find subdomains
        if base and options.get("subdomains"):
         subdomain_add_www = options.get("www-subdomains", False)
+        subdomain_add_wildcard = options.get("wildcard-subdomains", False)
+        if subdomain_add_wildcard:
+         subdomain_add_www = False
         if isinstance(options["subdomains"], bool):
          subdomains_glob = "*"
         else:
@@ -230,12 +271,18 @@ def get_domains(config):
             break
           if not exclude_subdomain:
            if subdomain not in domains and is_valid(subdomain):
-            domains += [subdomain]
+            if not domain_add_wildcard:
+             domains += [subdomain]
             if subdomain_add_www:
              subdomain_www = "www." + subdomain
              if subdomain_www not in domains and is_valid(subdomain_www):
               domains += [subdomain_www]
               subdomains += [subdomain_www]
+            if subdomain_add_wildcard:
+             subdomain_wildcard = "*." + subdomain
+             if subdomain_wildcard not in domains and is_valid(subdomain_wildcard):
+              domains += [subdomain_wildcard]
+              subdomains += [subdomain_wildcard]
  
  # sort domains in alphabetical order by reversed components,
  # with main domain first, removing duplicates
@@ -256,7 +303,13 @@ def get_domains(config):
    domain_www_i = domain_i + 1
    domains[domain_www_i:domain_www_i] = [domain_www]
  
- result = domains
+ # remove subdomains made redundant by wildcards from result
+ result = []
+ for domain in domains:
+  parent_domain = domain.split(".", 1)[-1]
+  if "*." + domain not in domains or parent_domain not in domains:
+   result += [domain]
+ 
  return result
 
 
@@ -324,7 +377,7 @@ def load_config(config, path=""):
   i += 1
  config = "\n".join(config)
  
- BOOLEAN_KEYS = ["exclude", "www", "www-subdomains"]
+ BOOLEAN_KEYS = ["exclude", "www", "www-subdomains", "wildcard", "wildcard-subdomains"]
  TRUES = ("1", "true", "yes", "on")
  FALSES = ("0", "false", "no", "off")
  BOOLEANS = TRUES + FALSES
