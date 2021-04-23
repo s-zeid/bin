@@ -1,0 +1,40 @@
+#!/bin/sh
+
+gh_release_url() {
+ if [ $# -ne 3 ]; then
+  echo "Usage: gh_release_url <repo> {latest|latest-any|tags/<tag>|<release-id>} <contains>" >&2
+  return 2
+ fi
+ 
+ local repo="$1"
+ local tag="$2"
+ local contains="$3"
+ 
+ if [ x"$tag" = x"latest-any" ]; then
+  curl -f "https://api.github.com/repos/$repo/releases?per_page=1" \
+   | jq -r --arg contains "$contains" \
+      '.[0].assets[].browser_download_url | select(. | contains($contains))' \
+   | head -n 1
+ else 
+  curl -f "https://api.github.com/repos/$repo/releases/$tag" \
+   | jq -r --arg contains "$contains" \
+      '.assets[].browser_download_url | select(. | contains($contains))' \
+   | head -n 1
+ fi
+}
+
+
+main() {
+ if [ $# -ne 3 ]; then
+  echo "Usage: $(basename -- "$0") <repo> {latest|tags/<tag>|<release-id>} <contains>" >&2
+  return 2
+ fi
+ 
+ gh_release_url "$@"
+}
+
+
+main "$@"
+
+
+# sort_by(.created_at) | reverse
