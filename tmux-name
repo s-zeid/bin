@@ -61,7 +61,7 @@ main() {
  if [ x"$1" = x"__setup_tmux" ]; then
   setup_tmux
  elif (tmux -L "$TMUX_NAME" has-session -t "$TMUX_NAME" 2>/dev/null); then
-  tmux -L "$TMUX_NAME" attach -t "$TMUX_NAME"
+  tmux -u -2 -L "$TMUX_NAME" attach -t "$TMUX_NAME"
  else
   local cmd=
   if [ x"$script" != x"" ]; then
@@ -73,8 +73,8 @@ main() {
    cmd="$cmd '$(escape_arg "$i")'"  # escape arguments
   done
   
-  tmux -L "$TMUX_NAME" new-session -s "$TMUX_NAME" -n "$TMUX_NAME" \
-   "export TMUX_NAME='$(escape_arg "$TMUX_NAME")'; export TERM=screen-256color;
+  tmux -u -2 -L "$TMUX_NAME" new-session -s "$TMUX_NAME" -n "$TMUX_NAME" \
+   "export TMUX_NAME='$(escape_arg "$TMUX_NAME")'; export TERM=xterm-256color;
     '$(escape_arg "$0")' \"\$TMUX_NAME\" __setup_tmux;
     $cmd"
  fi
