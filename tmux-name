@@ -61,7 +61,7 @@ main() {
  if [ x"$1" = x"__setup_tmux" ]; then
   setup_tmux
  elif (tmux -L "$TMUX_NAME" has-session -t "$TMUX_NAME" 2>/dev/null); then
-  tmux -u -2 -L "$TMUX_NAME" attach -t "$TMUX_NAME"
+  tmux -u -2 -L "$TMUX_NAME" attach-session -t "$TMUX_NAME" -E
  else
   local cmd=
   if [ x"$script" != x"" ]; then
