@@ -19,7 +19,7 @@ import subprocess
 import sys
 
 
-def hold_mtime(path, cmd=None):
+def mtime_hold(path, cmd=None):
  if not isinstance(cmd, (tuple, list)):
   cmd = None
  
@@ -52,7 +52,7 @@ def main(argv):
  else:
   cmd  = [(path if arg == "%" else arg) for arg in argv[2:]]
  
- hold_mtime(path, cmd)
+ mtime_hold(path, cmd)
 
 
 if __name__ == "__main__":
