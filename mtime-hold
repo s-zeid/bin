@@ -7,52 +7,96 @@ error along with a prompt to press Enter after modifying the file.  Once Enter
 is pressed, the modification time will be reset.
 
 If a command is given, then that command will be run before resetting the
-modification time.  Any argument consisting solely of a percent sign ("%")
-will be replaced with the filename being held, unless the command is preceded
-by an argument of two dashes ("--").
+modification time.  Any argument consisting solely of a percent sign (`%`)
+will be replaced with the filename being held, except that arguments of
+two or more `%`s will be replaced with the same number of `%`s minus one.
 
 """
 
 
+import argparse
 import os
+import re
 import subprocess
 import sys
 
+from typing import *
 
-def mtime_hold(path, cmd=None):
- if not isinstance(cmd, (tuple, list)):
+
+def mtime_hold(path: str, cmd: Union[list, tuple] = None) -> Optional[int]:
+ if not isinstance(cmd, (list, tuple)):
   cmd = None
  
- mtime = os.stat(path).st_mtime
+ mtime_ns = get_mtime_ns(path)
+ mtime_display = str(get_mtime_seconds(path))
+ r: Optional[int]
  if cmd:
   r = subprocess.call(cmd)
  else:
   r = None
-  print("The file's modification time is currently %s." % str(mtime), file=sys.stderr)
+  print("The file's modification time is currently %s." % mtime_display, file=sys.stderr)
   print("Press enter to reset the file's modification time. ", end=' ', file=sys.stderr)
   input()
  
- atime = os.stat(path).st_atime
- os.utime(path, (atime, mtime))
+ set_mtime_ns(path, mtime_ns)
  
  return r
 
 
+def get_mtime_seconds(path: str) -> Union[int, float]:
+ return os.stat(path).st_mtime
+
+
+def get_mtime_ns(path: str) -> int:
+ return os.stat(path).st_mtime_ns
+
+
+def set_mtime_ns(path: str, mtime_ns: int):
+ atime_ns = os.stat(path).st_atime_ns
+ os.utime(path, ns=(atime_ns, mtime_ns))
+
+
 def main(argv):
- if len(argv) < 2:
-  print("Usage: %s file [command [args ...]]" % argv[0], file=sys.stderr)
-  print(file=sys.stderr)
-  print(__doc__.rstrip(), file=sys.stderr)
-  print(file=sys.stderr)
-  return 2
+ doc_lines = (__doc__.strip() or "\n\n").splitlines()
  
- path = argv[1]
- if len(argv) > 2 and argv[2] == "--":
-  cmd = argv[3:]
- else:
-  cmd  = [(path if arg == "%" else arg) for arg in argv[2:]]
+ p = argparse.ArgumentParser(
+  prog=os.path.basename(argv[0]),
+  description=doc_lines[0].strip(),
+  epilog="\n".join(doc_lines[1:]).strip(),
+  formatter_class=argparse.RawDescriptionHelpFormatter,
+ )
+ p.add_argument("file", metavar="FILE",
+                help="the file for which to hold the modification time")
+ p.add_argument("cmd", metavar="COMMAND", nargs=argparse.REMAINDER,
+                help="run the given command before resetting the modification"
+                     " time (see below for details)")
+ def fixup(s):
+  s = s.replace("COMMAND ...", "ARGS [...]")
+  return s
+ def fixup_error(s, fn):
+  s = s.replace("FILE, COMMAND", "FILE")
+  fn(s)
+ __format_help = p.format_help
+ p.format_help = lambda: fixup(__format_help())  # type: ignore
+ __format_usage = p.format_usage
+ p.format_usage = lambda: fixup(__format_usage())  # type: ignore
+ __error = p.error
+ p.error = lambda s: fixup_error(s, __error)  # type: ignore
  
- mtime_hold(path, cmd)
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ cmd = []
+ for arg in options.cmd:
+  if arg == "%":
+   arg = options.file
+  elif re.match(r"^%+$", arg):
+   arg = arg[1:]
+  cmd += [arg]
+ 
+ mtime_hold(options.file, cmd)
 
 
 if __name__ == "__main__":
