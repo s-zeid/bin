@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+
+"""Swaps the modification times of two or more files.
+
+If more than two files are given, then their modification times will be
+reversed.
+
+"""
+
+
+import argparse
+import os
+import sys
+
+from typing import *
+
+
+def mtime_swap(paths: List[str]):
+ src_mtimes = [get_mtime_ns(path) for path in reversed(paths)]
+ 
+ for i in range(len(paths)):
+  set_mtime_ns(paths[i], src_mtimes[i])
+
+
+def get_mtime_ns(path: str) -> int:
+ return os.stat(path).st_mtime_ns
+
+
+def set_mtime_ns(path: str, mtime_ns: int):
+ atime_ns = os.stat(path).st_atime_ns
+ os.utime(path, ns=(atime_ns, mtime_ns))
+
+
+def main(argv):
+ doc_lines = (__doc__.strip() or "\n\n").splitlines()
+ 
+ p = argparse.ArgumentParser(
+  prog=os.path.basename(argv[0]),
+  description=doc_lines[0].strip(),
+  epilog="\n".join(doc_lines[1:]).strip(),
+  formatter_class=argparse.RawDescriptionHelpFormatter,
+ )
+ p.add_argument("files", metavar="FILE", nargs="+",
+                help="the files for which to swap or reverse modification times")
+ 
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ mtime_swap(options.files)
+ 
+ return 0
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
