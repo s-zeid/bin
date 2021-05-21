@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+
+"""Rewrites a group of files' modification times, using the oldest as a refrence point."""
+
+
+import argparse
+import datetime
+import decimal
+import os
+import sys
+
+from typing import *
+
+if not TYPE_CHECKING:
+ import dateutil.parser  # pip3 install dateutil; apt install python3-dateutil
+
+
+NS_EXPONENT = 9
+
+
+def mtime_rebase(
+ paths: List[str],
+ base_mtime: Union[int, float] = None,
+ *,
+ reverse: bool = False,
+ step: Union[int, float, decimal.Decimal] = None,
+):
+ paths = sorted(paths, key=lambda path: os.stat(path).st_mtime_ns)
+ 
+ if step is None:
+  step = 2
+ 
+ if reverse:
+  step = -step
+  paths = list(reversed(paths))
+ 
+ if base_mtime is None:
+  base_mtime_ns = get_mtime_ns(paths[0])
+ else:
+  base_mtime_ns = seconds_to_ns(base_mtime)
+ 
+ step_ns = seconds_to_ns(step)
+ 
+ offset = 0
+ for path in paths:
+  set_mtime_ns(path, base_mtime_ns + offset)
+  offset += step_ns
+
+
+def get_mtime_ns(path: str) -> int:
+ return os.stat(path).st_mtime_ns
+
+
+def set_mtime_ns(path: str, mtime_ns: int):
+ atime_ns = os.stat(path).st_atime_ns
+ os.utime(path, ns=(atime_ns, mtime_ns))
+
+
+def seconds_to_ns(seconds: Union[int, float, decimal.Decimal, str]) -> int:
+ return int(decimal.Decimal(str(seconds)).quantize(
+  decimal.Decimal("1." + ("1" * NS_EXPONENT)),
+  rounding=decimal.ROUND_HALF_UP,
+ ) * decimal.Decimal(str(10 ** NS_EXPONENT)))
+
+
+def main(argv):
+ doc_lines = (__doc__.strip() or "\n\n").splitlines()
+ 
+ p = argparse.ArgumentParser(
+  prog=os.path.basename(argv[0]),
+  description=doc_lines[0].strip(),
+  epilog="\n".join(doc_lines[1:]).strip(),
+  formatter_class=argparse.RawDescriptionHelpFormatter,
+ )
+ p.add_argument("-d", "--date", default="",
+                help="change the oldest file's mtime (newest if -r/--reverse"
+                     " is enabled) to the given time"
+                     " (ISO 8601 (any character as date/time separator),"
+                     " `@{Unix timestamp}`, or `now`) ")
+ p.add_argument("-r", "--reverse", action="store_true",
+                help="change mtimes in the reverse direction"
+                     " (and make the newest file the reference point)")
+ p.add_argument("-s", "--step", default=None, type=decimal.Decimal,
+                help="the interval between mtimes (default: 2)"
+                    f" (will be rounded to {NS_EXPONENT} decimal places)")
+ p.add_argument("files", metavar="FILE", nargs="+",
+                help="the files for which to change mtimes")
+ 
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ if options.date and options.date.lower() == "now":
+  base_mtime = datetime.datetime.now().timestamp()
+ elif options.date:
+  base_mtime = parse_date(options.date).timestamp()
+ else:
+  base_mtime = None
+ 
+ mtime_rebase(options.files, base_mtime, reverse=options.reverse, step=options.step)
+ 
+ return 0
+
+
+def parse_date(date: str) -> datetime.datetime:
+ date = date.strip()
+ if date.startswith("@"):
+  unixtime = float(date[1:])
+  result = datetime.datetime.fromtimestamp(unixtime)
+ else:
+  result = dateutil.parser.isoparse(date)  # type: ignore
+ 
+ return result
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
