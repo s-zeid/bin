@@ -1,10 +1,12 @@
 #!/bin/sh
+set -e
+
 
 main() {
  # allow the interpreter to be specified using "--<interpreter>" as 1st argument
  local use=
  if (printf '%s' "$1" | grep -q -e '^--[a-zA-Z]'); then
-  use=`printf '%s' "$1" | sed -e 's/^--//g' | tr '[A-Z]' '[a-z]'`
+  use=$(printf '%s' "$1" | sed -e 's/^--//g' | tr '[A-Z]' '[a-z]')
   shift
  fi
  
@@ -22,9 +24,11 @@ main() {
   #echo 'orwell' "$use" >&2
   orwell_calc "$@"
  else
-  echo "$0: error: invalid calculator \"$use\""
+  echo "$0: error: invalid calculator \"$use\"" >&2
+  return 2
  fi
 }
+
 
 should() {
  # * $1->$use, $2->$cmd
@@ -34,52 +38,58 @@ should() {
  #   * 3rd argument == 'test:args':  subsequent arguments passed as args as-is
  #   * 3rd argument = 'true' or 'false': run 3rd argument instead of command
  #   * Otherwise, no arguments and no stdin
- local use=$1; local cmd=$2; shift 2
+ local use="$1"; local cmd="$2"; shift 2
  if [ -n "$use" ]; then
   [ "$use" = "$cmd" ]
  else
-  if [ "$1" = "test:stdin" ]; then
-   shift; printf '%s\n' "$@" | "$cmd" >/dev/null 2>&1
-  elif [ "$1" = "test:args" ]; then
+  if [ x"$1" = x"test:stdin" ]; then
+   local expr; expr=$@
+   shift; printf '%s\n' "$expr" | "$cmd" >/dev/null 2>&1
+  elif [ x"$1" = x"test:args" ]; then
    shift; "$cmd" "$@" >/dev/null 2>&1
   elif [ x"$1" = x"true" ]; then
    true
   elif [ x"$1" = x"false" ]; then
    false
   else
-   "$cmd" >/dev/null 2>&1
+   command "$cmd" >/dev/null 2>&1
   fi
  fi
 }
 
+
 bc_calc() {
- local expr=$@
- local r=`printf 'scale=17\n%s\n' "$expr" | bc`
- if (printf '%s' "$r" | grep -q -e '\.'); then
+ local expr; expr=$@
+ local result; result=$(printf 'scale=17\n%s\n' "$expr" | bc)
+ if (printf '%s' "$result" | grep -q -e '\.'); then
   # remove trailing .'s and 0's in decimal part, and change leading `.` to `0.`
-  printf '%s\n' "$r" | sed -e 's/0*$//g;s/\.$//g;s/^\./0./g'
+  printf '%s\n' "$result" | sed -e 's/0*$//g;s/\.$//g;s/^\./0./g'
  else
-  printf '%s\n' "$r"
+  printf '%s\n' "$result"
  fi
 }
 
+
 zsh_calc() {
- local expr=$@
+ local expr; expr=$@
  zsh -c 'printf "%s\\n" "$(('"$expr"'))"'
 }
 
+
 eval_calc() {
- local expr=$@
+ local expr; expr=$@
  eval 'printf "%s\\n" "$(('"$expr"'))"'
 }
 
+
 orwell_calc() {
- local expr=$@
+ local expr; expr=$@
  if [ x"$(printf '%s' "$expr" | sed -e 's/\( \|\.00*\)//g')" = x"2+2" ]; then
   echo 5
  else
   main "$@"
  fi
 }
+
 
 main "$@"
