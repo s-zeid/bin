@@ -60,7 +60,7 @@ should() {
 
 bc_calc() {
  local expr; expr=$@
- local result; result=$(printf 'scale=17\n%s\n' "$expr" | bc)
+ local result; result=$(printf 'scale=20\n%s\n' "$expr" | bc -l)
  if (printf '%s' "$result" | grep -q -e '\.'); then
   # remove trailing .'s and 0's in decimal part, and change leading `.` to `0.`
   printf '%s\n' "$result" | sed -e 's/0*$//g;s/\.$//g;s/^\./0./g'
