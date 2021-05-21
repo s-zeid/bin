@@ -1,39 +1,145 @@
 #!/usr/bin/env python3
 
-"""Splits a media file according to a list of times."""
+"""Splits a media file or makes metadata files according to a list of times."""
 
+import argparse
 import os
 import pipes
+import re
 import subprocess
 import sys
 
+from decimal import Decimal, ROUND_HALF_UP
+from typing import *
+
+
+TimeValue = Union[str, int, float, Decimal, "Timestamp"]
+
+
+class Timestamp(Decimal):
+ def __new__(cls, value: TimeValue) -> "Timestamp":
+  time_regex = r"^([0-9]+:){0,2}([0-9]*)(\.[0-9]*)?$"
+  if isinstance(value, str) and re.search(time_regex, value):
+   parts = [Decimal(i) for i in value.split(":", 3)]
+   parts, result = parts[:-1], parts[-1]
+   if len(parts):
+    parts, minutes = parts[:-1], parts[-1]
+    result += minutes * 60
+   if len(parts):
+    parts, hours = parts[:-1], parts[-1]
+    result += hours * 60 * 60
+   if len(parts):
+    raise RuntimeError("BUG: unexpected parts: %r (input was %r)" % (parts, value))
+  else:
+   result = Decimal(value)
+  return super().__new__(cls, result)
+ 
+ def seconds(self, precision: int = None) -> Decimal:
+  seconds = Decimal(self)
+  if precision is not None:
+   exp = "1." + "1" * precision if precision > 0 else "1"
+   seconds = seconds.quantize(Decimal(exp), rounding=ROUND_HALF_UP)
+  return seconds
+ 
+ def human(self, precision: int = None) -> str:
+  seconds = self.seconds(precision)
+  
+  minutes, seconds = int(seconds // 60), Decimal(seconds % 60)
+  hours, minutes = int(minutes // 60), int(minutes % 60)
+  
+  seconds_pad = "0" if seconds < 10 else ""
+  return "%02d:%02d:%s" % (hours, minutes, seconds_pad + str(seconds))
+ 
+ def __str__(self):
+  return self.human(None)
+ 
+ def __repr__(self):
+  return "%s(%r)" % (self.__class__.__name__, str(self))
+
 
 class Split:
- def __init__(self, start, name):
-  try:
-   self.start = float(start)
-  except ValueError:
-   self.start = None
+ name: str
+ caption: str
+ 
+ start: Timestamp
+ end: Optional[Timestamp]
+ 
+ def __init__(self, start: TimeValue, end: TimeValue = None, name: str = ""):
   self.name = name
+  self.caption = name
+  
+  self.start = Timestamp(start)
   
   self.end = None
+  if end is not None:
+   try:
+    self.end = Timestamp(end)
+   except ValueError:
+    pass
  
  @property
- def length(self):
-  return self.end - self.start if self.end is not None else None
+ def length(self) -> Optional[Timestamp]:
+  return Timestamp(self.end - self.start) if self.end is not None else None
  
- def debug(self):
-  return "%s\n%s\nStart: %s\nEnd: %s\nLength: %s\n" % (
-   self.name, "-" * len(self.name), str(self.start), str(self.end), str(self.length)
+ def human(self) -> str:
+  name = self.name or "<unnamed>"
+  name_underline = "-" * len(name)
+  return "%s\n%s\nStart: %s\nEnd: %s\nLength: %s\nCaption: %s\n" % (
+   name, name_underline, str(self.start), str(self.end), str(self.length), self.caption
+  )
+ 
+ def ffmetadata(self) -> str:
+  result   = "[CHAPTER]"
+  result  += "\nTIMEBASE=1/1000"
+  result  += "\nSTART=%d" % int(self.start.seconds(3) * 1000)
+  if self.end is not None:
+   result += "\nEND=%d" % int(self.end.seconds(3) * 1000)
+  if self.name:
+   result += "\ntitle=%s" % re.sub(r"([=;#\\\n])", r"\\\1", self.name)
+  return result
+ 
+ def webvtt(self) -> str:
+  if self.end is None:
+   raise ValueError("an end time is required for WebVTT cues")
+  return "%s\n%s --> %s\n%s" % (
+   self.name,
+   str(self.start.human(3)), str(self.end.human(3)),
+   self.caption.replace("[", "<i>[").replace("]", "]</i>"),
+  )
+ 
+ def __repr__(self) -> str:
+  return "%s(start=%r, end=%r, name=%r)" % (
+   self.__class__.__name__, str(self.start), str(self.end), self.name
   )
 
 
-def main(argv):
- USAGE = """
-Usage: %s <splits-file> [-ss {}] <ffmpeg-args> [...]
-       %s <splits-file> --list
-
-Splits a media file according to a list of times.
+def main(argv: List[str]) -> int:
+ prog = os.path.basename(argv[0])
+ p = argparse.ArgumentParser(
+  prog=prog,
+  description="Splits a media file or makes metadata files according to a list of times.",
+  formatter_class=argparse.RawDescriptionHelpFormatter,
+ )
+ 
+ p.add_argument("splits_file", metavar="splits-file",
+                help="the splits file to parse")
+ p.add_argument("-n", "--dry-run", action="store_true",
+                help="in FFmpeg mode, only print the commands that would be executed")
+ 
+ g = p.add_argument_group("mode arguments")
+ m = g.add_mutually_exclusive_group()
+ m.add_argument("-l", "--list", action="store_true",
+                help="show the splits and exit")
+ m.add_argument("-v", "--vtt", dest="vtt_kind",
+                choices="subtitles,captions,chapters".split(","),
+                help="generate a WebVTT file of the given kind")
+ m.add_argument("-m", "--ffmetadata", action="store_true",
+                help="generate an ffmetadata file with chapter definitions")
+ m.add_argument("-F", "--ffmpeg", dest="ffmpeg_args", nargs=argparse.REMAINDER,
+                help="split a media file using ffmpeg(1) (see below)")
+ 
+ p.epilog = """
+Splits file format:
 
 The splits file consists of one split per line, with each line containing a
 position in seconds from which to start, followed by a tab and the name of an
@@ -41,52 +147,136 @@ output file (sans extension).  If a line contains a time but not a name, it
 will be treated as the end time of the previous split but not as a separate
 split.  If a line is missing a time, then it will be ignored.
 
-To reference the output filename in the FFmpeg command line, use `{}`.  The
-FFmpeg arguments used to specify the start and length will be inserted
-immediately before the first argument that references the split name.
+Times are of the format `[[hours:]minutes:]seconds`.  The seconds
+component may contain a decimal component.  Decimal math will be used
+instead of floating point math.
+
+
+Special split names:
+
+* Empty names and names beginning with `#` or `##` are chapter splits.
+  These splits will be ignored in WebVTT caption or subtitle modes.
+  If a split name begins with two `#`s, it will also be ignored in
+  FFmpeg mode.
+
+* Names beginning with a `-` are caption splits.
+  These splits will only be used in WebVTT caption or subtitle modes.
+
+The leading symbol will be removed from special split names.
+
+
+WebVTT / ffmetadata modes:
+
+These formats will be printed to standard output.
+
+Square brackets (`[` / `]`) and the text inside of them will be italicized
+(using `<i>` / `</i>`) in WebVTT subtitles / captions.
+
+
+FFmpeg mode:
+
+To reference the output filename in the FFmpeg command line, use `{}`.
+Use `-n` / `--dry-run` before `-F` / `--ffmpeg` to test your FFmpeg
+arguments.
+
+The FFmpeg arguments used to specify the start time (`-ss`) and length (`-t`)
+will be inserted as output arguments immediately before the first argument
+that references the split name.
 
 If the first two arguments after the splits file are `-ss {}`, then the start
 time will be passed to FFmpeg as an input flag and not an output flag.
 
-Example: %s splits.txt -i input.mp4 -vn -c:a flac {}.flac
-creates FLAC files for each split defined in the splits file.
-""".lstrip().replace("%s", os.path.basename(argv[0]))
- if len(argv) < 3:
-  print(USAGE, file=sys.stderr)
+Example: %s splits.txt -F -i input.mp4 -vn -c:a flac {}.flac
+Creates FLAC files for each split defined in the splits file.
+""" % prog
+ 
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ def arg_error(message: str) -> int:
+  print(f"{p.format_usage()}{p.prog}: error: {message}", file=sys.stderr)
   return 2
  
- splits_file = argv[1]
- ffmpeg_args = argv[2:]
- list_mode = ffmpeg_args[0] == "--list"
- 
- if list_mode and len(ffmpeg_args) != 1:
-  print(USAGE, file=sys.stderr)
-  return 2
- 
- ss_as_input = ffmpeg_args[0] == "-ss" and ffmpeg_args[1] == "{}"
- if ss_as_input:
-  ffmpeg_args = ffmpeg_args[2:]
- 
- with open(splits_file, "r") as f:
+ with open(options.splits_file, "r") as f:
   splits_lines = f.read().splitlines()
  
  for i in range(len(splits_lines)):
   if "\t" not in splits_lines[i]:
    splits_lines[i] += "\t"
  
- splits = [Split(i[0], i[1]) for i in [j.split("\t", 2) for j in splits_lines]]
+ splits: List[Split]
+ splits = [Split(start=i[0], name=i[1]) for i in [j.split("\t", 2) for j in splits_lines]]
+ non_ffmpeg_splits: List[Split] = []
  for i in range(len(splits)):
+  name = caption = splits[i].name.strip()
+  if name.startswith("#"):
+   caption = ""
+   name = name[1:]
+   if name.startswith("#"):
+    non_ffmpeg_splits += [splits[i]]
+    name = name[1:]
+  elif name.startswith("-"):
+   caption = caption[1:]
+   name = ""
+  splits[i].name = name.strip()
+  splits[i].caption = caption.strip()
   if i + 1 < len(splits):
    splits[i].end = splits[i + 1].start
  
- splits = [i for i in splits if i.name and i.start is not None]
+ splits = [i for i in splits if i.start is not None and i.end is not None]
+ if options.vtt_kind or options.ffmetadata:
+  if splits[0].start > 0 and splits[0].end is not None:
+   empty_split = Split(start=0, name="")
+   empty_split.end = splits[0].start
+   splits = [empty_split] + splits
  
- if list_mode:
+ if options.vtt_kind:
+  print("WEBVTT")
   for split in splits:
-   print(split.debug())
- else:
+   if options.vtt_kind != "chapters":
+    if not split.caption:
+     continue
+    if split.caption and split.caption == split.name:
+     split.end = min(Timestamp(split.start + 5), split.end)
+   print()
+   print(split.webvtt())
+  return 0
+ 
+ elif options.ffmetadata:
+  print(";FFMETADATA1")
   for split in splits:
-   time_args = []
+   if split.caption and not split.name:
+    continue
+   print()
+   print(split.ffmetadata())
+  return 0
+ 
+ elif options.list:
+  splits = [i for i in splits if i.name]
+  for split in splits:
+   print(split.human())
+  return 0
+ 
+ elif options.ffmpeg_args is not None:
+  ffmpeg_args = options.ffmpeg_args
+  if not len(ffmpeg_args):
+   return arg_error("at least one FFmpeg argument is required")
+  
+  ss_as_input = ffmpeg_args[0] == "-ss" and ffmpeg_args[1] == "{}"
+  if ss_as_input:
+   ffmpeg_args = ffmpeg_args[2:]
+  
+  def filter_arg(arg: str, name: str) -> str:
+   name = name.replace("/", "_").replace("\\", "_")
+   if arg.startswith("{}") and name.startswith("-"):
+    arg = "." + os.sep + name + arg[2:]
+   return arg.replace("{}", name)
+  
+  splits = [i for i in splits if i.name and i not in non_ffmpeg_splits]
+  for split in splits:
+   time_args: List[str] = []
    
    name_pos = -1
    for i in range(len(ffmpeg_args)):
@@ -95,7 +285,7 @@ creates FLAC files for each split defined in the splits file.
      name_pos = i
      break
    
-   ffmpeg_args_filtered = [arg.replace("{}", split.name) for arg in ffmpeg_args]
+   ffmpeg_args_filtered = [filter_arg(arg, split.name) for arg in ffmpeg_args]
    
    ss_args = ["-ss", str(split.start)]
    if ss_as_input:
@@ -115,9 +305,15 @@ creates FLAC files for each split defined in the splits file.
    cmd = ["ffmpeg"] + ffmpeg_args_filtered
    cmd_str = " ".join([pipes.quote(arg) for arg in cmd])
    print("+ " + cmd_str, file=sys.stderr)
-   r = subprocess.call(cmd)
-   if r != 0:
-    return r
+   if not options.dry_run:
+    r = subprocess.call(cmd)
+    if r != 0:
+     return r
+  
+  return 0
+ 
+ else:
+  return arg_error("a mode argument is required")
 
 
 if __name__ == "__main__":
