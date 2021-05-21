@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 """Splits a media file according to a list of times."""
 
@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 
-class Split(object):
+class Split:
  def __init__(self, start, name):
   try:
    self.start = float(start)
@@ -50,9 +50,9 @@ time will be passed to FFmpeg as an input flag and not an output flag.
 
 Example: %s splits.txt -i input.mp4 -vn -c:a flac {}.flac
 creates FLAC files for each split defined in the splits file.
-""".lstrip().replace("%s", argv[0])
+""".lstrip().replace("%s", os.path.basename(argv[0]))
  if len(argv) < 3:
-  print >> sys.stderr, USAGE
+  print(USAGE, file=sys.stderr)
   return 2
  
  splits_file = argv[1]
@@ -60,22 +60,22 @@ creates FLAC files for each split defined in the splits file.
  list_mode = ffmpeg_args[0] == "--list"
  
  if list_mode and len(ffmpeg_args) != 1:
-  print >> sys.stderr, USAGE
+  print(USAGE, file=sys.stderr)
   return 2
  
  ss_as_input = ffmpeg_args[0] == "-ss" and ffmpeg_args[1] == "{}"
  if ss_as_input:
   ffmpeg_args = ffmpeg_args[2:]
  
- with open(splits_file, "rb") as f:
+ with open(splits_file, "r") as f:
   splits_lines = f.read().splitlines()
  
- for i in xrange(len(splits_lines)):
+ for i in range(len(splits_lines)):
   if "\t" not in splits_lines[i]:
    splits_lines[i] += "\t"
  
  splits = [Split(i[0], i[1]) for i in [j.split("\t", 2) for j in splits_lines]]
- for i in xrange(len(splits)):
+ for i in range(len(splits)):
   if i + 1 < len(splits):
    splits[i].end = splits[i + 1].start
  
@@ -83,13 +83,13 @@ creates FLAC files for each split defined in the splits file.
  
  if list_mode:
   for split in splits:
-   print split.debug()
+   print(split.debug())
  else:
   for split in splits:
    time_args = []
    
    name_pos = -1
-   for i in xrange(len(ffmpeg_args)):
+   for i in range(len(ffmpeg_args)):
     arg = ffmpeg_args[i]
     if "{}" in arg:
      name_pos = i
@@ -114,7 +114,7 @@ creates FLAC files for each split defined in the splits file.
    
    cmd = ["ffmpeg"] + ffmpeg_args_filtered
    cmd_str = " ".join([pipes.quote(arg) for arg in cmd])
-   print >> sys.stderr, "+ " + cmd_str
+   print("+ " + cmd_str, file=sys.stderr)
    r = subprocess.call(cmd)
    if r != 0:
     return r
