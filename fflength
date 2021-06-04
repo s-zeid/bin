@@ -1,0 +1,72 @@
+#!/bin/sh
+
+main() {
+ local input=""
+ local add_start=0
+ local raw=0
+ 
+ local arg
+ for arg; do
+  if ! (printf '%s\n' "$arg" | head -n 1 | grep -q -e '^-'); then
+   input="$arg"; shift
+  elif [ x"$arg" = x"-a" ] || [ x"$arg" = x"--add-start" ]; then
+   add_start=1; shift
+  elif [ x"$arg" = x"-r" ] || [ x"$arg" = x"--raw" ]; then
+   raw=1; shift
+  fi
+ done
+ 
+ if [ $# -ne 0 ] || [ x"$input" = x"" ]; then
+  echo "Usage: $(basename -- "$0") [-a|--add-start] [-r|--raw] <input-file>" >&2
+  return 2
+ fi
+ 
+ if [ $add_start -ne 0 ]; then
+  local csv="$(ffprobe \
+   -hide_banner -loglevel fatal \
+   -show_entries format=start_time,duration \
+   -of csv=print_section=0:escape=none \
+   -i "$input")"
+  local start_time="${csv%%,*}"
+  local duration="${csv##*,}"
+  local n_a="N/A"
+  if [ x"$duration" = x"$n_a" ]; then
+   if [ x"$start_time" = x"$n_a" ]; then
+    printf '%s\n' "$n_a"
+    return 0
+   else
+    duration=0
+   fi
+  fi
+  printf '%s\n' "$(awk \
+   -v start_time="$start_time" -v duration="$duration" -v raw="$raw" \
+   'BEGIN {
+    seconds = start_time + duration
+    if (raw) {
+     printf "%6f", seconds
+    } else {
+     hours = int(seconds / 3600); seconds = seconds % 3600
+     minutes = int(seconds / 60); seconds = seconds % 60
+     printf "%d:%02d:%s%6f", hours, minutes, (seconds < 10 ? "0" : ""), seconds
+    }
+    exit
+   }')"
+ else
+  local csv="$(ffprobe \
+   -hide_banner -loglevel fatal \
+   -show_entries format=start_time,duration \
+   -of csv=print_section=0:escape=none \
+   $([ $raw -eq 0 ] && printf '%s\n' '-pretty' || true) \
+   -i "$input")"
+  local start_time="${csv%%,*}"
+  local duration="${csv##*,}"
+  if ! [ x"$duration" = x"N/A" ]; then
+   printf '%s\n' "$duration"
+  else
+   printf '%s\n' "$start_time"
+  fi
+ fi
+}
+
+
+main "$@"
