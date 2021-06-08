@@ -1,39 +1,92 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
+
+# Requirements:
+# 
+# * gio (`apt install libglib2.0-bin`)
+# * gvfsd-archive (`apt install gvfs-backends`)
+# * gvfsd-fuse (`apt install gvfs-fuse`)
 
 # The hard way:
+# 
 # $ /usr/lib/gvfs/gvfsd-archive file=(file) &
 
+
+import argparse
 import os
 import subprocess
 import sys
-import urllib
+import urllib.parse
+import warnings
 
-def main(argv):
- usage = "Usage: %s file" % argv[0]
- if len(argv) not in (2, 3):
-  print >> sys.stderr, usage
-  return 2
- if len(argv) == 3:
-  if argv[1] in ("-u", "--unmount", "--umount"):
-   unmount_archive(argv[2])
+from typing import *
+
+
+def main(argv: List[str]) -> int:
+ p = argparse.ArgumentParser(prog=os.path.basename(argv[0]))
+ p.add_argument("-u", "--unmount", "--umount", dest="unmount", action="store_true",
+                help="unmount the archive")
+ p.add_argument("archive_file", metavar="archive-file",
+                help="the archive file to mount or unmount")
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ warnings.simplefilter("error", UserWarning)
+ try:
+  if options.unmount:
+   unmount_archive(options.archive_file)
   else:
-   print >> sys.stderr, usage
-   return 2
- else:
-  mount_archive(argv[1])
+   mount_archive(options.archive_file)
+  return 0
+ except subprocess.CalledProcessError as exc:
+  return exc.returncode
+ except UserWarning as exc:
+  print(f"{p.prog}: warning: {exc}", file=sys.stderr)
+ 
+ raise RuntimeError("BUG: unreachable")
 
-def archive_url(archive, double_quote=False):
- archive = "file://" + os.path.abspath(archive)
- archive_quoted = urllib.quote(archive, safe="")
+
+def mount_archive(archive_path: str):
+ subprocess.run(
+  ["gio", "mount", archive_url(archive_path)],
+  check=True,
+ )
+ try:
+  print(archive_fuse_path(archive_path))
+ except RuntimeError as exc:
+  warnings.warn(str(exc))
+
+
+def unmount_archive(archive_path: str):
+ subprocess.run(
+  ["gio", "mount", "--unmount", archive_url(archive_path)],
+  check=True,
+ )
+
+
+def archive_url(archive_path: str, double_quote=True, *, _prefix="archive://") -> str:
+ archive_unquoted = "file://" + os.path.abspath(archive_path)
+ archive_quoted = urllib.parse.quote(archive_unquoted, safe="")
  if double_quote:
-  archive_quoted = urllib.quote(archive_quoted, safe="")
- return "archive://" + archive_quoted
+  archive_quoted = urllib.parse.quote(archive_quoted, safe="")
+ return _prefix + archive_quoted
 
-def mount_archive(archive):
- subprocess.call(["gvfs-mount", archive_url(archive)])
 
-def unmount_archive(archive):
- subprocess.call(["gvfs-mount", "--unmount", archive_url(archive, double_quote=True)])
+def archive_fuse_path(archive_path: str, fuse_root: str = None) -> str:
+ if not fuse_root:
+  fuse_root = os.environ.get("XDG_RUNTIME_DIR", "")
+  if fuse_root:
+   fuse_root = os.path.join(fuse_root, "gvfs")
+  if not fuse_root or not os.path.ismount(fuse_root):
+   fuse_root = "/run/user/%d/gvfs" % os.getuid()
+   if not os.path.ismount(fuse_root):
+    fuse_root = os.path.expanduser("~/.gvfs")
+    if not os.path.ismount(fuse_root):
+     raise RuntimeError("could not find GVFS FUSE mount point")
+ 
+ return os.path.join(fuse_root, archive_url(archive_path, _prefix="archive:host="))
+
 
 if __name__ == "__main__":
  try:
