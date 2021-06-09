@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# vim: set fdm=marker:
 
 # Requirements:
 # 
@@ -11,22 +12,37 @@
 # $ /usr/lib/gvfs/gvfsd-archive file=(file) &
 
 
+# Imports  {{{1
+
 import argparse
 import os
 import subprocess
 import sys
+import time
 import urllib.parse
 import warnings
 
 from typing import *
 
 
-def main(argv: List[str]) -> int:
+def main(argv: List[str]) -> int:  #{{{1
  p = argparse.ArgumentParser(prog=os.path.basename(argv[0]))
- p.add_argument("-u", "--unmount", "--umount", dest="unmount", action="store_true",
-                help="unmount the archive")
  p.add_argument("archive_file", metavar="archive-file",
                 help="the archive file to mount or unmount")
+ 
+ g = p.add_argument_group("actions")
+ m = g.add_mutually_exclusive_group()
+ m.add_argument("-m", "--mount", action="store_true", dest="_unused_mount_arg",
+                help="mount the archive (the default action)")
+ m.add_argument("-u", "--unmount", "--umount", dest="unmount", action="store_true",
+                help="unmount the archive")
+ m.add_argument("-p", "--print-path", action="store_true",
+                help="print the mount point of the archive file")
+ m.add_argument("-s", "--shell", action="store_true",
+                help="start a shell in the mount point"
+                     " and, if previously not mounted, unmount when the shell exits"
+                     " (uses `$SHELL`)")
+ 
  try:
   options = p.parse_args(argv[1:])
  except SystemExit as exc:
@@ -34,46 +50,83 @@ def main(argv: List[str]) -> int:
  
  warnings.simplefilter("error", UserWarning)
  try:
-  if options.unmount:
+  if options.print_path:
+   print(archive_fuse_path(options.archive_file))
+   return 0
+  elif options.unmount:
    unmount_archive(options.archive_file)
-  else:
+   return 0
+  elif options.shell:
+   r = run_in_archive([os.environ.get("SHELL", "/bin/sh")], options.archive_file)
+   return r.returncode
+  else:  # mount
    mount_archive(options.archive_file)
-  return 0
+   try:
+    print(archive_fuse_path(options.archive_file))
+    return 0
+   except RuntimeError as exc:
+    warnings.warn(str(exc))
+    return 0
  except subprocess.CalledProcessError as exc:
   return exc.returncode
+ except RuntimeError as exc:
+  print(f"{p.prog}: error: {exc}", file=sys.stderr)
+  return 1
  except UserWarning as exc:
   print(f"{p.prog}: warning: {exc}", file=sys.stderr)
  
  raise RuntimeError("BUG: unreachable")
 
 
-def mount_archive(archive_path: str):
+def mount_archive(  #{{{1
+ archive_path: str,
+ *,
+ fuse_root: str = None,
+ wait_seconds: Union[int, float] = 5.0,
+):
  subprocess.run(
   ["gio", "mount", archive_url(archive_path)],
   check=True,
  )
- try:
-  print(archive_fuse_path(archive_path))
- except RuntimeError as exc:
-  warnings.warn(str(exc))
+ while not archive_is_mounted(archive_path, fuse_root=fuse_root) and wait_seconds > 0.0:
+  wait_interval = 0.5
+  time.sleep(wait_interval)
+  wait_seconds -= wait_interval
 
 
-def unmount_archive(archive_path: str):
+def unmount_archive(archive_path: str, *, fuse_root: str = None):  #{{{1
  subprocess.run(
   ["gio", "mount", "--unmount", archive_url(archive_path)],
   check=True,
  )
 
 
-def archive_url(archive_path: str, double_quote=True, *, _prefix="archive://") -> str:
- archive_unquoted = "file://" + os.path.abspath(archive_path)
- archive_quoted = urllib.parse.quote(archive_unquoted, safe="")
- if double_quote:
-  archive_quoted = urllib.parse.quote(archive_quoted, safe="")
- return _prefix + archive_quoted
+def run_in_archive(  #{{{1
+ cmd: List[str],
+ archive_path: str,
+ *,
+ fuse_root: str = None,
+ **popen_kwargs,
+) -> subprocess.CompletedProcess:
+ mount_point = archive_fuse_path(archive_path, ignore_unmounted=True)
+ was_mounted = archive_is_mounted(archive_path)
+ if not was_mounted:
+  mount_archive(archive_path)
+  # will raise error if not mounted in time:
+  mount_point = archive_fuse_path(archive_path)
+ try:
+  return subprocess.run(cmd, cwd=mount_point, **popen_kwargs)
+ finally:
+  if not was_mounted:
+   unmount_archive(archive_path)
 
 
-def archive_fuse_path(archive_path: str, fuse_root: str = None) -> str:
+def archive_fuse_path(  #{{{1
+ archive_path: str,
+ *,
+ fuse_root: str = None,
+ ignore_unmounted=False,
+) -> str:
  if not fuse_root:
   fuse_root = os.environ.get("XDG_RUNTIME_DIR", "")
   if fuse_root:
@@ -85,10 +138,32 @@ def archive_fuse_path(archive_path: str, fuse_root: str = None) -> str:
     if not os.path.ismount(fuse_root):
      raise RuntimeError("could not find GVFS FUSE mount point")
  
- return os.path.join(fuse_root, archive_url(archive_path, _prefix="archive:host="))
+ result = os.path.join(fuse_root, archive_url(archive_path, _prefix="archive:host="))
+ if not ignore_unmounted:
+  if not archive_is_mounted(archive_path, fuse_root=fuse_root):
+   raise RuntimeError("archive does not appear to be mounted")
+ return result
 
 
-if __name__ == "__main__":
+def archive_is_mounted(archive_path: str, *, fuse_root: str = None) -> bool:  #{{{1
+ mount = archive_fuse_path(archive_path, fuse_root=fuse_root, ignore_unmounted=True)
+ return os.path.isdir(mount)
+
+
+def archive_url(  #{{{1
+ archive_path: str,
+ *,
+ double_quote=True,
+ _prefix="archive://",
+) -> str:
+ archive_unquoted = "file://" + os.path.abspath(archive_path)
+ archive_quoted = urllib.parse.quote(archive_unquoted, safe="")
+ if double_quote:
+  archive_quoted = urllib.parse.quote(archive_quoted, safe="")
+ return _prefix + archive_quoted
+
+
+if __name__ == "__main__":  #{{{1
  try:
   sys.exit(main(sys.argv))
  except KeyboardInterrupt:
