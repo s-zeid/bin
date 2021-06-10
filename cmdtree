@@ -119,6 +119,12 @@
 #   will undefine a macro.  For all of these directives, `{NAME}` and `%{NAME}`
 #   mean the same thing.  Macro names must start with a letter or underscore.
 #   Macro definitions or undefinitions may be nested in conditional clauses.
+#   
+#   Predefined macros:
+#   
+#   * `GUI` - 1 if running under X (`$DISPLAY` is not empty) or Wayland
+#     (`$WAYLAND_DISPLAY` is set to an absolute path to a socket or to a
+#     socket under `$XDG_RUNTIME_DIR`); 0 otherwise.
 # 
 # For directives starting with `#%`, zero or more spaces may exist between
 # the `#%` and the name of the directive.
@@ -237,9 +243,13 @@ preprocess() {  #[[[1
   { if (in_ignored_section == 0) print }
   { if (in_ignored_section == 2) in_ignored_section = 0 }
  ' | \
- awk '
+ awk -v IS_GUI="$IS_GUI" '
   # `#%if` preprocessing
-  BEGIN { in_if_section = 0; is_true = 0 }
+  BEGIN {
+   definitions["GUI"] = int(IS_GUI)
+   in_if_section = 0
+   is_true = 0
+  }
   /^#% *(el)?if / {
    in_if_section = 1
    condition = $0
