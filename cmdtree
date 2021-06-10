@@ -6,7 +6,7 @@
 # cmdtree  
 # Converts one or more trees of command line arguments into a shell script.
 # 
-# Copyright (c) 2014-2020 S. Zeid.  Released under the X11 License.  
+# Copyright (c) 2014-2021 S. Zeid.  Released under the X11 License.  
 # <https://code.s.zeid.me/bin/blob/master/cmdtree>
 # 
 # 
@@ -16,9 +16,10 @@
 # `cmdtree [-n|--dry-run] {script} [...]`
 # 
 # * If `-n/--dry-run` is set, then the generated script will be printed
-#   to standard output instead of executed.
-# * If a filename ends in `.gui`, then it will be ignored if `$DISPLAY`
-#   is empty or unset.
+#   to standard output instead of being executed.
+# * If a filename ends in `.gui`, then it will be ignored unless running
+#   under X (`$DISPLAY` is not empty) or Wayland (`$WAYLAND_DISPLAY` is set
+#   to an absolute path to a socket or to a socket under `$XDG_RUNTIME_DIR`).
 # 
 # 
 # Example script
@@ -155,12 +156,35 @@
 
 PROG=$(basename -- "$0")
 
-export ARCH="$(uname -m)"
-export IS_GUI="$([ x"$DISPLAY" != x"" ] && echo 1 || echo 0)"
-
 posix_flag=$([ x"${CMDTREE_POSIX:-0}" != x"0" ] && printf '%s\n' '--posix' || true)
 
 awk() { command awk $posix_flag "$@"; }
+
+
+# Test for Wayland  #[[[1
+
+is_wayland=0
+if [ x"$WAYLAND_DISPLAY" != x"" ]; then
+ if
+  (printf '%s\n' "$WAYLAND_DISPLAY" | head -n 1 | grep -q -e '^/') &&
+  [ -S "$WAYLAND_DISPLAY" ]
+ then
+  is_wayland=1
+ elif [ x"$XDG_RUNTIME_DIR" != x"" ] && [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
+  is_wayland=1
+ fi
+fi
+
+
+# Exports  #[[[1
+
+export ARCH="$(uname -m)"
+
+if [ x"$DISPLAY" != x"" ] || [ $is_wayland -ne 0 ]; then
+ export IS_GUI=1
+else
+ export IS_GUI=0
+fi
 
 
 main() {  #[[[1
