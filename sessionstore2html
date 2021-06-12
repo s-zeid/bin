@@ -601,87 +601,100 @@ def get_sessionstore_js_path(profile_dir: str) -> Optional[str]:
 
 
 def main(argv: List[str]) -> int:  #{{{1
- desc, epilog = __doc__.split("\n\n", 1)
- p = argparse.ArgumentParser(
-  description=desc.strip(),
-  epilog=epilog.strip(),
-  formatter_class=argparse.RawDescriptionHelpFormatter,
- )
- p.add_argument("--hep", dest="_hep_easter_egg", action="store_true",
-                help=argparse.SUPPRESS)
- p.add_argument("-l", "--print-path", action="store_true",
-                help="print the detected path to the session store file and exit")
- p.add_argument("-o", "--output",
-                help="write to the given filename instead of standard output")
- p.add_argument("sessionstore_or_profile_path", default=None, nargs="?",
-                help="the session store file or profile path (default: autodetect)")
-
- try:
-  options = p.parse_args(argv[1:])
- except SystemExit as exc:
-  return exc.code
- 
- if options._hep_easter_egg:
-  print("Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes.")
-  print("--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s")
-  return 0
- 
- sessionstore_js = options.sessionstore_or_profile_path
- 
- if sessionstore_js is None:
-  profile_path = get_default_profile_path()
-  if not profile_path:
-   print("error: could not find default Firefox profile", file=sys.stderr)
-   return 1
-  sessionstore_js = get_sessionstore_js_path(profile_path)
-  if not sessionstore_js:
-   print("error: could not find sessionstore.js file in the default"
-         " Firefox profile", file=sys.stderr)
-   return 1
- elif os.path.isdir(sessionstore_js):
-  profile_path = cast(str, sessionstore_js)
-  sessionstore_js = get_sessionstore_js_path(profile_path)
-  if not sessionstore_js:
-   print("error: could not find sessionstore.js file in the given"
-         " Firefox profile", file=sys.stderr)
-   return 1
- 
- if options.print_path:
-  print(sessionstore_js)
-  return 0
-
- if isinstance(sessionstore_js, str):
-  if sessionstore_js == "-":
-   sessionstore_js = sys.stdin.buffer
+ _showwarning = warnings.showwarning
+ def showwarning(message, category, *args, **kwargs):
+  if category == UserWarning:
+   print(f"warning: {message}", file=sys.stderr)
   else:
-   sessionstore_js = open(sessionstore_js, "rb")
+   _showwarning(message, category, *args, **kwargs)
+ warnings.showwarning = showwarning
  
- tz = datetime.timezone(datetime.timedelta(seconds=time.localtime().tm_gmtoff))
- now = datetime.datetime.now(tz=datetime.timezone.utc).astimezone(tz)
- tz_str = now.strftime("%z")
- tz_str = tz_str[0:3] + ":" + tz_str[3:5]
- date = now.strftime("%Y-%m-%d %H:%M:%S")
- date_iso = now.strftime("%Y-%m-%dT%H:%M:%S") + tz_str
- 
- filename = now.strftime("%Y-%m-%d.%H-%M-%S") + ".html"
- filename_date_re = r"(^|[._-])[0-9]{4}(-[0-9]{2}){2}.[0-9]{2}([-_:][0-9]{2}){2}([._+-]|$)"
- if options.output:
-  output_test_name = os.path.basename(options.output).replace(" ", "_")
-  if re.search(filename_date_re, output_test_name):
-   filename = os.path.basename(options.output)
- 
- session = Session(sessionstore_js)
- html = make_html(session.windows, date, date_iso, filename)
- if options.output:
-  with open(options.output, "w") as f:
-   f.write(html)
- else:
-  print(html)
- 
- if sessionstore_js != sys.stdin.buffer:
-  sessionstore_js.close()
- 
- return 0
+ try:
+  prog = os.path.basename(argv[0])
+  desc, epilog = __doc__.split("\n\n", 1)
+  p = argparse.ArgumentParser(
+   prog=prog,
+   description=desc.strip(),
+   epilog=epilog.strip(),
+   formatter_class=argparse.RawDescriptionHelpFormatter,
+  )
+  p.add_argument("--hep", dest="_hep_easter_egg", action="store_true",
+                 help=argparse.SUPPRESS)
+  p.add_argument("-l", "--print-path", action="store_true",
+                 help="print the detected path to the session store file and exit")
+  p.add_argument("-o", "--output",
+                 help="write to the given filename instead of standard output")
+  p.add_argument("sessionstore_or_profile_path", default=None, nargs="?",
+                 help="the session store file or profile path (default: autodetect)")
+
+  try:
+   options = p.parse_args(argv[1:])
+  except SystemExit as exc:
+   return exc.code
+  
+  if options._hep_easter_egg:
+   print("Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes.")
+   print("--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s")
+   return 0
+  
+  sessionstore_js = options.sessionstore_or_profile_path
+  
+  if sessionstore_js is None:
+   profile_path = get_default_profile_path()
+   if not profile_path:
+    print("error: could not find default Firefox profile", file=sys.stderr)
+    return 1
+   sessionstore_js = get_sessionstore_js_path(profile_path)
+   if not sessionstore_js:
+    print("error: could not find sessionstore.js file in the default"
+          " Firefox profile", file=sys.stderr)
+    return 1
+  elif os.path.isdir(sessionstore_js):
+   profile_path = cast(str, sessionstore_js)
+   sessionstore_js = get_sessionstore_js_path(profile_path)
+   if not sessionstore_js:
+    print("error: could not find sessionstore.js file in the given"
+          " Firefox profile", file=sys.stderr)
+    return 1
+  
+  if options.print_path:
+   print(sessionstore_js)
+   return 0
+
+  if isinstance(sessionstore_js, str):
+   if sessionstore_js == "-":
+    sessionstore_js = sys.stdin.buffer
+   else:
+    sessionstore_js = open(sessionstore_js, "rb")
+  
+  tz = datetime.timezone(datetime.timedelta(seconds=time.localtime().tm_gmtoff))
+  now = datetime.datetime.now(tz=datetime.timezone.utc).astimezone(tz)
+  tz_str = now.strftime("%z")
+  tz_str = tz_str[0:3] + ":" + tz_str[3:5]
+  date = now.strftime("%Y-%m-%d %H:%M:%S")
+  date_iso = now.strftime("%Y-%m-%dT%H:%M:%S") + tz_str
+  
+  filename = now.strftime("%Y-%m-%d.%H-%M-%S") + ".html"
+  filename_date_re = r"(^|[._-])[0-9]{4}(-[0-9]{2}){2}.[0-9]{2}([-_:][0-9]{2}){2}([._+-]|$)"
+  if options.output:
+   output_test_name = os.path.basename(options.output).replace(" ", "_")
+   if re.search(filename_date_re, output_test_name):
+    filename = os.path.basename(options.output)
+  
+  session = Session(sessionstore_js)
+  html = make_html(session.windows, date, date_iso, filename)
+  if options.output:
+   with open(options.output, "w") as f:
+    f.write(html)
+  else:
+   print(html)
+  
+  if sessionstore_js != sys.stdin.buffer:
+   sessionstore_js.close()
+  
+  return 0
+ finally:
+  warnings.showwarning = _showwarning
 
 
 if __name__ == "__main__":  #{{{1
