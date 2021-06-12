@@ -289,7 +289,21 @@ $tabs
 """.lstrip("\n\r")
 
 
-Templates._load(TEMPLATES)
+_override_templates = None
+if __name__ == "__main__":
+ def _read_test_templates() -> Optional[str]:
+  p = argparse.ArgumentParser(add_help=False)
+  p.add_argument("--test-templates")
+  options, remaining = p.parse_known_args(sys.argv[1:])
+  if options.test_templates:
+   sys.argv[1:] = remaining
+   with open(options.test_templates, "r") as f:
+    return f.read()
+  return None
+ 
+ _override_templates = _read_test_templates()
+
+Templates._load(_override_templates or TEMPLATES)
 
 
 # sessionstore parsing  {{{1
