@@ -23,12 +23,13 @@ contain the unsaved note.  The original URL will be saved to a data attribute.
 
 """
 
-# Plumbing {{{1
+# Plumbing  {{{1
 
 import argparse
 import base64
 import configparser
 import datetime
+import enum
 import html
 import io
 import json
@@ -41,19 +42,21 @@ import time
 import urllib.parse
 import warnings
 
+from dataclasses import dataclass
 from typing import *
 
 if not TYPE_CHECKING:
  import lz4.block  # pip3 install lz4
 
 
-# Template helpers {{{1
+# Template helpers  {{{1
 
 def indent(s: str, n: int) -> str:
  return "\n".join((" " * (n * int(not l.startswith("$")))) + l for l in s.splitlines())
 
 
-class Template(NamedTuple):
+@dataclass
+class Template:
  template: str
  indent: int
  
@@ -120,7 +123,7 @@ class Templates:
      cls.WORDS._WORD_MAP[name] = values
 
 
-# Templates {{{1
+# Templates  {{{1
 
 TEMPLATES = """
 <?word PAGE_NAME "Saved Tabs" ?>
@@ -256,7 +259,7 @@ $tabs
 Templates._load(TEMPLATES)
 
 
-# sessionstore parsing {{{1
+# sessionstore parsing  {{{1
 
 class Tab:  #{{{2
  _src: dict
@@ -472,7 +475,7 @@ class Session:  #{{{2
   self.windows = [Window(window) for window in src["windows"]]
 
 
-# HTML generation {{{1
+# HTML generation  {{{1
 
 def make_html(windows: List[Window],
               date: str = "",
@@ -537,7 +540,91 @@ def make_tab(tab: Tab, tab_tpl: string.Template = Templates.get("TAB")) -> str:
  return tab_tpl.substitute(params)
 
 
-# Profile/sessionstore.js finders {{{1
+# HTML upgrading  {{{1
+
+def upgrade_html(session_html: str) -> str:
+ class HideLines(enum.Enum):  #{{{2
+  NONE = 0
+  ONE = 1
+  MULTIPLE = 2
+ 
+ @dataclass # FixSpec  {{{2
+ class FixSpec:
+  pattern: str
+  hide_lines: HideLines
+ 
+ def fix(old: str, new: str, specs: List[FixSpec]) -> str:  #{{{2
+  result_lines: List[str] = []
+  hide_lines = HideLines.NONE
+  replace_line = True
+  for line in old.splitlines():
+   for spec in specs:
+    if re.search(spec.pattern, line):
+     hide_lines = spec.hide_lines
+   if hide_lines == HideLines.NONE:
+    result_lines += [line]
+   if hide_lines != HideLines.NONE and replace_line:
+    result_lines += [new]
+    replace_line = False
+   if hide_lines == HideLines.ONE:
+    hide_lines = HideLines.NONE
+  result_lines += [""]  # trailing newline
+  return "\n".join(result_lines)  #}}}
+ 
+ # Remove empty line(s) after doctype
+ session_html = fix(session_html, "<!DOCTYPE html>", [
+  FixSpec(r"^<!DOCTYPE html>$", HideLines.MULTIPLE),
+  FixSpec(r"^<html", HideLines.NONE),
+ ])
+ 
+ # Upgrade stylesheets, meta viewport, and favicon; remove IE conditional comments
+ session_html = fix(session_html, Templates.get("STYLES").substitute(), [
+  FixSpec(r'^\s*<link rel="stylesheet"', HideLines.ONE),
+  FixSpec(r'^\s*<meta name="viewport"', HideLines.ONE),
+  FixSpec(r'^\s*<style[ >]', HideLines.MULTIPLE),
+  FixSpec(r'^\s*<\/style>', HideLines.ONE),
+  FixSpec(r'^\s*<link rel="icon"', HideLines.ONE),
+  FixSpec(r'^\s*<!--\[if', HideLines.MULTIPLE),
+  FixSpec(r'^\s*<!\[endif\]-->', HideLines.ONE),
+ ])
+ 
+ # Upgrade "Back to top" links
+ session_html = fix(
+  session_html,
+  '   <p><a href="#" onclick="window.scrollTo(0, 0); event.preventDefault();">Back to top</a></p>',
+  [FixSpec(r'^\s*<p><a href="#"', HideLines.ONE)],
+ )
+ 
+ return session_html
+
+
+def upgrade_path(path: str):
+ mtime_ns: Optional[int]
+ try:
+  mtime_ns = os.stat(path).st_mtime_ns
+ except OSError:
+  mtime_ns = None
+ with open(path, "r") as f:
+  old_html = f.read()
+ new_html = upgrade_html(old_html)
+ try:
+  tmp_path = path + ".ss2h-upgrade-new"
+  with open(tmp_path, "w") as f:
+   f.write(new_html)
+ except Exception:
+  os.unlink(tmp_path)
+  raise
+ else:
+  os.rename(tmp_path, path)
+  if mtime_ns is not None:
+   try:
+    atime_ns = os.stat(path).st_atime_ns
+    os.utime(path, ns=(atime_ns, mtime_ns))
+   except OSError as exc:
+    warnings.warn(f"could not restore modification time for {path}: {exc}")
+
+
+# Profile/sessionstore.js finders  {{{1
 
 def get_default_profile_path(profiles_dir: Optional[str] = None) -> Optional[str]:
  if profiles_dir is None:
@@ -624,6 +711,9 @@ def main(argv: List[str]) -> int:  #{{{1
                  help="print the detected path to the session store file and exit")
   p.add_argument("-o", "--output",
                  help="write to the given filename instead of standard output")
+  p.add_argument("--upgrade", nargs=argparse.REMAINDER,
+                 help="upgrade the given HTML files' stylesheets and HTML boilerplate"
+                      " in place")
   p.add_argument("sessionstore_or_profile_path", default=None, nargs="?",
                  help="the session store file or profile path (default: autodetect)")
 
@@ -635,6 +725,11 @@ def main(argv: List[str]) -> int:  #{{{1
   if options._hep_easter_egg:
    print("Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes.")
    print("--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s")
+   return 0
+  
+  if options.upgrade:
+   for path in options.upgrade:
+    upgrade_path(path)
    return 0
   
   sessionstore_js = options.sessionstore_or_profile_path
