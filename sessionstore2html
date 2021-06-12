@@ -155,8 +155,8 @@ TEMPLATES = """
    li { line-height: 22px; }
    .tabs { padding: 0 0.5rem; }
    .tabs > li { list-style-type: none; }
-   .tabs > li > :first-child { display: table-row; }
-   .tabs > li .title { display: table-cell; padding-inline-start: 0.25rem; }
+   .tabs > li > :first-child { display: table-row; position: relative; }
+   .tabs > li .title { display: table-cell; padding-inline-start: calc(16px + 0.25rem); }
    .tabs > li.pinned + li:not(.pinned) { border-top: 1px solid var(--faint);
                                          margin-top: 0.5rem; padding-top: 0.5rem; }
    .tabs > li > .children { position: relative; padding-inline-start: 1.25rem; }
@@ -170,7 +170,7 @@ TEMPLATES = """
    
    .tabs > li .icon {
     display: table-cell; width: 16px; max-height: 16px;
-    position: relative; top: var(--top); --top: 0.125rem;
+    position: absolute; top: 0; transform: translateY(var(--top)); --top: 0.125rem;
     font-size: 0; line-height: 1; user-select: none;
    }
    .tabs > li .icon:not([alt="group"]) { color: #666; }
@@ -179,12 +179,11 @@ TEMPLATES = """
    .tabs > li .icon::after {
     content: var(--icon-alt, none);
     display: inline-block; width: 16px; height: 16px; position: absolute; top: 0; left: 0;
-    background: var(--background, #fff); border: 0 solid var(--background, #fff);
-    border-top-width: calc(var(--top) * 0.5);
+    background: var(--background, #fff);
    }
    :root {
-    --icon-tab: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0,0 16,16' color='%23666' stroke='currentColor' stroke-width='2' fill='none'><path d='M1,1 v12 h14 v-10 h-6 v-2 h-8 Z' /><path opacity='0.5' d='M2,3 h6' /><path d='M4,6.5 h8 m-8,1 h8 m-8,2 h6' stroke-width='1' /></svg>");
-    --icon-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0,0 16,16' color='%23666' stroke='currentColor' stroke-width='2' fill='none'><path d='M1,1 v12 h14 v-12 Z' /><path fill='currentColor' d='M0,12 l5,-5 l6,6 m-4,0 l4,-4 l4,4 Z' /><circle cx='12' cy='4' r='0.05' /></svg>");
+    --icon-tab: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0,-1 16,16' color='%23666' stroke='currentColor' stroke-width='2' fill='none'><path d='M1,1 v12 h14 v-10 h-6 v-2 h-8 Z' /><path opacity='0.5' d='M2,3 h6' /><path d='M4,6.5 h8 m-8,1 h8 m-8,2 h6' stroke-width='1' /></svg>");
+    --icon-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0,-1 16,16' color='%23666' stroke='currentColor' stroke-width='2' fill='currentColor'><path fill='none' d='M1,1 v12 h14 v-12 Z' /><path d='M0,12 l5,-5 l6,6 m-4,0 l4,-4 l4,4 Z' /><circle cx='12' cy='4' r='1.0625' stroke='none' /></svg>");
     --icon-group: radial-gradient(farthest-side, currentColor 87.5%, transparent 100%);
    }
    .tabs > li .icon[alt="tab"] { --icon-alt: var(--icon-tab); }
@@ -193,7 +192,12 @@ TEMPLATES = """
    }
    .tabs > li .icon[alt="group"] {
     --icon-alt: var(--icon-group); color: var(--group-color, currentColor);
-    top: 0.0625rem;
+    --top: 0.125rem;
+   }
+   .tabs > li .icon[alt="group"]::after {
+    /* Firefox does not support gradients in `content`
+       (see <https://bugzilla.mozilla.org/show_bug.cgi?id=1285811>) */
+    content: ""; background: var(--icon-alt) no-repeat, var(--background, #fff);
    }
    
    .tabs > li.group > .children { position: relative; border-color: transparent; }
@@ -217,8 +221,9 @@ TEMPLATES = """
    .tabs > li .icon[hidden] + .title::before {
     content: var(--icon-tab);
     display: inline-block; width: 16px; height: 16px;
-    position: relative; top: 0.1875rem;
-    margin-inline-start: -0.25rem; margin-inline-end: 0.25rem;
+    position: absolute; transform: translateY(0.125rem);
+    margin-inline-start: calc(-16px + -0.25rem); margin-inline-end: 0.25rem;
+    background: var(--background, #fff);
    }
   </style>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0,0 16,16' color='%23808080' stroke='currentColor' stroke-width='2' fill='white' fill-opacity='0.875'><path d='M1,1 v14 h14 v-12 h-6 v-2 h-8 Z' /><path opacity='0.5' d='M2,3 h6' /><path d='M4,6.5 h8 m-8,1 h8 m-8,2 h1 m1,0 h4 m-6,2 h1 m1,0 h6' stroke-width='1' /></svg>" />
