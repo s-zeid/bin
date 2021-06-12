@@ -128,6 +128,7 @@ class Templates:
 TEMPLATES = """
 <?word PAGE_NAME "Saved Tabs" ?>
 <?word TAB "tab","tabs" ?>
+<?word DEFAULT_GROUP_TITLE "Group {}" ?>
 
 
 <?template STYLES 0 ?>
@@ -156,7 +157,6 @@ TEMPLATES = """
    .tabs > li { list-style-type: none; }
    .tabs > li > :first-child { display: table-row; }
    .tabs > li .title { display: table-cell; padding-inline-start: 0.25rem; }
-   .tabs > li > :first-child:not(a):not(.link) > .title { color: var(--color, #000); }
    .tabs > li.pinned + li:not(.pinned) { border-top: 1px solid var(--faint);
                                          margin-top: 0.5rem; padding-top: 0.5rem; }
    .tabs > li > .children { position: relative; padding-inline-start: 1.25rem; }
@@ -171,8 +171,9 @@ TEMPLATES = """
    .tabs > li .icon {
     display: table-cell; width: 16px; max-height: 16px;
     position: relative; top: var(--top); --top: 0.125rem;
-    font-size: 0; line-height: 1; color: #666; user-select: none;
+    font-size: 0; line-height: 1; user-select: none;
    }
+   .tabs > li .icon:not([alt="group"]) { color: #666; }
    
    /* replace broken tab icons */
    .tabs > li .icon::after {
@@ -184,11 +185,33 @@ TEMPLATES = """
    :root {
     --icon-tab: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0,0 16,16' color='%23666' stroke='currentColor' stroke-width='2' fill='none'><path d='M1,1 v12 h14 v-10 h-6 v-2 h-8 Z' /><path opacity='0.5' d='M2,3 h6' /><path d='M4,6.5 h8 m-8,1 h8 m-8,2 h6' stroke-width='1' /></svg>");
     --icon-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0,0 16,16' color='%23666' stroke='currentColor' stroke-width='2' fill='none'><path d='M1,1 v12 h14 v-12 Z' /><path fill='currentColor' d='M0,12 l5,-5 l6,6 m-4,0 l4,-4 l4,4 Z' /><circle cx='12' cy='4' r='0.05' /></svg>");
+    --icon-group: radial-gradient(farthest-side, currentColor 87.5%, transparent 100%);
    }
    .tabs > li .icon[alt="tab"] { --icon-alt: var(--icon-tab); }
    .tabs > li .icon[alt="image"], .tabs > li .icon[alt^="photo"] {
     --icon-alt: var(--icon-image);
    }
+   .tabs > li .icon[alt="group"] {
+    --icon-alt: var(--icon-group); color: var(--group-color, currentColor);
+    top: 0.0625rem;
+   }
+   
+   .tabs > li.group > .children { position: relative; border-color: transparent; }
+   .tabs > li.group > .children:not(:empty)::before {
+    --top: -0.5rem; z-index: 1;
+    border-color: var(--group-color, currentColor); opacity: 0.40625;
+   }
+   
+   .tabs > li.group.no-color,
+   .tabs > li.group.gray,
+   .tabs > li.group.grey { --group-color: gray; }
+   .tabs > li.group.blue { --group-color: royalblue; }
+   .tabs > li.group.red { --group-color: crimson; }
+   .tabs > li.group.yellow { --group-color: orange; }
+   .tabs > li.group.green { --group-color: green; }
+   .tabs > li.group.pink { --group-color: deeppink; }
+   .tabs > li.group.purple { --group-color: darkviolet; }
+   .tabs > li.group.cyan { --group-color: teal; }
    
    /* workaround for favicons blocked by uBlock Origin */
    .tabs > li .icon[hidden] + .title::before {
@@ -251,6 +274,16 @@ $tabs
   <img src="$icon" alt="$icon_alt" class="icon"
   /><span class="title">$title</span>
  </a>
+ <ul class="children tabs">$children</ul>
+</li>
+
+
+<?template GROUP 4 ?>
+<li class="group $color$extra_classes">
+ <span$data_attributes>
+  <img src="$icon" alt="$icon_alt" class="icon"
+  /><span class="title">$title</span>
+ </span>
  <ul class="children tabs">$children</ul>
 </li>
 """.lstrip("\n\r")
