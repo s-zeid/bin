@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e
 
 main() {
  local input=""
@@ -22,11 +23,11 @@ main() {
  fi
  
  if [ $add_start -ne 0 ]; then
-  local csv="$(ffprobe \
+  local csv; csv=$(ffprobe \
    -hide_banner -loglevel fatal \
    -show_entries format=start_time,duration \
    -of csv=print_section=0:escape=none \
-   -i "$input")"
+   -i "$input")
   local start_time="${csv%%,*}"
   local duration="${csv##*,}"
   local n_a="N/A"
@@ -38,7 +39,7 @@ main() {
     duration=0
    fi
   fi
-  printf '%s\n' "$(awk \
+  awk \
    -v start_time="$start_time" -v duration="$duration" -v raw="$raw" \
    'BEGIN {
     seconds = start_time + duration
@@ -47,17 +48,17 @@ main() {
     } else {
      hours = int(seconds / 3600); seconds = seconds % 3600
      minutes = int(seconds / 60); seconds = seconds % 60
-     printf "%d:%02d:%s%6f", hours, minutes, (seconds < 10 ? "0" : ""), seconds
+     printf "%d:%02d:%s%6f\n", hours, minutes, (seconds < 10 ? "0" : ""), seconds
     }
     exit
-   }')"
+   }'
  else
-  local csv="$(ffprobe \
+  local csv; csv=$(ffprobe \
    -hide_banner -loglevel fatal \
    -show_entries format=start_time,duration \
    -of csv=print_section=0:escape=none \
    $([ $raw -eq 0 ] && printf '%s\n' '-pretty' || true) \
-   -i "$input")"
+   -i "$input")
   local start_time="${csv%%,*}"
   local duration="${csv##*,}"
   if ! [ x"$duration" = x"N/A" ]; then
