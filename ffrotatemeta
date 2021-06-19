@@ -1,0 +1,50 @@
+#!/bin/sh
+set -e
+
+main() {
+ if ! ([ $# -eq 3 ] || ([ $# -eq 2 ] && [ x"$2" = x"get" ])); then
+  echo "Usage: $(basename -- "$0") <input-file> <degrees> <output-file>" >&2
+  echo "   or: $(basename -- "$0") <input-file> get" >&2
+  return 2
+ fi
+ 
+ local input="$1"; shift
+ local degrees="$1"; shift
+ 
+ if [ x"$degrees" = x"get" ]; then
+  local result; result=$(ffprobe \
+   -hide_banner -loglevel fatal \
+   -select_streams v:0 \
+   -show_entries stream \
+   -of json \
+   -i "$input" \
+   | jq '.streams[0].side_data_list[0].rotation // empty')
+  if [ x"$result" != x"" ]; then
+   printf '%s\n' "$result"
+  else
+   printf '%s\n' "$input: no rotation metadata" >&2
+   return 3
+  fi
+ else
+  local output="$1"; shift
+  local extra_flags=""
+  if (printf '%s\n' "$output" | tail -n 1 | grep -q -i -e '\.\(mp4\|mov\)$'); then
+   extra_flags="$extra_flags -movflags +faststart"
+  fi
+  echo_exec ffmpeg \
+   -i "$input" \
+   -c copy \
+   -metadata:s:v:0 rotate="$degrees" \
+   $extra_flags \
+   "$output"
+ fi
+}
+
+
+echo_exec() {
+ echo + "$@" >&2
+ exec "$@"
+}
+
+
+main "$@"
