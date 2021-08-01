@@ -7,7 +7,7 @@
 # 
 # Copyright (c) 2015-2021 S. Zeid.  
 # Released under the X11 License:  <https://tldrlegal.com/l/x11>  
-# <https://code.s.zeid.me/bin/blob/master/bnaycert>
+# <https://code.s.zeid.me/bin/blob/main/bnaycert>
 # 
 # BnayCert uses a configuration file.  Its syntax is similar to Windows INI
 # files and is documented at <https://docs.python.org/3/library/configparser.html>.

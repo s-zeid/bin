@@ -4,7 +4,7 @@
 # Starts or resumes a tmux session with the given name and a minimal status bar.
 # 
 # Copyright (c) 2018-2021 S. Zeid.  Released under the X11 License.  
-# <https://code.s.zeid.me/bin/blob/master/tmux-name>
+# <https://code.s.zeid.me/bin/blob/main/tmux-name>
 
 
 STATUS_LEFT=$TMUX_NAME

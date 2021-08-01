@@ -182,7 +182,7 @@ case "$1" in
       'AppRun script' '-------------' '' \
        'Copyright (c) 2019 S. Zeid.  ' \
        'Released under the X11 License:  <https://tldrlegal.com/l/x11>  ' \
-       '<https://code.s.zeid.me/bin/blob/master/get-ffmpeg>' \
+       '<https://code.s.zeid.me/bin/blob/main/get-ffmpeg>' \
        '' '' \
       'FFmpeg (built by John Van Sickle; <https://johnvansickle.com/ffmpeg/>)' \
       '----------------------------------------------------------------------' ''

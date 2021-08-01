@@ -7,7 +7,7 @@
 # Converts one or more trees of command line arguments into a shell script.
 # 
 # Copyright (c) 2014-2021 S. Zeid.  Released under the X11 License.  
-# <https://code.s.zeid.me/bin/blob/master/cmdtree>
+# <https://code.s.zeid.me/bin/blob/main/cmdtree>
 # 
 # 
 # Usage

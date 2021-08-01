@@ -5,7 +5,7 @@
 # Streams a file or stream as low-quality Opus audio over HTTP.
 
 NAME=lowstream
-SOURCE_CODE='https://code.s.zeid.me/bin/blob/master/lowstream'
+SOURCE_CODE='https://code.s.zeid.me/bin/blob/main/lowstream'
 
 HOST=
 PORT=2629

@@ -3,7 +3,7 @@
 # Compile and run a Java source file.  (javat stands for "Java Test".)
 # Requires a program called `javawrapper` in your $PATH that takes a .class
 # file and executes the class contained within it.  Such a program can be
-# found at <http://code.s.zeid.me/bin/src/master/javawrapper>.
+# found at <http://code.s.zeid.me/bin/src/main/javawrapper>.
 
 if [ -z "$1" ]; then
  echo "Usage: $0 file.java" >&2

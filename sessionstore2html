@@ -237,7 +237,7 @@ TEMPLATES = """
   <title>$page_name - $date</title>
   <meta name="filename" content="$filename" />
   <meta name="created" content="$date_iso" />
-  <meta name="generator" content="sessionstore2html (https://code.s.zeid.me/bin/blob/master/sessionstore2html)" />
+  <meta name="generator" content="sessionstore2html (https://code.s.zeid.me/bin/blob/main/sessionstore2html)" />
 $styles
  </head>
  <body>
