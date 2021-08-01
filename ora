@@ -745,10 +745,17 @@ iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAABm1BMVEUAAACAgIBVVVVAQIBVVVVtbW1g
  
  applications_dir = os.path.join(data_dir, "applications")
  desktop_path = os.path.join(applications_dir, "ora.desktop")
- print(f"{prog}: installing `{desktop_path}`")
- os.makedirs(os.path.expanduser(applications_dir), mode=0o755, exist_ok=True)
- with open(os.path.expanduser(desktop_path), "w") as f_str:
-  f_str.write(desktop_data)
+ desktop_path_expanded = os.path.expanduser(desktop_path)
+ desktop_no_clobber = False
+ if os.path.isfile(desktop_path_expanded):
+  with open(desktop_path_expanded, "rb") as f_bytes:
+   if re.search(rb"^X-Ora-NoClobber=true$", f_bytes.read(), flags=re.M):
+    desktop_no_clobber = True
+ if not desktop_no_clobber:
+  print(f"{prog}: installing `{desktop_path}`")
+  os.makedirs(os.path.expanduser(applications_dir), mode=0o755, exist_ok=True)
+  with open(desktop_path_expanded, "w") as f_str:
+   f_str.write(desktop_data)
 
  icons_dir = os.path.join(data_dir, "icons", "hicolor", "scalable", "apps")
  svg_path = os.path.join(icons_dir, "ora.svg")
