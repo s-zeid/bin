@@ -1,0 +1,944 @@
+#!/usr/bin/env python3
+# vim: set fdm=marker:
+
+import argparse
+import atexit
+import base64
+import configparser
+import datetime
+import decimal
+import os
+import re
+import sys
+import _thread
+import threading
+import traceback
+import time
+import tkinter as tk
+
+from tkinter import font  # type: ignore
+from typing import *
+
+
+_INTERRUPT_EXIT_CODE = 0
+
+
+class Application(tk.Canvas):  #{{{1
+ last_datetime = None
+ last_tzoffset = None
+ light = False
+ running = False
+ ntp_thread = None
+ 
+ _fs_image = None
+ _fs_image_path = None
+ 
+ def __init__(self, options, master=None):  #{{{2
+  super().__init__(master)
+  
+  self.master.tk.eval('tk scaling 1')
+  
+  self.options = options
+  
+  self.sunrise  = options["sunrise"]
+  self.sunset   = options["sunset"]
+  self.location = options["location"]
+  self._default_sunrise_sunset = [self.sunrise, self.sunset]
+  
+  if options["ntp"]:
+   self.ntp_thread = NTPThread(server=options["ntp"])
+   self.ntp_thread.start()
+  
+  self.easter_eggs = options["easter_eggs"]
+  
+  self.width = width = options["width"]
+  self.height = height = options["height"]
+  
+  if not self.options["base_size"]:
+   test_size = 512
+   test_font = tk.font.Font(family=self.options["font_family"], size=test_size)
+   test_width = test_font.measure("00:00:00")
+   self.base_size_width_ratio = test_size / test_width
+   self.base_size_auto = True
+  else:
+   self.base_size = round_half_up(self.options["base_size"])
+   self.base_size_auto = False
+  
+  self.background = options["background"]
+  self.foreground = options["foreground_dark"]
+  self.configure(background=self.background)
+  self.master.configure(background=self.background)
+  
+  if options["fullscreen"]:
+   self.toggle_fullscreen(new_state=True)  # calls self.resize()
+  else:
+   self.resize()
+  
+  self.master.title("Clock")
+  self.configure(borderwidth=0, highlightthickness=0)
+  self.pack(fill=tk.BOTH, expand=1)
+  self.create_widgets()
+  self.bind("<Configure>", self.resize)
+  if options["keybindings"]:
+   self.master.bind("<Double-Button-1>", self.toggle_fullscreen)
+   self.master.bind("<Button-3>", self.toggle_fullscreen)
+   self.master.bind("<F11>", self.toggle_fullscreen)
+   self.master.bind("f", self.toggle_fullscreen)
+   self.master.bind("F", self.toggle_fullscreen)
+   self.master.bind("q", self.stop)
+   self.master.bind("Q", self.stop)
+ 
+ def resize(self, event=None, force_geometry=False):  #{{{2
+  if event:
+   width = event.width + event.x
+   height = event.height + event.y
+   if width == self.width and height == self.height:
+    return
+  else:
+   width, height = self.width, self.height
+  
+  if self.base_size_auto:
+   self.base_size = round_half_up((width * 0.825) * self.base_size_width_ratio)
+  
+  self.time_font = tf = tk.font.Font(
+   family=self.options["font_family"],
+   size=-self.base_size,
+  )
+  self.date_font = df = tk.font.Font(
+   family=self.options["font_family"],
+   size=-round_half_up(self.base_size / 2)
+  )
+  self.weekday_font = wf = tk.font.Font(
+   family=self.options["font_family"],
+   size=-round_half_up(self.base_size / 3)
+  )
+  self.td_offset = (tf.metrics()["linespace"] - df.metrics()['linespace']) / 8
+  self.dw_offset = (df.metrics()["linespace"] - wf.metrics()['linespace']) / 8
+  
+  self.width, self.height = width, height
+  self.set_background_image(
+   self.options.get("background_image"),
+   self.options.get("image_opacity_light", 1),
+   self.options.get("image_opacity_dark", 1),
+  )
+  
+  self.reset()
+  
+  if not self.running or force_geometry:
+   s_w, s_h = self.master.winfo_screenwidth(), self.master.winfo_screenheight()
+   x, y = round_half_up((s_w - width) / 2), round_half_up((s_h - height) / 2)
+   self.master.geometry("%dx%d+%d+%d" % (width, height, x, y))
+  
+  if self.running:
+   self.draw()
+ 
+ def set_background_image(self, path, opacity_l, opacity_d, blur=0):  #{{{2
+  if path:
+   import PIL  # type: ignore  # pip3 install Pillow; apt install python3-pil; zypper install python3-Pillow
+   import PIL.ImageTk  # type: ignore  # pip3: Pillow; apt: python3-pil.imagetk; zypper: python3-Pillow-tk
+  
+  def main():
+   nonlocal path, opacity_l, opacity_d, blur
+   
+   if path:
+    path = os.path.abspath(path)
+    
+    if self._fs_image and path == self._fs_image_path:
+     fs_img = self._fs_image
+    else:
+     fs_img = self._fs_image = PIL.Image.open(path)
+     self._fs_image_path = path
+    
+    img = fs_img.copy()
+    
+    if blur:
+     with img as old:
+      img = old.filter(PIL.ImageFilter.GaussianBlur(radius=blur))
+     del old
+    
+    img_l = prepare_image(img, opacity_l)
+    img_d = prepare_image(img, opacity_d)
+    
+    img.close()
+    del img
+    
+    self.image_light = PIL.ImageTk.PhotoImage(img_l)
+    self.image_dark = PIL.ImageTk.PhotoImage(img_d)
+    img_l.close()
+    img_d.close()
+    del img_l, img_d
+    
+    self.image = self.image_light if self.light else self.image_dark
+   else:
+    self.image = self.image_light = self.image_dark = None
+    self._fs_image = self._fs_image_path = None
+   
+  def prepare_image(img, opacity):
+   img = img.copy()
+   
+   if img.mode == "RGB":
+    with PIL.Image.new("L", img.size, round_half_up(255 * opacity)) as alpha:
+     img.putalpha(alpha)
+    del alpha
+   elif img.mode == "RGBA" and opacity != 1:
+    with img as old:
+     with old.copy() as old_0:
+      with PIL.Image.new("L", img.size, 0) as alpha_0:
+       old_0.putalpha(alpha_0)
+      del alpha_0
+      img = PIL.Image.blend(old_0, old, opacity)
+     del old_0
+    del old
+   
+   self_ratio = self.width / self.height
+   img_ratio = img.width / img.height
+   
+   if img.size != self.size:
+    if img_ratio > self_ratio:
+     w, h = round_half_up(max(img.width * self.height / img.height, 1)), self.height
+     left = (w - self.width) / 2
+     top = 0
+    else:
+     w, h = self.width, round_half_up(max(img.height * self.width / img.width, 1))
+     left = 0
+     top = (h - self.height) / 2
+    
+    with img as old:
+     old.draft(None, (w, h))
+     img = old.resize((w, h), PIL.Image.BICUBIC)
+    del old
+   
+   with img as old:
+    img = old.crop((left, top, left + self.width, top + self.height))
+   del old
+   
+   return img
+  
+  return main()
+ 
+ def toggle_fullscreen(self, _=None, new_state=None):  #{{{2
+  s_w, s_h = self.master.winfo_screenwidth(), self.master.winfo_screenheight()
+  
+  if new_state is None:
+   fullscreen_now = self.master.attributes("-fullscreen")
+   maxres_now = self.width == s_w and self.height == s_h
+   new_state = not (fullscreen_now and maxres_now)
+  
+  if new_state:
+   self._prev_geom = self.master.winfo_geometry()
+   self.width, self.height = s_w, s_h
+  
+  self.master.attributes("-fullscreen", new_state)
+  self.master.attributes("-zoomed", new_state)
+  
+  force_geometry = new_state
+  
+  if not new_state:
+   if self._prev_geom and self._prev_geom != "1x1+0+0":
+    self.master.geometry(self._prev_geom)
+    self.width, self.height = self.master.winfo_width(), self.master.winfo_height()
+   else:
+    force_geometry = True
+    self.width, self.height = self.options["width"], self.options["height"]
+  
+  self.resize(force_geometry=force_geometry)
+ 
+ def create_widgets(self):  #{{{2
+  return
+ 
+ def tick(self):  #{{{2
+  new_datetime = datetime.datetime.now()
+  if self.ntp_thread:
+   offset = self.ntp_thread.offset
+   if offset is not None:
+    new_datetime += datetime.timedelta(seconds=offset)
+   else:
+    return
+  new_datetime = new_datetime.replace(microsecond=0)
+  new_time = new_datetime.time()
+  new_tzoffset = time.localtime().tm_gmtoff
+  is_new_day = False
+  is_new_tzoffset = False
+  draw = False
+  
+  if self.last_datetime is None or new_datetime != self.last_datetime:
+   self.time_text = new_datetime.strftime("%H:%M:%S")
+   if self.easter_eggs:
+    if new_time.hour == 4 and new_time.minute == 21 and 0 <= new_time.second <= 9:
+     self.time_text = "%02d:%02d:%02d" % (new_time.hour, 20, new_time.second + 60)
+    if new_time.hour == 16 and new_time.minute == 33 and 0 <= new_time.second <= 4:
+     self.time_text = "%02d:%02d:%02d" % (new_time.hour, 32, new_time.second + 60)
+   draw = True
+  if self.last_datetime is None or new_datetime.day != self.last_datetime.day:
+   self.date_text = new_datetime.strftime("%Y-%m-%d")
+   self.weekday_text = new_datetime.strftime("%A")
+   draw = True
+   is_new_day = True
+  if self.last_tzoffset is None or new_tzoffset != self.last_tzoffset:
+   is_new_tzoffset = True
+  
+  if is_new_day or is_new_tzoffset:
+   self.sunrise, self.sunset = sunrise_sunset(
+    self.location,
+    defaults=self._default_sunrise_sunset,
+   )
+  
+  if (new_time >= self.sunrise and new_time < self.sunset) and self.light != True:
+   self.light = True
+   self.foreground = self.options["foreground_light"]
+   self.image = self.image_light
+  if (new_time >= self.sunset or new_time < self.sunrise) and self.light != False:
+   self.light = False
+   self.foreground = self.options["foreground_dark"]
+   self.image = self.image_dark
+  
+  self.last_datetime = new_datetime
+  self.last_tzoffset = new_tzoffset
+  
+  if draw:
+   self.draw(is_new_day)
+  
+  self.update()
+  
+ def draw(self, is_new_day=False):  #{{{2
+  canvas = self
+  
+  if not self._rect:
+   self._rect = canvas.create_rectangle(0, 0, self.width, self.height,
+                 fill=self.background, outline=self.background)
+  
+  if self.image:
+   i_cur, i_l, i_d = self._image_ids
+   if not i_cur or not i_l or not i_d:
+    i_l = canvas.create_image(0, 0, anchor="nw", tag="image", image=self.image_light)
+    if self.image_light != self.image_dark:
+     i_d = canvas.create_image(0, 0, anchor="nw", tag="image", image=self.image_dark)
+    else:
+     i_d = i_l
+    i_cur = None
+   if self.light:
+    i_new, i_old = i_l, i_d
+   else:
+    i_new, i_old = i_d, i_l
+   if i_new != i_cur:
+    canvas.lower(i_old, self._rect)
+    canvas.tkraise(i_new, self._rect)
+    i_cur = i_new
+    self._image_ids = [i_cur, i_l, i_d]
+  
+  t_pos, d_pos, w_pos = self._text_pos
+  t_x, t_y = t_pos or (0, 0)
+  d_x, d_y = d_pos or (0, 0)
+  w_x, w_y = w_pos or (0, 0)
+  
+  t_id, d_id, w_id = self._text_ids
+  if not t_id or not d_id or not w_id:
+   canvas.delete("text")
+   t_id = canvas.create_text(t_x, t_y, anchor="nw", tag="text",
+           text=self.time_text, font=self.time_font, fill=self.foreground)
+   d_id = canvas.create_text(d_x, d_y, anchor="nw", tag="text",
+           text=self.date_text, font=self.date_font, fill=self.foreground)
+   w_id = canvas.create_text(w_x, w_y, anchor="nw", tag="text",
+           text=self.weekday_text, font=self.weekday_font, fill=self.foreground)
+   self._text_ids = [t_id, d_id, w_id]
+  else:
+   canvas.itemconfig(t_id, text=self.time_text, fill=self.foreground)
+   canvas.itemconfig(d_id, text=self.date_text, fill=self.foreground)
+   canvas.itemconfig(w_id, text=self.weekday_text, fill=self.foreground)
+  
+  if not t_pos or not d_pos or not w_pos:
+   height = 0
+   tmp = []
+   for i in t_id, d_id, w_id:
+    coords = canvas.bbox(i)
+    height += coords[3] - coords[1]
+    x = (self.width / 2) - ((coords[2] - coords[0]) / 2)
+    tmp += [x]
+   t_x, d_x, w_x = tmp
+   
+   margin = ((self.height - height) / 2) - self.td_offset
+   t_box = canvas.bbox(t_id)
+   d_box = canvas.bbox(d_id)
+   
+   t_y, d_y = margin, (margin + (t_box[3] - t_box[1]))
+   w_y = d_y + (d_box[3] - d_box[1]) + self.dw_offset
+   
+   self._text_pos = [[t_x, t_y], [d_x, d_y], [w_x, w_y]]
+   
+   canvas.move(t_id, t_x, t_y)
+   canvas.move(d_id, d_x, d_y)
+   canvas.move(w_id, w_x, w_y)
+  elif is_new_day:
+   w_coords = canvas.bbox(w_id)
+   w_x_old = w_coords[0]
+   w_x = (self.width / 2) - ((w_coords[2] - w_coords[0]) / 2)
+   canvas.move(w_id, w_x - w_x_old, 0)
+ 
+ def reset(self):  #{{{2
+  self._image_ids = [None, None, None]
+  self._text_ids = [None, None, None]
+  self._text_pos = [None, None, None]
+  self._rect = None
+  self.delete("all")
+ 
+ def mainloop(self):  #{{{2
+  self.running = True
+  self.master.protocol("WM_DELETE_WINDOW", self.stop)
+  atexit.register(self.stop)
+  
+  # ensure the seconds display is precise
+  start_datetime = datetime.datetime.now()
+  while start_datetime.second == datetime.datetime.now().second:
+   time.sleep(0.05)
+  
+  self.master.wm_deiconify()
+  
+  self.tick()
+  time.sleep(0.1)
+  
+  while self.running:
+   self.tick()
+   time.sleep(0.1)
+ 
+ def stop(self, _=None):  #{{{2
+  self.running = False
+  if self.ntp_thread:
+   self.ntp_thread.stop()
+
+
+class NTPThread(threading.Thread):  #{{{1
+ server: str
+ offset: Optional[float]
+ last_response: Optional["ntplib.NTPStats"]  # type: ignore
+ 
+ def __init__(self, *, server: str, name=None):  #{{{2
+  import ntplib  # type: ignore  # pip3 install ntplib; apt install python3-ntplib
+  super().__init__(group=None, name=name, daemon=True)
+  self.server = server
+  self.offset = self.last_response = None
+  self._running = False
+ 
+ def run(self):  #{{{2
+  global _INTERRUPT_EXIT_CODE
+  import ntplib  # pip3 install ntplib; apt install python3-ntplib
+  success_wait = 60 * 60 * 6
+  fail_wait = 60 * 5
+  retry_wait_base = 2
+  max_retries = retries = 2
+  client = ntplib.NTPClient()
+  first = True
+  self._running = True
+  while self._running:
+   try:
+    try:
+     response = client.request(self.server, version=3)
+    except ntplib.NTPException:
+     if retries > 0:
+      retries -= 1
+      time.sleep(retry_wait_base * (max_retries - retries + 1))
+      continue
+     else:
+      print(f"Error getting the time from {self.server} after {max_retries+1}"
+            f" {'tries' if max_retries else 'try'}:", file=sys.stderr)
+      if first:
+       _INTERRUPT_EXIT_CODE = 123  # NTP port number
+       raise
+      else:
+       traceback.print_exc(file=sys.stderr)
+       print("", file=sys.stderr)
+       retries = max_retries
+       if self._running:
+        time.sleep(fail_wait)
+    except KeyboardInterrupt:
+     self._running = False
+    except Exception:
+     raise
+    else:
+     self.offset = response.offset  # type: ignore
+     self.last_response = response  # type: ignore
+     first = False
+     retries = max_retries
+     if self._running:
+      time.sleep(success_wait)
+   except Exception:
+    self._running = False
+    traceback.print_exc(file=sys.stderr)
+    try:
+     _INTERRUPT_EXIT_CODE
+    except NameError:
+     pass
+    else:
+     _INTERRUPT_EXIT_CODE = _INTERRUPT_EXIT_CODE or 1
+    _thread.interrupt_main()
+ 
+ def stop(self):  #{{{2
+  self._running = False
+
+
+def main(argv):  #{{{1
+ class ReprAutoInt(int):
+  def __repr__(self):
+   return "auto"
+  def __str__(self):
+   return "auto"
+ 
+ prog = os.path.basename(argv[0])
+ prog = prog if prog != "__main__.py" else "ora"
+ 
+ p = argparse.ArgumentParser(
+  prog=prog,
+  formatter_class=argparse.ArgumentDefaultsHelpFormatter
+ )
+ p.add_argument("-P", "--profile", default=None,
+                help="use a profile (defined as a section in the config file)")
+ p.add_argument("-w", "--width", type=int, default=1280,
+                help="width in pixels")
+ p.add_argument("-H", "--height", type=int, default=720,
+                help="width in pixels")
+ p.add_argument("-f", "--fullscreen", action="store_true",
+                help="launch in fullscreen mode")
+ p.add_argument("-bg", "--background", default="#000", metavar="#RRGGBB",
+                help="background color")
+ p.add_argument("-i", "--background-image", default=None,
+                help="background image")
+ p.add_argument("-io", "--image-opacity", type=float, default=None,
+                help="background image opacity (overrides --image-opacity-{light,dark})"
+                     " (range: [0, 1])")
+ p.add_argument("-io-l", "--image-opacity-light", type=float, default=1,
+                help="background image opacity during daytime hours (range: [0, 1])")
+ p.add_argument("-io-d", "--image-opacity-dark", type=float, default=1,
+                help="background image opacity during nighttime hours (range: [0, 1])")
+ p.add_argument("-fg", "--foreground", default=None, metavar="#RRGGBB",
+                help="foreground color (overrides --foreground-{light,dark})")
+ p.add_argument("-fg-l", "--foreground-light", default="#fff", metavar="#RRGGBB",
+                help="foreground color during daytime hours")
+ p.add_argument("-fg-d", "--foreground-dark", default="#666", metavar="#RRGGBB",
+                help="foreground color during nighttime hours")
+ p.add_argument("-F", "--font-family", default="sans-serif",
+                help="the font family to use")
+ p.add_argument("-s", "--base-size", type=int, default=ReprAutoInt(0),
+                help="the base font size")
+ p.add_argument("-sr", "--sunrise", default="07:00", metavar="HH:MM",
+                help="sunrise time (add `!` to override location's sunrise time)")
+ p.add_argument("-ss", "--sunset", default="19:00", metavar="HH:MM",
+                help="sunset time (add `!` to override location's sunset time)")
+ p.add_argument("-l", "--location", default=None,
+                help="location to use for sunrise/sunset"
+                     " (format: `{location name} [/ {elevation (meters)}]`"
+                     "  or `{latitude}, {longitude} [/ {elevation (meters)}]`)")
+ p.add_argument("-L", "--list-locations", action="store_true",
+                help="list the supported location names and exit")
+ p.add_argument("--ntp", default=None,
+                help="if set, use the given NTP server to correct for an inaccurate"
+                     " system time")
+ p.add_argument("--no-keybindings", dest="keybindings", action="store_false",
+                help="disable keybindings for fullscreen (f, F11) and quit (q)"
+                     " (does not affect default OS/WM keybindings)")
+ p.add_argument("--chassis", default=None,
+                help="override the detected chassis type"
+                     " (see <https://www.freedesktop.org/software/systemd/man/machine-info.html#CHASSIS=> for valid values)")
+ p.add_argument("--kiosk", action="store_true",
+                help="equivalent to `--fullscreen --no-keybindings`")
+ p.add_argument("--install-xdg", action="store_true",
+                help="installs a .desktop file and SVG icon to ~/.local/share/")
+ p.add_argument("--easter-eggs", action="store_true",
+                help=argparse.SUPPRESS)
+ p.add_argument("--hep", dest="_hep_easter_egg", action="store_true",
+                help=argparse.SUPPRESS)
+ 
+ # don't use config values for defaults in help output
+ try:
+  args = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ config = Config()
+ p.set_defaults(**config.main)
+ 
+ try:
+  args = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ if args.profile:
+  try:
+   if args.profile not in config.profiles:
+    p.error("no profile named {%s}" % repr(args.profile))
+   if "*" in config.profiles:
+    p.set_defaults(**config.profiles["*"])
+   p.set_defaults(**config.profiles[args.profile])
+   args = p.parse_args(argv[1:])
+  except SystemExit as exc:
+   return exc.code
+ 
+ options = args.__dict__.copy()
+ 
+ chassis = options["chassis"] = args.chassis or get_chassis()
+ 
+ if args._hep_easter_egg:
+  print("Hep!  Hep!  I'm covered in sawlder! ... Eh?  Nobody comes.")
+  print("--Red Green, https://www.youtube.com/watch?v=qVeQWtVzkAQ#t=6m27s")
+  return 0
+ 
+ if args.list_locations:
+  print_astral_locations()
+  return 0
+ 
+ if args.install_xdg:
+  try:
+   install_xdg(argv0=argv[0], prog=prog)
+   return 0
+  except RuntimeError as exc:
+   print(f"{prog}: error: {exc}", file=sys.stderr)
+   return 1
+ 
+ if options["kiosk"] or is_mobile(chassis):
+  options["fullscreen"] = True
+  options["keybindings"] = False
+ 
+ for base_key in ("foreground", "image_opacity"):
+  base_value = options.get(base_key, None)
+  if base_value is not None:
+   for i in ("light", "dark"):
+    key = "%s_%s" % (base_key, i)
+    options[key] = base_value
+ 
+ if isinstance(options.get("background_image", None), str):
+  options["background_image"] = os.path.expanduser(options["background_image"])
+ 
+ icon_gif = r"R0lGODlhYABgAPMAAAAAAF1dYl1dY15cYl5dYl9dYl5cY15dY19dY15eYl5eY11dZF5dZF9dZMzMzAAAACH5BAEAAAAALAAAAABgAGAAAAT+EMhJq7046827/2AojmRpnmiqrmzrvnAsn4dx3PjNHHOPLbmgMGjwyQjDpPJWNKoQu6VUmXCWptgpwQpKZL/SJlejAJuVijEmcG4v1RS3XAmPzu/BBneAd/jxOU42fX+AOj6DhA6GgTKJioyNL5EHfouUBwgvdoaWmDd6LZienzwsn6SlK2yjhaVpKaWpqiilla62J16yuKULJra3l8GmIwLBs7aaI8TJuSIIzb3BIsTC1jjV0sPWIcfb2Icf2M7U49blzx1A6NPBoRzh6eob8u7m8eT39Br23Ngdyuj7Z01MBk7I9vG7EO5awxv5Bj6EWM/fxGIZGs5baEGjpY/AIEN+nBOxnciTIUlWHIiyJUEwJS+G44BQJrGYNt91yAlwJ8+bPn9yZCh0qIVHRRnBw5kUD4imlJ5CNbTs3NQ72q6q7KJVzlKrXc2QiBYWTBUSZWGWYJdWSlW0baXEiptEBd26du9KyqvXRQO9BV7woRuj5lUBM9J+hUH2KgMnjZu+9fG3aWA1RWHBASAw5+YKNj8TbWhQNGhrW0yvxLRYtQYkgEq7ltqm9ewSBo59u/FN9u3fwIMLH068uPHjoiMAADs="
+ 
+ app = Application(options, master=create_master(icon_gif=icon_gif))
+ app.mainloop()
+
+
+class Config:  #{{{1
+ def __init__(
+  self,
+  path=os.path.join(os.environ.get("XDG_CONFIG_HOME", "~/.config"), "ora.conf"),
+ ):
+  self.main = main = {}
+  self.profiles = profiles = {}
+  self.path = path = os.path.expanduser(path)
+  
+  if os.path.isfile(path):
+   with open(path, "r") as f:
+    s = "[__main]\n" + f.read()
+   c = configparser.ConfigParser(allow_no_value=True)
+   c.read_string(s)
+   
+   for section in c:
+    if section == "__main":
+     result_part = main
+    elif section != "DEFAULT":
+     profiles[section] = {}
+     result_part = profiles[section]
+    
+    for key, value in c[section].items():
+     key = key.lower().replace("-", "_")
+     if value is None:
+      if key.startswith("no_"):
+       key = key[3:]
+       value = False
+      else:
+       value = True
+     elif isinstance(value, str) and value.lower() in ("false", "true"):
+      value = bool(("false", "true").index(value.lower()))
+     elif isinstance(value, str):
+      value = value.replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ")
+      value = value.strip()
+     result_part[key] = value
+
+
+def create_master(class_=None, icon_gif=None):  #{{{1
+ try:
+  import Xlib.display  # type: ignore  # pip3 install python-xlib; apt install python3-xlib
+ except ImportError:
+  class Xlib:
+   display = None
+ try:
+  from setproctitle import setproctitle  # type: ignore  # pip3 install setproctitle; apt install python3-setproctitle
+ except ImportError:
+  def setproctitle(s: str):
+   print("warning: cannot set process title: setproctitle is not installed",
+         file=sys.stderr)
+   print("hint: run `pip3 install setproctitle` or `apt install python3-setproctitle`",
+         file=sys.stderr)
+ 
+ def set_pid(root):
+  if root.tk.eval("tk windowingsystem") == "x11":
+   if not Xlib.display:
+    print("warning: cannot set process ID on X window: python-xlib is not installed",
+          file=sys.stderr)
+    print("hint: run `pip3 install python-xlib` or `apt install python3-xlib`",
+          file=sys.stderr)
+    return
+   root.update()
+   display = Xlib.display.Display()
+   window = display.create_resource_object('window', root.winfo_id())
+   parent = window.query_tree().parent
+   _NET_WM_PID = lambda: display.intern_atom("_NET_WM_PID")
+   if not parent.get_full_property(_NET_WM_PID(), Xlib.Xatom.CARDINAL):
+    parent.change_property(_NET_WM_PID(), Xlib.Xatom.CARDINAL, 32, [os.getpid()])
+   window.change_property(_NET_WM_PID(), Xlib.Xatom.CARDINAL, 32, [os.getpid()])
+ 
+ class_ = class_ or os.path.basename(sys.argv[0])
+ 
+ root = tk.Tk(className=class_)
+ root.wm_withdraw()
+ if icon_gif:
+  root.wm_iconphoto(True, tk.PhotoImage(data=icon_gif))
+ setproctitle(os.path.basename(sys.argv[0]))
+ set_pid(root)
+ 
+ return root
+
+
+def get_chassis(*, machine_info_path="/etc/machine-info") -> str:  #{{{1
+ # See <https://www.freedesktop.org/software/systemd/man/machine-info.html#CHASSIS=>
+ # for a list of possible values.
+ if os.path.isfile(machine_info_path):
+  with open(machine_info_path, "r") as f:
+   machine_info = f.read()
+  match = re.search(r"""^\s*CHASSIS=["']?([^"']+)["']?\s*$""", machine_info, flags=re.M)
+  if match:
+   return match.group(1)
+ return "desktop"
+
+
+def is_mobile(chassis: str) -> bool:  #{{{1
+ return chassis in ("handset", "tablet", "watch")
+
+
+def install_xdg(*, argv0: str, prog: str, data_dir="~/.local/share"):  #{{{1
+ desktop_data = ("{{{2" * 0) + """
+[Desktop Entry]
+Name=Ora
+GenericName=not-abomination clock
+Categories=Utility;Clock;
+Type=Application
+Exec=__path__
+Icon=ora
+Terminal=false
+StartupNotify=true
+""".lstrip().replace("__path__", os.path.abspath(argv0))
+ 
+ svg_data = ("{{{2" * 0) + """
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+ <circle cx="12" cy="12" r="10.5" fill="#5e5d63" />
+ <g fill="none" stroke="#ccc" stroke-width="0.75">
+  <path d="M11.625,4 v8.6" />
+  <path d="M11.25,12.4 h5.75" />
+ </g>
+</svg>
+""".lstrip()
+ 
+ png_data = base64.b64decode(("{{{2" * 0) + """
+iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAABm1BMVEUAAACAgIBVVVVAQIBVVVVtbW1gYGBVVVVmZmZVVWpiYmJbW1tmVWZgYGBdXWhZWWRgYGBcXGZiWGJeXl5bW2ReXmZaWmNgYGBdXWRiWmJeXmVcXGJgYGZdXWRdXWNgW2BeXmRcXGJgYGVcXGFgW2VeXmJfXGNeXmVdXWNeXmRcXGNeXmJdXWReXmRdXWNfXGJeXmNfXGJeXmRdXWNfXGJeXmNdXWJfXGReXmNfXWRfXGRdXWReXmJeXGNdXWJfXWNeXmJdXWRfXGNfXWJfXWReXWRfXWReXGNeXWNeXmNfXWReXWNeXmJfXWNeXGNdXWReXWNeXGNdXWReXmJfXWNfXWNeXGJdXWNeXWNfXWNeXWNfXWNeXWJfXWNeXWReXWNdXWNeXWReXGNeXGNeXWNeXmNeXWNdXWJfXWReXWNeXGNeXWNeXWNeXWNdXWNeXWNeXWNeXWNeXWNeXWNeXWNeXWNeXWNeXWNeXWNeXmNeXWNeXWNeXWNeXWReXWNeXWNeXWNeXWNeXWNeXWNeXWNeXWNpaW7BwcLMzMxnB1SwAAAAhXRSTlMAAgMEBgcICQoMDQ4PEBYXGBkaGxweHyAhIiYnKCksLS4vMDI1SUtMTU9QUVJUVVZaW1xdXl9gYWJmaWttb3BxcnN0jI+Sl5iam5ydnp+goaKjpKanqqusra+wsrO6u76/wMHExsfJys3Oz9HT1N3e3+Dh4uvs7e7v8PH09fb4+fr7/P3+vZiO0AAAAtNJREFUaN7tmmlfElEUh6+YEWqKFWhqpRXZallYUZmRGASyFGVlKItLGSbRwiIWxswpPnavZ+bOzF1OvuL/AZ7nN8Nd5pwDIZ10clgZmQpGCjul6sFBtbSTjwQvDSPCT84mv4EhXxP+Exh053SmBSZR1gN9kvgz8Z9gmf2lcQn8RKoFtlEyFwXxQ2kVmKK+cAvguwJ1YE59zsHLP/0BuLI1wse/WgXO7N3kwHcvAn/UEPNr6lk2g7TbbQvFipONf7wAYgLI9zPxP4GoALYZDM4CiAtg45gd3/EWZATwvttGYL1+7AUQsubfAFkBXLfieyvygprFnnbYnQ8sAtg033BzgCGAh2Z8dw1HsDdkIkgDjgCSdP55FUugTlAFbwBLAK9o/HEFT9AaowjigCeAmJHft48paPQaBPcBUwB+gyCHK1jT808puAJFv9nuAq4AZnSCJLYgqhOUsQVlXX0B2ALwagRT+AKfRvAUXzCvETzHF4Q1gjy+IKsRfMYXFAVWKZegpBFU8AXfNYImvuCXoOAvJQwC9ldEC8MrKuMLSiLL9A89DMs0D+jRbrQIvuCZRhDEFzwWOa554hO5cHjiEbkyOaK7MkkCW6C/9GexBbf0jT8Fl98y9KiyuIJVw7fpPVzBHYPA1cDkN1zGAmHpf64h1hKK+ScepRVpr/EEaWqVOali8dVz9EL5JZYgblLpD9Zw+NUBs2bFIxzBA/N2zhYGf6PLvGHkqcjza5ZN5svSK0m9Zt20C8kKFuzamsty/BXbBvaRNRl+7qh967d/W5z/kal57VoV5bM1xwnpETz23jG29wlxhARWq7rAM8e5wr3j6tN8Q5zhTc7zwcs95vL/4Dge+MdchJDBFOugLjEgOAs8m/rN0NvKXJCYZo7FbL5mGtFR+XGv6WMo64FejJGy+3bsC6WKjM64CV68vifhXHG30mxWdovZ8LzP0/kbQieHln9aTDzE2UkRJAAAAABJRU5ErkJggg==
+""".strip())
+ 
+ #}}}2
+ 
+ if not os.path.isdir(os.path.expanduser(data_dir)):
+  raise RuntimeError("~/.local/share does not exist or is not a directory")
+ 
+ applications_dir = os.path.join(data_dir, "applications")
+ desktop_path = os.path.join(applications_dir, "ora.desktop")
+ print(f"{prog}: installing `{desktop_path}`")
+ os.makedirs(os.path.expanduser(applications_dir), mode=0o755, exist_ok=True)
+ with open(os.path.expanduser(desktop_path), "w") as f_str:
+  f_str.write(desktop_data)
+
+ icons_dir = os.path.join(data_dir, "icons", "hicolor", "scalable", "apps")
+ svg_path = os.path.join(icons_dir, "ora.svg")
+ print(f"{prog}: installing `{svg_path}`")
+ os.makedirs(os.path.expanduser(icons_dir), mode=0o755, exist_ok=True)
+ with open(os.path.expanduser(svg_path), "w") as f_str:
+  f_str.write(svg_data)
+ 
+ icons_dir = os.path.join(data_dir, "icons", "hicolor", "96x96", "apps")
+ png_path = os.path.join(icons_dir, "ora.png")
+ print(f"{prog}: installing `{png_path}`")
+ os.makedirs(os.path.expanduser(icons_dir), mode=0o755, exist_ok=True)
+ with open(os.path.expanduser(png_path), "wb") as f_bytes:
+  f_bytes.write(png_data)
+
+
+def round_half_up(n):  #{{{1
+ return int(decimal.Decimal(n).quantize(1, rounding=decimal.ROUND_HALF_UP))
+
+
+def print_astral_locations():  #{{{1
+ if not TYPE_CHECKING:
+  import astral  # pip3 install astral; apt install python3-astral
+  try:
+   import astral.geocoder
+   _astral_gte_v2 = True
+  except ImportError:
+   _astral_gte_v2 = False
+ else:
+  _astral_gte_v2 = ...
+ 
+ if _astral_gte_v2:
+  database = astral.geocoder.database()
+ else:
+  database = astral.AstralGeocoder().groups
+ 
+ for group_key in sorted(database.keys()):
+  group_info = database[group_key]
+  
+  if group_key in ("utc", "us"):
+   print("# " + group_key.upper())
+  else:
+   print("# " + group_key.title())
+  
+  for location_key in sorted(group_info.keys()):
+   loc_list = group_info[location_key]
+   if not _astral_gte_v2:
+    loc_list = [loc_list]
+   for loc_info in loc_list:
+    print("%s, %s (%f, %f)" % (
+     loc_info.name, loc_info.region,
+     loc_info.latitude, loc_info.longitude,
+    ))
+  
+  print()
+
+
+# sunrise_sunset()  #{{{1
+
+SunriseSunsetTimeSpecInput = Union[str, "SunriseSunsetTimeSpec", datetime.time, None]
+
+
+class SunriseSunsetTimeSpec(NamedTuple):
+ time: datetime.time
+ sticky: bool
+ 
+ @classmethod
+ def parse(cls, spec: SunriseSunsetTimeSpecInput) -> "SunriseSunsetTimeSpec":
+  time = datetime.time(0, 0, 0)
+  sticky = False
+  if spec is not None:
+   if isinstance(spec, cls):
+    time, sticky = spec
+   elif isinstance(spec, str):
+    sticky = "!" in spec
+    time = datetime.datetime.strptime(re.sub(r"!|\s+", "", spec), "%H:%M").time()
+   elif isinstance(spec, datetime.time):
+    sticky = False
+    time = spec
+   else:
+    raise TypeError("time must be of type `%s`, not `%s`"
+                    % (str(cls), type(spec).__qualname__))
+  return cls(time, sticky)
+
+
+def sunrise_sunset(
+ location: str,
+ *,
+ defaults: List[SunriseSunsetTimeSpecInput] = None,
+ date: datetime.date = None,
+) -> List[datetime.time]:
+ """Parse location and sunrise/sunset arguments, and return `datetime.time`s for sunrise/sunset at the location and/or the defaults."""
+ def _to_naïve_time(dt: datetime.datetime) -> datetime.time:
+  return dt.astimezone(None).time()
+ 
+ if defaults:
+  if len(defaults) != 2:
+   raise ValueError("defaults must be None, empty, or have exactly two values")
+  defaults = list(defaults[:])
+ else:
+  defaults = [SunriseSunsetTimeSpec.parse(None)] * 2
+ default_specs: List[SunriseSunsetTimeSpec] = []
+ default_specs += [SunriseSunsetTimeSpec.parse(defaults[0])]  # sunrise
+ default_specs += [SunriseSunsetTimeSpec.parse(defaults[1])]  # sunset
+ del defaults
+ 
+ default_times = [default_specs[0].time, default_specs[1].time]
+ sunrise_sticky, sunset_sticky = (default_specs[0].sticky, default_specs[1].sticky)
+ sunrise, sunset = default_times
+ 
+ if not len(location.strip()) or (sunrise_sticky and sunset_sticky):
+  return default_times
+ 
+ if not TYPE_CHECKING:
+  import astral  # pip3 install astral; apt install python3-astral
+  try:
+   import astral.geocoder
+   import astral.sun
+   _astral_gte_v2 = True
+  except ImportError:
+   _astral_gte_v2 = False
+ else:
+  _astral_gte_v2 = ...
+ 
+ elevation = 0.0
+ if "/" in location:
+  location, elevation_str = location.split("/", 1)
+  elevation = float(elevation_str.strip())
+ 
+ location = re.sub(r"\s*,\s*", ",", location.strip())
+ lat_long: Optional[List[Union[float, str, None]]] = None
+ if len(location.split(",", 1)) == 2:
+  lat_long = []
+  lat_long_test = location.split(",", 1)
+  for i in lat_long_test:
+   is_float_loc = bool(re.search(r"^[+-]?[0-9]+(\.[0-9]*)?$", i))
+   is_str_loc = "\u00B0" in i  # degree sign
+   if not is_float_loc and not is_str_loc:
+    lat_long = None
+    break
+   if is_float_loc:
+    lat_long += [float(i)]
+   else:
+    lat_long += [re.sub(r"""\s*(\u00B0|'|")\s*""", r"\1", i)]
+ 
+ if _astral_gte_v2:
+  if lat_long is None:
+   try:
+    loc_info = astral.geocoder.lookup(location, astral.geocoder.database())  # type: ignore
+    lat_long = [loc_info.latitude, loc_info.longitude]
+   except KeyError:
+    return default_times
+  observer = astral.Observer(  # type: ignore
+   latitude=lat_long[0],
+   longitude=lat_long[1],
+   elevation=elevation,
+  )
+  try:
+   if not sunrise_sticky:
+    sunrise = _to_naïve_time(astral.sun.sunrise(observer, date=date))  # type: ignore
+   if not sunset_sticky:
+    sunset = _to_naïve_time(astral.sun.sunset(observer, date=date)) # type: ignore
+  except ValueError:
+   return default_times
+ else:
+  if lat_long is None:
+   try:
+    loc_obj = astral.AstralGeocoder()[location]  # type: ignore
+   except KeyError:
+    return default_times
+  else:
+   loc_obj = astral.Location((  # type: ignore
+    "", "",  # city, region
+    lat_long[0], lat_long[1],
+    "UTC",
+    elevation,
+   ))
+  try:
+   if not sunrise_sticky:
+    sunrise = _to_naïve_time(loc_obj.sunrise(date=date, local=False))  # type: ignore
+   if not sunset_sticky:
+    sunset = _to_naïve_time(loc_obj.sunset(date=date, local=False))  # type: ignore
+  except astral.AstralError:  # type: ignore
+   return default_times
+ 
+ return [sunrise, sunset]
+
+
+if __name__ == "__main__":  # {{{1
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  sys.exit(_INTERRUPT_EXIT_CODE)
