@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+
+import sys
+import time
+
+from typing import *
+
+
+def idle_loop():
+ while True:
+  time.sleep(3600)
+
+
+def main(argv) -> int:
+ idle_loop()
+ return 0
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
