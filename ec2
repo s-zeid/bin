@@ -1,0 +1,314 @@
+#!/bin/sh
+set -e
+
+# Requirements:
+# 
+# * AWS CLI version 1 (`pip3 install awscli`)
+# * jq (`apt install jq`)
+# 
+# `sudo apt install jq && pip3 install --user awscli`
+# 
+# Extra requirements for Windows instances:
+# 
+# * display (`apt install imagemagick`) (for console screenshots)
+# * openssl (`apt install openssl`) (for decrypting passwords)
+# * Python-RSA (`pip3 install rsa`) (for decrypting passwords)
+# * xfreerdp (`apt install freerdp2-x11`) (for RDP)
+# 
+# `sudo apt install imagemagick openssl freerdp2-x11 && pip3 install --user rsa`
+
+
+if ! [ -f "$1" ]; then
+ printf %s "
+This script should be used as the shebang line in another script that looks like
+the following (assuming this script is on \$PATH):
+
+\`\`\`
+#!/usr/bin/env $(basename -- "$0")
+
+region={region name}
+id={instance ID}
+name={instance name}
+
+private_key={local path to private key}
+
+ssh_user=[SSH user]
+ssh_port=[SSH port]
+
+# Options for Windows instances
+rdp_user=[RDP user]
+rdp_port=[RDP port]
+rdp_size=[RDP size ({width}x{height} or {percent}%[wh])]
+unsafe_rdp_get_password=[0 (default) or 1]
+\`\`\`
+" | tail -n +2
+ exit 2
+fi
+
+config_file=$1; shift
+. "$config_file"
+
+
+usage() {
+ printf %s "
+Usage: [$(basename -- "$0")] $(basename -- "$config_file") {command} [args [...]]
+
+Commands for all instances:
+  status                            display instance status
+  describe                          display detailed instance info
+  start                             start instance
+  stop                              stop instance
+  console                           get console output
+  ip                                get public IP address
+  dns                               get public DNS name
+  ssh [options] [cmd [args]]        start an SSH session
+  scp [options] {source} {target}   copy a file to/from instance with scp
+  sftp [options] [destination]      start an SFTP session
+  ssh-copy-id [-i{key.pub}] [opts]  add public key to the instance's
+                                    authorized_keys file
+  unsafe_cmd                        run an \`aws ec2\` command on the instance
+Commands for Windows instances:
+  rdp [options]                     start an RDP session using xfreerdp(1)
+  get-screenshot                    write a screenshot of the console to stdout
+  show-screenshot                   show a screenshot of the console
+  unsafe_get-password-data          get encrypted Windows password
+  unsafe_get-password-decrypted     get decrypted Windows password
+
+For scp and sftp, use {} or % in place of the hostname to fill in the
+instance's public IP address and (if set) username.
+" | tail -n +2
+}
+
+
+main() {
+ [ $# -lt 1 ] && { usage >&2; return 2; }
+ 
+ if [ x"$id" = x"" ]; then
+  id=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=$name" \
+        --query 'Reservations[0].Instances[0].InstanceId' --output=text)
+ fi
+ 
+ local cmd="$1"; shift
+ 
+ case "$cmd" in
+  status)
+   instances describe-instance-status --include-all-instances \
+    --query 'InstanceStatuses[0].InstanceState.Name';;
+  describe)
+   instances describe-instances --output=json "$@";;
+  start|stop)
+   if [ x"$cmd" = x"start" ]; then
+    local warning="This action will cost you money. "
+    local verb="starting"
+   elif [ x"$cmd" = x"stop" ]; then
+    local warning=
+    local verb="stopping"
+   fi
+   local answer=
+   read -p "${warning}Are you sure (yes/no)? " -r answer
+   while [ x"$answer" != x"yes" ] && [ x"$answer" != x"no" ]; do
+    read -p "Please type 'yes' or 'no': " -r answer
+   done
+   if [ x"$answer" = x"yes" ]; then
+    instances "${cmd}-instances"
+   else
+    echo "Not $verb ${name:-$id}." >&2
+    return 2
+   fi
+   ;;
+  console)
+   instance get-console-output;;
+  ip)
+   main describe --output=text --query 'Reservations[0].Instances[0].PublicIpAddress';;
+  dns)
+   main describe --output=text --query 'Reservations[0].Instances[0].PublicDnsName';;
+  ssh|sftp|scp|ssh-copy-id)
+   local host; host="$(main ip)"
+   if [ x"$host" = x"None" ]; then
+    echo "error: instance ${name:-$id} is not running" >&2
+    return 1
+   fi
+   eval "$(ssh_transform_args "$cmd" "$host" "$@")"
+   if [ x"$cmd" = x"ssh-copy-id" ] && ! [ -f "$private_key.pub" ]; then
+    echo "error: \`$private_key.pub\` does not exist; please make it using" >&2
+    echo " \`ssh-keygen -y -f $(escape_arg "$private_key") > $(escape_arg "$private_key.pub")\`" >&2
+    exit 1
+   fi
+   echo_exec "$cmd" "$@"
+   ;;
+  rdp)
+   local host; host="$(main ip)"
+   if [ x"$host" = x"None" ]; then
+    echo "error: instance ${name:-$id} is not running" >&2
+    return 1
+   fi
+   if [ x"$unsafe_rdp_get_password" = x"1" ]; then
+    _ECHO_RUN_PRINT_FIRST="Wait for "  # xfreerdp will print 'Password:' to stderr
+   fi
+   ([ x"$unsafe_rdp_get_password" = x"1" ] && main unsafe_get-password-decrypted || true) \
+    | echo_run xfreerdp \
+       /u:"${rdp_user:-Administrator}" /v:"$host:${rdp_port:-3389}" \
+       /size:"${rdp_size:-1024x768}" \
+       /from-stdin:force /cert-tofu \
+       "$@"
+   ;;
+  get-screenshot)
+   instance_json get-console-screenshot --instance-id="$id" \
+    | jq -r .ImageData \
+    | base64 -d
+   ;;
+  show-screenshot)
+   main get-screenshot | display -;;
+  unsafe_get-password-data)
+   instance_json get-password-data --instance-id="$id" \
+    | jq -r .PasswordData
+   ;;
+  unsafe_get-password-decrypted)
+   local encrypted_password="$(main unsafe_get-password-data)"
+   # Allow the key to be encrypted with `ssh-keygen -p -m PEM -f {key_file}`
+   python3 -c \
+    'if True:
+      try:
+       import base64, subprocess, sys
+       import rsa
+       private_key, encrypted_password = sys.argv[1:]
+       p = subprocess.run(
+        ["openssl", "rsa", "-in", private_key],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+       )
+       if p.returncode != 0:
+        print(p.stderr, file=sys.stderr)
+        sys.exit(p.returncode)
+       key = rsa.PrivateKey.load_pkcs1(p.stdout)
+       print(rsa.decrypt(base64.b64decode(encrypted_password), key).decode("utf-8"))
+      except KeyboardInterrupt:
+       pass
+    ' \
+    "$private_key" "$encrypted_password"
+   ;;
+  unsafe_cmd)
+   instances_json "$@";;
+  *)
+   echo "error: bad command \`$cmd\`" >&2; return 2;;
+ esac
+}
+
+
+instances() {
+ aws ec2 --output=text "$@" --instance-ids="$id"
+}
+
+
+instances_json() {
+ aws ec2 --output=json "$@" --instance-ids="$id"
+}
+
+
+instance() {
+ aws ec2 --output=text "$@" --instance-id="$id"
+}
+
+
+instance_json() {
+ aws ec2 --output=json "$@" --instance-id="$id"
+}
+
+
+aws() {
+ command aws --region="$region" "$@"
+}
+
+
+ssh_transform_args() {
+ local prog="$1"; shift
+ local host="$1"; shift
+ 
+ if [ x"$prog" = x"ssh-copy-id" ]; then
+  prog=ssh
+ fi
+ 
+ local userhost="$host"
+ if [ x"$ssh_user" != x"" ]; then
+  userhost="$ssh_user@$host"
+ fi
+ 
+ local flags_pre=
+ if [ x"$private_key" != x"" ]; then
+  local have_dash_i=0
+  for arg; do
+   if (printf '%s\n' "$arg" | grep -q -e '^[^-]'); then
+    break
+   elif (printf '%s\n' "$arg" | grep -q -e '^-i'); then
+    have_dash_i=1
+    break
+   fi
+  done
+  if [ $have_dash_i -eq 0 ]; then
+   flags_pre="$flags_pre $(escape_arg "-i$private_key")"
+  fi
+ fi
+ if [ x"$ssh_port" != x"" ]; then
+  local port_flag="$([ x"$prog" = x"ssh" ] && echo p || echo P)"
+  flags_pre="$flags_pre $(escape_arg "-$port_flag$ssh_port")"
+ fi
+
+ local in_options=1
+ local flags="$flags_pre"
+ local cmd=
+ local n=1
+ local n_var=
+ local arg=
+ while [ $n -le $# ]; do
+  n_var=$([ $n -lt 10 ] && echo $n || echo "{$n}")
+  eval "arg=\$$n_var"
+  if [ $in_options -ne 0 ] && \
+     printf '%s' "$arg" | head -n 1 | grep -q -e '^-'; then
+   flags="$flags \"\$$n_var\""
+  else
+   in_options=0
+   if [ x"$prog" != x"ssh" ] && \
+      printf '%s' "$arg" | head -n 1 | grep -q -e '^\({}\|%\)\(:.*\)\?$'; then
+    # %[:path], {}[:path] -> userhost[:path]
+    arg="$userhost$(printf '%s' "$arg" | sed -e '1s/^\({}\|%\)//')"
+    cmd="$cmd $(escape_arg "$arg")"
+   else
+    cmd="$cmd \"\$$n_var\""
+   fi
+  fi
+  n=$((n + 1))
+ done
+ if [ x"$prog" = x"scp" ] || { [ x"$prog" = x"sftp" ] && [ x"$cmd" != x"" ]; }; then
+  printf '%s\n' "set -- $flags $cmd"
+ else
+  printf '%s\n' "set -- $flags $(escape_arg "$userhost") $cmd"
+ fi
+}
+
+
+echo_exec() {
+ echo + "$@" >&2
+ if [ x"$_ECHO_RUN_PRINT_FIRST" != x"" ]; then
+  printf '%s' "$_ECHO_RUN_PRINT_FIRST" >&2
+ fi
+ exec "$@"
+}
+
+echo_run() {
+ echo + "$@" >&2
+ if [ x"$_ECHO_RUN_PRINT_FIRST" != x"" ]; then
+  printf '%s' "$_ECHO_RUN_PRINT_FIRST" >&2
+ fi
+ "$@"
+}
+
+_ECHO_RUN_PRINT_FIRST=
+
+
+escape_arg() {
+ printf "'"
+ printf '%s' "$1" | sed -e "s/'/'\\\\''/g"
+ printf "'"
+}
+
+
+main "$@"
