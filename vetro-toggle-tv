@@ -1,0 +1,20 @@
+#!/bin/sh
+
+TITLE=vetro-toggle-tv
+
+uid=$(id -u)
+
+if pgrep -u $uid -f "xterm -T $TITLE" >/dev/null 2>&1; then
+ pkill -u $uid -f "xterm -T $TITLE"
+else
+ xrandr_size=$(xrandr --current --prop | head -n 1 \
+               | grep -o 'current [0-9]\+ x [0-9]\+' \
+               | sed -e 's/current //g; s/ x /\n/g')
+ width=$(printf '%s\n' "$xrandr_size" | head -n 1)
+ height=$(printf '%s\n' "$xrandr_size" | tail -n 1)
+ unset TMUX
+ exec setsid xterm -T $TITLE \
+  -fa 'Ubuntu Mono' -fs $((${height:-900} / 45)) \
+  -geometry 96x32 \
+  -e sh -c 'vetro; sleep 1000'
+fi
