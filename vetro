@@ -4,8 +4,13 @@ set -e
 
 defaults() {
  default_window_name=''
+ 
  host_format='#h'
  host_color='#484848'
+ 
+ date_format='%Y-%m-%d'
+ time_format='#[bold]%H:%M:%S'
+ 
  status_bg='default'
  status_fg='#646464'
  status_line="#(#uptime) #(#temp) #(#load) #(#freq) #(#ram)"
@@ -236,7 +241,7 @@ setup_tmux() {  #{{{1
    "#[bg=$host_color,bold]${host_format:-#h}#[default] "  # unsafe
   set-option -g status-right-length 256
   set-option -g status-right \
-   " %Y-%m-%d #[bold]%H:%M:%S"
+   "${date_format:+ $date_format}${time_format:+ $time_format}"
   set-window-option -g window-status-current-format \
    " #{?window_name,#W,•}#{?#{==:#{==:#F,-}#{==:#F,*}#{==:#F,},000},#F,} "
   set-window-option -g window-status-format \
