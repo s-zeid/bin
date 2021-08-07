@@ -600,17 +600,17 @@ if-x
 
 #%define TEST_MULTIPLE_DEFS_IN_IF
 #%if %TEST_MULTIPLE_DEFS_IN_IF
-#% define MULTIPLE_DEF_IN_IF_1
-#% define MULTIPLE_DEF_IN_IF_2
+#% define MULTIPLE_DEFS_IN_IF_TEST_1
+#% define MULTIPLE_DEFS_IN_IF_TEST_2
 #%else
 if-x
 #%endif
-#%if %MULTIPLE_DEF_IN_IF_1
+#%if %MULTIPLE_DEFS_IN_IF_TEST_1
 if-15
 #%else
 if-x
 #%endif
-#%if %MULTIPLE_DEF_IN_IF_2
+#%if %MULTIPLE_DEFS_IN_IF_TEST_2
 if-16
 #%else
 if-x
