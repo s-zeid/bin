@@ -754,7 +754,7 @@ iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAABm1BMVEUAAACAgIBVVVVAQIBVVVVtbW1g
  desktop_no_clobber = False
  if os.path.isfile(desktop_path_expanded):
   with open(desktop_path_expanded, "rb") as f_bytes:
-   if re.search(rb"^X-Ora-NoClobber=true$", f_bytes.read(), flags=re.M):
+   if re.search(rb"^X-Install-NoClobber=true$", f_bytes.read(), flags=re.M):
     desktop_no_clobber = True
  if not desktop_no_clobber:
   print(f"{prog}: installing `{desktop_path}`")
