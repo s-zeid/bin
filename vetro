@@ -447,8 +447,8 @@ print_status_inner() {  #{{{1
    local f='/proc/meminfo'
    # t: total, a: available, u: used; _F: _ formatted, _K: _ key
    local t='' tF='' tK='MemTotal' a='' aF='' aK='MemAvailable' u='' uF=''
-   t="$(grep "^$tK:"'[ \t]*[0-9]\+ kB$' "$f" | sed -e 's/^[^0-9]*\|[^0-9]*$//g')"
-   a="$(grep "^$aK:"'[ \t]*[0-9]\+ kB$' "$f" | sed -e 's/^[^0-9]*\|[^0-9]*$//g')"
+   t="$(grep "^$tK:"'[ \t]*[0-9]\+ kB$' "$f" | sed -e 's/\(^[^0-9]*\|[^0-9]*$\)//g')"
+   a="$(grep "^$aK:"'[ \t]*[0-9]\+ kB$' "$f" | sed -e 's/\(^[^0-9]*\|[^0-9]*$\)//g')"
    u=$((t - a))
    tF=$(format_bytes $((t * 1024)) 1)
    aF=$(format_bytes $((a * 1024)) 1)
