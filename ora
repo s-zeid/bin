@@ -23,7 +23,8 @@ from typing import *
 APP_ID = "ora"
 APP_NAME = APP_ID
 APP_TITLE = "Ora"
-ICON_NAME = APP_ID
+ICON_NAME = APP_NAME
+WM_CLASS = APP_NAME
 
 _INTERRUPT_EXIT_CODE = 0
 
@@ -687,7 +688,7 @@ def create_master(class_=None, icon_gif=None):  #{{{1
     parent.change_property(_NET_WM_PID(), Xlib.Xatom.CARDINAL, 32, [os.getpid()])
    window.change_property(_NET_WM_PID(), Xlib.Xatom.CARDINAL, 32, [os.getpid()])
  
- class_ = class_ or os.path.basename(sys.argv[0])
+ class_ = class_ or WM_CLASS
  
  root = tk.Tk(className=class_)
  root.wm_withdraw()
@@ -726,6 +727,7 @@ Exec={os.path.abspath(argv0)}
 Icon={ICON_NAME}
 Terminal=false
 StartupNotify=true
+StartupWMClass={WM_CLASS}
 """.lstrip()
  
  svg_data = ("{{{2" * 0) + """
