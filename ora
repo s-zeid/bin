@@ -20,6 +20,11 @@ from tkinter import font  # type: ignore
 from typing import *
 
 
+APP_ID = "ora"
+APP_NAME = APP_ID
+APP_TITLE = "Ora"
+ICON_NAME = APP_ID
+
 _INTERRUPT_EXIT_CODE = 0
 
 
@@ -74,7 +79,7 @@ class Application(tk.Canvas):  #{{{1
   else:
    self.resize()
   
-  self.master.title("Clock")
+  self.master.title(APP_TITLE)
   self.configure(borderwidth=0, highlightthickness=0)
   self.pack(fill=tk.BOTH, expand=1)
   self.create_widgets()
@@ -483,7 +488,7 @@ def main(argv):  #{{{1
    return "auto"
  
  prog = os.path.basename(argv[0])
- prog = prog if prog != "__main__.py" else "ora"
+ prog = prog if prog != "__main__.py" else APP_NAME
  
  p = argparse.ArgumentParser(
   prog=prog,
@@ -615,7 +620,7 @@ def main(argv):  #{{{1
 class Config:  #{{{1
  def __init__(
   self,
-  path=os.path.join(os.environ.get("XDG_CONFIG_HOME", "~/.config"), "ora.conf"),
+  path=os.path.join(os.environ.get("XDG_CONFIG_HOME", "~/.config"), f"{APP_NAME}.conf"),
  ):
   self.main = main = {}
   self.profiles = profiles = {}
@@ -711,17 +716,17 @@ def is_mobile(chassis: str) -> bool:  #{{{1
 
 
 def install_xdg(*, argv0: str, prog: str, data_dir="~/.local/share"):  #{{{1
- desktop_data = ("{{{2" * 0) + """
+ desktop_data = ("{{{2" * 0) + f"""
 [Desktop Entry]
-Name=Ora
+Name={APP_TITLE}
 GenericName=not-abomination clock
 Categories=Utility;Clock;
 Type=Application
-Exec=__path__
-Icon=ora
+Exec={os.path.abspath(argv0)}
+Icon={ICON_NAME}
 Terminal=false
 StartupNotify=true
-""".lstrip().replace("__path__", os.path.abspath(argv0))
+""".lstrip()
  
  svg_data = ("{{{2" * 0) + """
 <?xml version="1.0" encoding="UTF-8"?>
@@ -744,7 +749,7 @@ iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAABm1BMVEUAAACAgIBVVVVAQIBVVVVtbW1g
   raise RuntimeError("~/.local/share does not exist or is not a directory")
  
  applications_dir = os.path.join(data_dir, "applications")
- desktop_path = os.path.join(applications_dir, "ora.desktop")
+ desktop_path = os.path.join(applications_dir, f"{APP_ID}.desktop")
  desktop_path_expanded = os.path.expanduser(desktop_path)
  desktop_no_clobber = False
  if os.path.isfile(desktop_path_expanded):
@@ -758,14 +763,14 @@ iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAABm1BMVEUAAACAgIBVVVVAQIBVVVVtbW1g
    f_str.write(desktop_data)
 
  icons_dir = os.path.join(data_dir, "icons", "hicolor", "scalable", "apps")
- svg_path = os.path.join(icons_dir, "ora.svg")
+ svg_path = os.path.join(icons_dir, f"{ICON_NAME}.svg")
  print(f"{prog}: installing `{svg_path}`")
  os.makedirs(os.path.expanduser(icons_dir), mode=0o755, exist_ok=True)
  with open(os.path.expanduser(svg_path), "w") as f_str:
   f_str.write(svg_data)
  
  icons_dir = os.path.join(data_dir, "icons", "hicolor", "96x96", "apps")
- png_path = os.path.join(icons_dir, "ora.png")
+ png_path = os.path.join(icons_dir, f"{ICON_NAME}.png")
  print(f"{prog}: installing `{png_path}`")
  os.makedirs(os.path.expanduser(icons_dir), mode=0o755, exist_ok=True)
  with open(os.path.expanduser(png_path), "wb") as f_bytes:
