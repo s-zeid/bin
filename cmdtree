@@ -274,7 +274,7 @@ preprocess() {  #[[[1
   }
   /^#%(fi|endif)(#| |\t)*$/ { in_if_section = 0 }
   /^#% *define +%?[a-zA-Z_]/ {
-   if (!in_if_section || (in_if_section == 2 && is_true)) {
+   if (!in_if_section || ((in_if_section == 2 || in_if_section == 3) && is_true)) {
     in_if_section = 3
     definition = $0
     sub(/^#% *define +%?/, "", definition)
@@ -291,7 +291,7 @@ preprocess() {  #[[[1
    }
   }
   /^#% *undef(ine)? +%?[a-zA-Z_]/ {
-   if (!in_if_section || (in_if_section == 2 && is_true)) {
+   if (!in_if_section || ((in_if_section == 2 || in_if_section == 3) && is_true)) {
     in_if_section = 3
     name = $0
     sub(/^#% *undef(ine)? +%?/, "", name)
@@ -440,7 +440,7 @@ generate_script() {  #[[[1
 
 
 test_parser() {  #[[[1
- local expected='a-b1 a-b2-c1 a-b2-c2-d1 a-b2-c2-d2-e1 a-b2-c2-d2-e2-f a-b3 a-b3-c3 a-b3-c3-d3 a-b3-c3-d3-e3 g-h-i-j g-h-i-j-k g-h-i-l-m if-1 if-2 if-3 if-4 if-5 if-6 if-7 if-8 if-9 if-10 if-11 if-12 if-13 n'
+ local expected='a-b1 a-b2-c1 a-b2-c2-d1 a-b2-c2-d2-e1 a-b2-c2-d2-e2-f a-b3 a-b3-c3 a-b3-c3-d3 a-b3-c3-d3-e3 g-h-i-j g-h-i-j-k g-h-i-l-m if-1 if-2 if-3 if-4 if-5 if-6 if-7 if-8 if-9 if-10 if-11 if-12 if-13 if-14 if-15 if-16 n'
  local script="$(cat <<'END'
 #/*
 should not be here
@@ -590,6 +590,31 @@ if-13
 #%else
 if-x
 #%fi
+
+#%define TRAILING_SPACE_AFTER_NAME 
+#%if %TRAILING_SPACE_AFTER_NAME
+if-14
+#%else
+if-x
+#%endif
+
+#%define TEST_MULTIPLE_DEFS_IN_IF
+#%if %TEST_MULTIPLE_DEFS_IN_IF
+#% define MULTIPLE_DEF_IN_IF_1
+#% define MULTIPLE_DEF_IN_IF_2
+#%else
+if-x
+#%endif
+#%if %MULTIPLE_DEF_IN_IF_1
+if-15
+#%else
+if-x
+#%endif
+#%if %MULTIPLE_DEF_IN_IF_2
+if-16
+#%else
+if-x
+#%endif
 
 n
 
