@@ -126,6 +126,17 @@
 #     (`$WAYLAND_DISPLAY` is set to an absolute path to a socket or to a
 #     socket under `$XDG_RUNTIME_DIR`); 0 otherwise.
 # 
+# * **Raw sections**
+#   Raw sections consist of a `#%raw` line, a `#%endraw` line, and zero
+#   or more lines in between.  The lines in between will be output as-is
+#   with no further preprocessing or transformation.  Raw sections are
+#   preprocessed after extended comments (`#/*` / `#*/`), but before
+#   any other directives.
+#   
+#   Raw sections are equivalent to omitting the `#%raw` line, replacing
+#   the `#%endraw` line with `$$`, and prepending `$$ ` to the line(s)
+#   in between.
+# 
 # For directives starting with `#%`, zero or more spaces may exist between
 # the `#%` and the name of the directive.
 # 
@@ -242,6 +253,31 @@ preprocess() {  #[[[1
   /^#\*\/(#| |\t)*$/ { in_ignored_section = 2 }
   { if (in_ignored_section == 0) print }
   { if (in_ignored_section == 2) in_ignored_section = 0 }
+ ' | \
+ awk '
+  # `#%raw` preprocessing
+  BEGIN {
+   in_raw_section = 0
+  }
+  /^#% *raw(#| |\t)*$/ {
+   if (!in_raw_section) {
+    in_raw_section = 1
+    next
+   }
+  }
+  /^#% *endraw(#| |\t)*$/ {
+   if (in_raw_section) {
+    in_raw_section = 0
+    print "$$"
+    next
+   }
+  }
+  {
+   if (in_raw_section)
+    print "$$ " $0
+   else
+    print $0
+  }
  ' | \
  awk -v IS_GUI="$IS_GUI" '
   # `#%if` preprocessing
@@ -440,7 +476,15 @@ generate_script() {  #[[[1
 
 
 test_parser() {  #[[[1
- local expected='a-b1 a-b2-c1 a-b2-c2-d1 a-b2-c2-d2-e1 a-b2-c2-d2-e2-f a-b3 a-b3-c3 a-b3-c3-d3 a-b3-c3-d3-e3 g-h-i-j g-h-i-j-k g-h-i-l-m if-1 if-2 if-3 if-4 if-5 if-6 if-7 if-8 if-9 if-10 if-11 if-12 if-13 if-14 if-15 if-16 should-always-print n'
+ local expected='a-b1 a-b2-c1 a-b2-c2-d1 a-b2-c2-d2-e1 a-b2-c2-d2-e2-f a-b3 a-b3-c3 a-b3-c3-d3 a-b3-c3-d3-e3 g-h-i-j g-h-i-j-k g-h-i-l-m if-1 if-2 if-3 if-4 if-5 if-6 if-7 if-8 if-9 if-10 if-11 if-12 if-13 if-14 if-15 if-16 should-always-print not-raw-1 not-raw-2 raw-1 raw-2
+raw-3
+#%if false
+raw-4
+#%fi
+$ echo raw-5
+raw-6
+raw-7 raw-8 not-raw-3 not-raw-4 not-raw-5
+echo not-raw-6 n'
  local script="$(cat <<'END'
 #/*
 should not be here
@@ -618,6 +662,30 @@ if-x
 
 #%define TEST_TOPLEVEL_DEFINE
 should-always-print
+
+not-raw-1
+not-raw-2
+
+raw-1
+raw-2
+#%raw
+raw-3
+#%if false
+raw-4
+#%fi
+$ echo raw-5
+raw-6
+#%endraw
+raw-7
+raw-8
+
+not-raw-3
+#%if false
+not-raw-x
+#%fi
+not-raw-4
+not-raw-5
+$ echo not-raw-6
 
 n
 
