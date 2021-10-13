@@ -1,0 +1,26 @@
+#!/bin/sh
+set -e
+
+termsize() {
+ stty size | sed -e 's/^\([^ ]*\) \(.*$\)/\2x\1/g'
+}
+
+
+main() {
+ local watch=0
+ if [ x"$1" = x"-w" ] || [ x"$1" = x"--watch" ]; then
+  shift
+  watch=1
+ fi
+
+ if [ $watch -eq 1 ]; then
+  __TERMSIZE_WATCH=1 exec "$0" "$@"
+ elif [ x"$__TERMSIZE_WATCH" = x"1" ]; then
+  __TERMSIZE_WATCH=2 exec watch -n 0.1 -x "$0" "$@"
+ else
+  termsize "$@"
+ fi
+}
+
+
+main "$@"
