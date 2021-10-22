@@ -1,0 +1,56 @@
+#!/bin/sh
+set -e
+
+
+main() {
+ if [ $# -ne 1 ]; then
+  echo "Usage: $(basename -- "$0") <path>" >&2
+  return 2
+ fi
+ 
+ local path; path="$1"
+ 
+ which_after "$path" "$exclude_path" "$all"
+}
+
+
+which_after() {
+ local path; path=$1
+ local basename; basename=$(basename -- "$path") 
+ local after_dir; after_dir=$(cd "$(dirname -- "$path")" && pwd)
+ 
+ local old_ifs
+ old_ifs=$IFS
+ IFS=:
+ 
+ local result; result=''
+ local after_dir_on_path; after_dir_on_path=0
+ local basename_on_path; basename_on_path=0
+ for entry in $PATH:; do
+  if [ x"$entry" = x"$after_dir" ]; then
+   after_dir_on_path=1
+  elif [ -x "$entry/$basename" ]; then
+   basename_on_path=1
+   if [ $after_dir_on_path -ne 0 ]; then
+    result="$entry/$basename"
+    break
+   fi
+  fi
+ done
+ 
+ IFS=$old_ifs
+ 
+ result=${result:-$first}
+ if [ x"$result" != x"" ]; then
+  printf '%s\n' "$result"
+ elif [ $after_dir_on_path -ne 0 ] && [ $basename_on_path -ne 0 ]; then
+  printf '%s\n' "$0: error: \`$basename\` not on \$PATH after \`$after_dir\`" >&2
+  return 1
+ else
+  printf '%s\n' "$0: error: \`$basename\` not on \$PATH" >&2
+  return 1
+ fi
+}
+
+
+main "$@"
