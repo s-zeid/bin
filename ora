@@ -80,7 +80,7 @@ class Application(tk.Canvas):  #{{{1
   else:
    self.resize()
   
-  self.master.title(APP_TITLE)
+  self.master.title(options["title"] or APP_TITLE)
   self.configure(borderwidth=0, highlightthickness=0)
   self.pack(fill=tk.BOTH, expand=1)
   self.create_widgets()
@@ -545,6 +545,10 @@ def main(argv):  #{{{1
                      " (see <https://www.freedesktop.org/software/systemd/man/machine-info.html#CHASSIS=> for valid values)")
  p.add_argument("--kiosk", action="store_true",
                 help="equivalent to `--fullscreen --no-keybindings`")
+ p.add_argument("--title", default=None,
+                help="set the window title to the given string")
+ p.add_argument("--wm-class", default=None,
+                help="set the window class to the given string")
  p.add_argument("--install-xdg", action="store_true",
                 help="installs a .desktop file and SVG icon to ~/.local/share/")
  p.add_argument("--easter-eggs", action="store_true",
@@ -614,7 +618,10 @@ def main(argv):  #{{{1
  
  icon_gif = r"R0lGODlhYABgAPMAAAAAAF1dYl1dY15cYl5dYl9dYl5cY15dY19dY15eYl5eY11dZF5dZF9dZMzMzAAAACH5BAEAAAAALAAAAABgAGAAAAT+EMhJq7046827/2AojmRpnmiqrmzrvnAsn4dx3PjNHHOPLbmgMGjwyQjDpPJWNKoQu6VUmXCWptgpwQpKZL/SJlejAJuVijEmcG4v1RS3XAmPzu/BBneAd/jxOU42fX+AOj6DhA6GgTKJioyNL5EHfouUBwgvdoaWmDd6LZienzwsn6SlK2yjhaVpKaWpqiilla62J16yuKULJra3l8GmIwLBs7aaI8TJuSIIzb3BIsTC1jjV0sPWIcfb2Icf2M7U49blzx1A6NPBoRzh6eob8u7m8eT39Br23Ngdyuj7Z01MBk7I9vG7EO5awxv5Bj6EWM/fxGIZGs5baEGjpY/AIEN+nBOxnciTIUlWHIiyJUEwJS+G44BQJrGYNt91yAlwJ8+bPn9yZCh0qIVHRRnBw5kUD4imlJ5CNbTs3NQ72q6q7KJVzlKrXc2QiBYWTBUSZWGWYJdWSlW0baXEiptEBd26du9KyqvXRQO9BV7woRuj5lUBM9J+hUH2KgMnjZu+9fG3aWA1RWHBASAw5+YKNj8TbWhQNGhrW0yvxLRYtQYkgEq7ltqm9ewSBo59u/FN9u3fwIMLH068uPHjoiMAADs="
  
- app = Application(options, master=create_master(icon_gif=icon_gif))
+ app = Application(options, master=create_master(
+  wm_class=options["wm_class"],
+  icon_gif=icon_gif,
+ ))
  app.mainloop()
 
 
@@ -656,7 +663,7 @@ class Config:  #{{{1
      result_part[key] = value
 
 
-def create_master(class_=None, icon_gif=None):  #{{{1
+def create_master(wm_class=None, icon_gif=None):  #{{{1
  try:
   import Xlib.display  # type: ignore  # pip3 install python-xlib; apt install python3-xlib
  except ImportError:
@@ -688,9 +695,9 @@ def create_master(class_=None, icon_gif=None):  #{{{1
     parent.change_property(_NET_WM_PID(), Xlib.Xatom.CARDINAL, 32, [os.getpid()])
    window.change_property(_NET_WM_PID(), Xlib.Xatom.CARDINAL, 32, [os.getpid()])
  
- class_ = class_ or WM_CLASS
+ wm_class = wm_class or WM_CLASS
  
- root = tk.Tk(className=class_)
+ root = tk.Tk(className=wm_class)
  root.wm_withdraw()
  if icon_gif:
   root.wm_iconphoto(True, tk.PhotoImage(data=icon_gif))
@@ -748,7 +755,7 @@ iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAABm1BMVEUAAACAgIBVVVVAQIBVVVVtbW1g
  #}}}2
  
  if not os.path.isdir(os.path.expanduser(data_dir)):
-  raise RuntimeError("~/.local/share does not exist or is not a directory")
+  raise RuntimeError(f"{data_dir} does not exist or is not a directory")
  
  applications_dir = os.path.join(data_dir, "applications")
  desktop_path = os.path.join(applications_dir, f"{APP_ID}.desktop")
