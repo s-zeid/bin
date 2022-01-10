@@ -221,7 +221,7 @@ class Power(metaclass=DocumentedAttributes):
   battery = None
   for i in power_supplies:
    type_ = get_sysfs(i, "type").lower()
-   if type_ == "mains" and ac is None:
+   if type_ in ("mains", "usb") and ac is None:
     ac = i
    elif type_ == "battery" and battery is None:
     battery = i
@@ -243,7 +243,7 @@ class Power(metaclass=DocumentedAttributes):
    
    battery_status = get_sysfs(battery, "status").lower()
    if battery_status in ("discharging", "charging"):
-    if current_now > 0:
+    if current_now > 0 and charge_full > 0:
      top = charge_full - charge_now if battery_status == "charging" else charge_now
      result.total_seconds = round_half_up(3600 * top / current_now)
      result.hours         = round_half_up(result.total_seconds / 3600)
