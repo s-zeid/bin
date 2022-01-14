@@ -257,7 +257,7 @@ setup_tmux() {  #{{{1
   
   # Window title
   set-option -g set-titles on
-  set-option -g set-titles-string "#h#{?#{!=:#W,}, – #W,#{?#{&&:#{!=:#T,},#{!=:#T,#h}}, – #T,}}"
+  set-option -g set-titles-string "#h#{?#{&&:#{!=:#T,},#{!=:#T,#h}}, – #T,#{?#{&&:#{!=:#W,},#{!=:#W,#h}}, – #W,}}"
 TMUX
   
  # Volume key settings (f_key_{mute,vol_down,vol_up})
