@@ -537,6 +537,8 @@ def main(argv):  #{{{1
  p.add_argument("--ntp", default=None,
                 help="if set, use the given NTP server to correct for an inaccurate"
                      " system time")
+ p.add_argument("--no-dark-titlebar", dest="dark_titlebar", action="store_false",
+                help="do not use a dark titlebar (in supported environments)")
  p.add_argument("--no-keybindings", dest="keybindings", action="store_false",
                 help="disable keybindings for fullscreen (f, F11) and quit (q)"
                      " (does not affect default OS/WM keybindings)")
@@ -621,6 +623,7 @@ def main(argv):  #{{{1
  app = Application(options, master=create_master(
   wm_class=options["wm_class"],
   icon_gif=icon_gif,
+  dark_titlebar=options["dark_titlebar"],
  ))
  app.mainloop()
 
@@ -663,7 +666,11 @@ class Config:  #{{{1
      result_part[key] = value
 
 
-def create_master(wm_class=None, icon_gif=None):  #{{{1
+def create_master(  #{{{1
+ wm_class=None,
+ icon_gif=None,
+ dark_titlebar=False,
+):
  try:
   import Xlib.display  # type: ignore  # pip3 install python-xlib; apt install python3-xlib
  except ImportError:
@@ -695,6 +702,17 @@ def create_master(wm_class=None, icon_gif=None):  #{{{1
     parent.change_property(_NET_WM_PID(), Xlib.Xatom.CARDINAL, 32, [os.getpid()])
    window.change_property(_NET_WM_PID(), Xlib.Xatom.CARDINAL, 32, [os.getpid()])
  
+ def set_gtk_theme_variant(root, variant: str):
+  if root.tk.eval("tk windowingsystem") == "x11":
+   display = Xlib.display.Display()
+   window = display.create_resource_object('window', root.winfo_id())
+   parent = window.query_tree().parent
+   UTF8_STRING = display.intern_atom("UTF8_STRING")
+   _GTK_THEME_VARIANT = display.intern_atom("_GTK_THEME_VARIANT")
+   parent.change_property(_GTK_THEME_VARIANT, UTF8_STRING, 8, variant.encode("utf-8"))
+   window.change_property(_GTK_THEME_VARIANT, UTF8_STRING, 8, variant.encode("utf-8"))
+   display.sync()
+ 
  wm_class = wm_class or WM_CLASS
  
  root = tk.Tk(className=wm_class)
@@ -703,6 +721,7 @@ def create_master(wm_class=None, icon_gif=None):  #{{{1
   root.wm_iconphoto(True, tk.PhotoImage(data=icon_gif))
  setproctitle(os.path.basename(sys.argv[0]))
  set_pid(root)
+ set_gtk_theme_variant(root, "dark" if dark_titlebar else "light")
  
  return root
 
