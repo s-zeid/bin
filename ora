@@ -51,9 +51,14 @@ class Application(tk.Canvas):  #{{{1
   self.location = options["location"]
   self._default_sunrise_sunset = [self.sunrise, self.sunset]
   
+  self.ntp_thread = None
   if options["ntp"]:
    self.ntp_thread = NTPThread(server=options["ntp"])
    self.ntp_thread.start()
+  
+  self.faketime = self.faketime_delta = None
+  if options["faketime"]:
+   self.faketime = datetime.datetime.fromisoformat(options["faketime"])
   
   self.easter_eggs = options["easter_eggs"]
   
@@ -253,13 +258,17 @@ class Application(tk.Canvas):  #{{{1
   return
  
  def tick(self):  #{{{2
-  new_datetime = datetime.datetime.now()
+  new_datetime = now = datetime.datetime.now()
   if self.ntp_thread:
    offset = self.ntp_thread.offset
    if offset is not None:
     new_datetime += datetime.timedelta(seconds=offset)
    else:
     return
+  if self.faketime:
+   if self.faketime_delta is None:
+    self.faketime_delta = self.faketime - now
+   new_datetime += self.faketime_delta
   new_datetime = new_datetime.replace(microsecond=0)
   new_time = new_datetime.time()
   new_tzoffset = time.localtime().tm_gmtoff
@@ -553,6 +562,8 @@ def main(argv):  #{{{1
                 help="set the window class to the given string")
  p.add_argument("--install-xdg", action="store_true",
                 help="installs a .desktop file and SVG icon to ~/.local/share/")
+ p.add_argument("--faketime", default=None,
+                help=argparse.SUPPRESS)
  p.add_argument("--easter-eggs", action="store_true",
                 help=argparse.SUPPRESS)
  p.add_argument("--hep", dest="_hep_easter_egg", action="store_true",
