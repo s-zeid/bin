@@ -123,8 +123,8 @@ class Application(tk.Canvas):  #{{{1
    family=self.options["font_family"],
    size=-round_half_up(self.base_size / 3)
   )
-  self.td_offset = (tf.metrics()["linespace"] - df.metrics()['linespace']) / 8
-  self.dw_offset = (df.metrics()["linespace"] - wf.metrics()['linespace']) / 8
+  self.td_offset = (tf.metrics()["linespace"] - df.metrics()["linespace"]) / 8
+  self.dw_offset = (df.metrics()["linespace"] - wf.metrics()["linespace"]) / 8
   
   self.width, self.height = width, height
   self.set_background_image(
@@ -207,12 +207,12 @@ class Application(tk.Canvas):  #{{{1
    if img.size != self.size:
     if img_ratio > self_ratio:
      w, h = round_half_up(max(img.width * self.height / img.height, 1)), self.height
-     left = (w - self.width) / 2
+     left = round_half_up((w - self.width) / 2)
      top = 0
     else:
      w, h = self.width, round_half_up(max(img.height * self.width / img.width, 1))
      left = 0
-     top = (h - self.height) / 2
+     top = round_half_up((h - self.height) / 2)
     
     with img as old:
      old.draft(None, (w, h))
@@ -367,16 +367,17 @@ class Application(tk.Canvas):  #{{{1
    for i in t_id, d_id, w_id:
     coords = canvas.bbox(i)
     height += coords[3] - coords[1]
-    x = (self.width / 2) - ((coords[2] - coords[0]) / 2)
+    x = round_half_up((self.width / 2) - ((coords[2] - coords[0]) / 2))
     tmp += [x]
    t_x, d_x, w_x = tmp
    
-   margin = ((self.height - height) / 2) - self.td_offset
+   margin = round_half_up(((self.height - height) / 2) - self.td_offset)
    t_box = canvas.bbox(t_id)
    d_box = canvas.bbox(d_id)
    
-   t_y, d_y = margin, (margin + (t_box[3] - t_box[1]))
-   w_y = d_y + (d_box[3] - d_box[1]) + self.dw_offset
+   t_y = margin
+   d_y = t_y + (t_box[3] - t_box[1])
+   w_y = round_half_up(d_y + (d_box[3] - d_box[1]) + self.dw_offset)
    
    self._text_pos = [[t_x, t_y], [d_x, d_y], [w_x, w_y]]
    
@@ -386,7 +387,7 @@ class Application(tk.Canvas):  #{{{1
   elif is_new_day:
    w_coords = canvas.bbox(w_id)
    w_x_old = w_coords[0]
-   w_x = (self.width / 2) - ((w_coords[2] - w_coords[0]) / 2)
+   w_x = round_half_up((self.width / 2) - ((w_coords[2] - w_coords[0]) / 2))
    canvas.move(w_id, w_x - w_x_old, 0)
  
  def reset(self):  #{{{2
