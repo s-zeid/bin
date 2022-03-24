@@ -46,7 +46,7 @@ import os
 import sys
 import time
 
-import psutil  # pip3 install psutil
+import psutil  # apt/dnf: python3-psutil; apk: py3-psutil; pip3: psutil
 
 
 def main(argv):  #{{{1
