@@ -393,7 +393,7 @@ def load_config(config, path=""):
  FALSES = ("0", "false", "no", "off")
  BOOLEANS = TRUES + FALSES
  result = odict()
- cp = configparser.RawConfigParser(dict_type=odict, allow_no_value=True)
+ cp = configparser.RawConfigParser(dict_type=odict, allow_no_value=True, strict=False)
  cp.read_file(io.StringIO("[/]\n" + config))
  sections = (["/"] + [i for i in cp.sections() if i != "/"])
  spec_sections = []
