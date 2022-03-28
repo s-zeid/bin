@@ -55,6 +55,15 @@
 #               ; if True, then `*.<domain>` will also be included unless
 #               ; overridden for a domain, but not for subdomains unless told
 #               ; otherwise
+#     run-after = <(optional) path to program or script to run after>
+#               ; if given, run the given program or script as root after
+#               ; generating the certificate.  Only a path to an executable
+#               ; file may be given.  The following environment variables will
+#               ; be available to the program or script:
+#               ; 
+#               ; * `BNAYCERT_CERT_DIR` - the full path to the certificate
+#               ;   directory (e.g. `/etc/letsencrypt/live/example.com`)
+#               ; * `BNAYCERT_CERT_NAME` - the main domain given in `main`
 #     
 #     [domain-or-glob (subdirectory of base; basename is used as the domain)]
 #      subdomains = <(optional) glob>
@@ -123,11 +132,13 @@
 # it is executed in cert-only webroot mode.  This program will do a few more
 # things with the final certificate:
 # 
-# * chmod 600 the private key file
-# * combine the certificate and private key files into a `cert+privkey.pem`
-#   file for lighttpd, and chmod 600 that file
-# * print the paths to all certificate, chain, and private key files related to
-#   the certificate.
+# 1. `chmod 600` the private key file.
+# 2. Combine the certificate and private key files into a `cert+privkey.pem`
+#    file for lighttpd, and `chmod 600` that file.
+# 3. Print the paths to all certificate, chain, and private key files related
+#    to the certificate.
+# 4. If the `run-after` option is set, then run the program or script at the
+#    given path as root.  See the documentation for that option for details.
 # 
 # [Fuck Eddy Nigg!](https://code.s.zeid.me/un-startssl-ify)
 
@@ -314,7 +325,7 @@ def get_domains(config):
 
 
 def certbot(domains, certbot_bin, certbot_args=None,
-            certbot_config_dir=None):
+            certbot_config_dir=None, *, run_after=None):
  if os.path.isdir(certbot_bin):
   certbot_bin = os.path.join(certbot_bin, "certbot-auto")
  certbot_args = list(certbot_args or [])
@@ -328,7 +339,7 @@ def certbot(domains, certbot_bin, certbot_args=None,
  
  cb_r = subprocess.call(cmd)
  if cb_r == 0:
-  post_r = post(domains[0], certbot_config_dir)
+  post_r = post(domains[0], certbot_config_dir, run_after=run_after)
   if post_r != 0:
    return post_r
  return cb_r
@@ -415,7 +426,7 @@ def load_config(config, path=""):
  return result
 
 
-def post(main_domain, certbot_config_dir, recurse=True):
+def post(main_domain, certbot_config_dir, run_after=None, recurse=True):
  live_root = os.path.join(certbot_config_dir, "live")
  if os.path.exists(live_root):
   # change to root if necessary
@@ -425,12 +436,18 @@ def post(main_domain, certbot_config_dir, recurse=True):
    # original main_domain argument and an extra flag to prevent infinite
    # recursion.  The %s replacements are sent through repr(str(...)) first
    # to ensure that they actually are Python string literals.
-   cmd = ["sudo", sys.executable, "-c",
-          ('__name__ = "not__main__"; import sys;'
-           'exec(compile(open(%s, "rb").read(), %s, "exec"));'
-           'sys.exit(catch_main_errors(post, %s, %s, False))')
-          % (repr(str(__file__)), repr(str(__file__)),
-             repr(str(main_domain)), repr(str(certbot_config_dir)))]
+   cmd = [
+    "sudo", sys.executable, "-c",
+    (
+     '__name__ = "not__main__"; import sys;'
+     'exec(compile(open(%s, "rb").read(), %s, "exec"));'
+     'sys.exit(catch_main_errors(post, %s, %s, %s, False))'
+    ) % (
+     repr(str(__file__)), repr(str(__file__)),
+     repr(str(main_domain)), repr(str(certbot_config_dir)),
+     repr(str(run_after) if run_after is not None else None),
+    ),
+   ]
    return subprocess.call(cmd)
   
   cert_dir = os.path.join(DEFAULT_CERTBOT_CONFIG_DIR, "live", main_domain)
@@ -453,6 +470,19 @@ def post(main_domain, certbot_config_dir, recurse=True):
    print(cert_dir)
    for filename in ("cert", "cert+privkey", "chain", "fullchain", "privkey"):
     print(os.path.join(cert_dir, filename + ".pem"))
+   
+   # if run_after is given, run it
+   if run_after is not None:
+    env = os.environ.copy()
+    env.update(dict(
+     BNAYCERT_CERT_DIR=cert_dir,
+     BNAYCERT_CERT_NAME=main_domain,
+    ))
+    run_after_cmd = [run_after]
+    print("+", "".join([shlex.quote(arg) for arg in run_after_cmd]), file=sys.stderr)
+    run_after_r = subprocess.call(run_after_cmd, env=env)
+    if run_after_r != 0:
+     return run_after_r
  
  return 0
 
@@ -512,7 +542,16 @@ def main(argv, recurse=True):
   cb_args = cb_section.get("args", 'certonly --webroot -w "/var/www"')
   cb_args = shlex.split(cb_args)
   cb_config_dir = cb_section.get("config-dir", None)
-  return certbot(domains, cb_path, cb_args + extra_args, cb_config_dir)
+  run_after = config[""].get("run-after", "") or None
+  if run_after is not None:
+   run_after = os.path.normpath(os.path.join(os.path.dirname(config_filename), run_after))
+  return certbot(
+   domains,
+   cb_path,
+   cb_args + extra_args,
+   cb_config_dir,
+   run_after=run_after,
+  )
 
 
 if __name__ == "__main__":
