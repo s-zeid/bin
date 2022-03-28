@@ -30,6 +30,8 @@ def gnome_shell_eval(js: str, dir: bool = False) -> str:
  Shell = bus.get_object("org.gnome.Shell", "/org/gnome/Shell")
  success, result = Shell.Eval(js, dbus_interface="org.gnome.Shell")
  if not success:
+  if not result:
+   result = "unsafe mode disabled; to enable, press Alt+F2, run `lg`, then run `global.context.unsafe_mode = true;`"
   raise ShellJSError(result)
  return result
 
