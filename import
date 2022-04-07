@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+
+"""Stop some Python scripts misisng shebang lines from running as shell scripts.
+
+This attempts to determine if the parent process is a Python script
+erroneously running in a shell, and if so, kills the parent with
+SIGKILL.  Otherwise, execution will pass through to the real import(1).
+
+This will not detect all Python scripts or shells.  It will detect
+Python scripts which start with a "from" or "import" statement (ignoring
+comments and bare strings), shells with names four characters or
+less ending in "sh", and the shell defined by the $SHELL environment
+variable.
+
+"""
+
+import os
+import re
+import shutil
+import signal
+import sys
+
+from typing import *
+
+import psutil  # apt/dnf: python3-psutil; apk: py3-psutil; pip3: psutil
+
+
+def which_other(cmd_name: str) -> Optional[str]:
+ result = None
+ path_parts = os.environ.get("PATH", os.defpath).split(os.pathsep)
+ for dir in path_parts:
+  test_path = os.path.join(dir, cmd_name)
+  if os.path.abspath(test_path) == os.path.abspath(sys.argv[0]):
+   continue
+  if os.path.isfile(test_path) and os.access(test_path, os.F_OK | os.X_OK):
+   result = test_path
+   break
+ return result
+
+
+def main(argv: List[str]) -> int:
+ prog = os.path.basename(argv[0])
+ 
+ parent = psutil.Process().parent()
+ if not parent.name().startswith("python"):
+  is_shebangless_python_script = False
+  script_path = ""
+  cmdline = parent.cmdline()
+  shell_name = os.path.basename(os.environ.get("SHELL", "sh"))
+  interpreter = cmdline[0] if len(cmdline) > 0 else ""
+  interpreter_is_shell = (
+   os.path.basename(interpreter) == shell_name or
+   len(interpreter) <= 4 and interpreter.endswith("sh")
+  )
+  if interpreter_is_shell:
+   script_path = cmdline[1] if len(cmdline) > 1 else ""
+   if script_path and os.path.isfile(script_path):
+    with open(script_path, "rb") as f:
+     while True:
+      line = f.readline().decode("utf-8", errors="replace").strip()
+      if re.search(r"#\s*!\s*", line):
+       shebang = re.sub(r"#\s*!\s*", "", line)
+       if "python" in shebang:
+        break
+      if not line:
+       break
+      if not re.search(r"""^(#|[rbf]*["'])""", line):
+       if re.search(r"from\s+", line):
+        continue
+       if re.search(r"import\s+", line):
+        is_shebangless_python_script = True
+        break
+       else:
+        break
+  if is_shebangless_python_script:
+   print(
+    f"{prog}: warning: {script_path} is a Python script missing its shebang line",
+    file=sys.stderr,
+   )
+   os.kill(parent.pid, signal.SIGKILL)
+   return 0
+ 
+ cmd_path = which_other(prog)
+ if cmd_path:
+  os.execv(cmd_path, argv)
+ else:
+  print(f"{prog}: command not found: {prog}", file=sys.stderr)
+  return 127
+ 
+ raise RuntimeError("BUG: unreachable code")
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
