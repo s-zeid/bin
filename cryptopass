@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+
+"""Generate passwords using a secret key.
+
+Compatible with these CryptoPass implementations:
+
+    * Chrome extension: <https://chrome.google.com/webstore/detail/cryptopass/hegbhhpocfhlnjmemkibgibljklhlfco>
+    * Android app: <https://f-droid.org/en/packages/krasilnikov.alexey.cryptopass/>
+
+Supports reading parameters from a space-separated CSV file of the following format:
+
+    URL username length
+    ...
+
+where parameters may be quoted with double quotes, and the double quotes may be
+escaped by doubling them.
+
+Examples:
+
+    * Generate a password for the URL `https://example.com/`
+      with the username `name` and length 16:  
+      `cryptopass -u name https://example.com/ -l 16`
+    
+    * Generate a password for the URL `https://example.com/`
+      with the parameters in `passwords.txt`:  
+      `cryptopass -f passwords.txt https://example.com/`
+
+"""
+
+import argparse
+import base64
+import csv
+import getpass
+import hashlib
+import hmac
+import math
+import os
+import sys
+
+from typing import *
+
+import pbkdf2  # apt/dnf: python3-pbkdf2; apk: py3-pbkdf2; pip3: pbkdf2
+
+
+DEFAULT_LENGTH: int = 25
+
+
+def cryptopass(
+ secret: str,
+ username: str,
+ url: str,
+ length: int,
+) -> str:
+ salt = f"{username}@{url}"
+ bin_length = math.ceil(length / 4 * 3)
+ key = pbkdf2.PBKDF2(
+  passphrase=secret,
+  salt=salt,
+  iterations=5000,
+  digestmodule=hashlib.sha256,
+  macmodule=hmac,
+ ).read(bin_length)
+ return base64.b64encode(key)[:length].decode("utf-8")
+
+
+def main(argv: List[str]) -> int:
+ p = argparse.ArgumentParser(
+  description=__doc__.strip().splitlines()[0].strip(),
+  formatter_class=argparse.RawDescriptionHelpFormatter,
+ )
+ p.add_argument("--file", "-f", default=None,
+                help="a space-separated CSV file containing parameters for URLs")
+ p.add_argument("--username", "-u", default=None,
+                help="the username to use (required unless --file/-f is given)")
+ p.add_argument("--length", "-l", type=int, default=None,
+                help=f"the length to use (default: {DEFAULT_LENGTH})")
+ p.add_argument("url", nargs="?", default=None,
+                help=f"the URL to use")
+ p.epilog = """
+file format for --file/-f:
+  URL username length
+  ...
+where parameters may be quoted with double quotes, and the double quotes may be
+escaped by doubling them.
+""".strip()
+
+ 
+ try:
+  options = p.parse_args(argv[1:])
+  if options.file:
+   if options.url is None:
+    p.error("error: the following arguments are required: url")
+  else:
+   if options.username is None or options.url is None:
+    p.error("error: the following arguments are required: --file/-f or --username/-u, url")
+ except SystemExit as exc:
+  return exc.code
+ 
+ username = options.username
+ url = options.url
+ length = options.length
+ found = False
+ 
+ if options.file:
+  with open(options.file, "r") as f:
+   reader = csv.reader(f, delimiter=' ', quotechar='"', doublequote=True)
+   for row in reader:
+    if len(row) >= 3:
+     row_url, row_username, row_length = row[:3]
+     try:
+      row_length = int(row_length)
+     except ValueError:
+      row_length = -1
+     if options.url == row_url:
+      if options.username is None or options.username == row_username:
+       if options.length is None or options.length == row_length:
+        username = row_username
+        length = row_length
+        found = True
+  if not found:
+   msg = "could not find entry with "
+   parts = []
+   if url:
+    parts += [f"URL `{url}`"]
+   if username:
+    parts += [f"username `{username}`"]
+   if length:
+    parts += [f"length `{length}`"]
+   msg += ", ".join(parts)
+   print(f"error: {msg}", file=sys.stderr)
+   return 1
+ 
+ secret = getpass.getpass("Master password: ")
+ 
+ password = cryptopass(
+  secret,
+  username,
+  url,
+  length or DEFAULT_LENGTH,
+ )
+ 
+ print(password)
+ return 0
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
