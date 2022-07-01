@@ -91,9 +91,8 @@ main() {  #{{{1
   [ $# -ge 1 ] && shift || true
  fi
  export TMUX_NAME="${name:-vetro}"
+ export TMUX_SOCK="$(tmux_socket_dir)/$TMUX_NAME"
  
- tmux_recreate_sockets
-
  local cmd="$(printf '%s\n' "$1" | head -n 1 | grep -e '^__[a-zA-Z_][a-zA-Z_0-9]*$')"
  if [ x"$cmd" != x"" ]; then
   shift
@@ -133,8 +132,8 @@ main__connect() {  #{{{1
   exit
  fi
  
- if (tmux -L "$TMUX_NAME" has-session -t "$TMUX_NAME" 2>/dev/null); then
-  tmux -u -2 -L "$TMUX_NAME" attach-session -t "$TMUX_NAME" -E
+ if (tmux -S "$TMUX_SOCK" has-session -t "$TMUX_NAME" 2>/dev/null); then
+  tmux -u -2 -S "$TMUX_SOCK" attach-session -t "$TMUX_NAME" -E
  else
   local cmd='' tmux_args='' seen_dd=0
   for i; do
@@ -150,7 +149,7 @@ main__connect() {  #{{{1
    cmd="'$(escape_arg "${SHELL:-/bin/sh}")'"  # default command
   fi
   
-  exec sh -c 'exec tmux -u -2 -L "$TMUX_NAME" \
+  exec sh -c 'exec tmux -u -2 -S "$TMUX_SOCK" \
    new-session -n "" '"$tmux_args"' -s "$TMUX_NAME" "$@"' - \
    "export TMUX_NAME='$(escape_arg "$TMUX_NAME")'; export TERM=xterm-256color;
     '$(escape_arg "$0")' \"/\$TMUX_NAME\" __setup_tmux 1;
@@ -525,9 +524,22 @@ tmux_script() {  #{{{2
 }
 
 
-tmux_recreate_sockets() {  #{{{2
- if which pkill >/dev/null 2>&1; then
-  pkill -USR1 tmux >/dev/null 2>&1 || true
+tmux_socket_dir() {  #{{{2
+ local uid; uid=$(id -u)
+ local xdg_runtime_dir; xdg_runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$uid}"
+ local vetro_rundir; vetro_rundir="$xdg_runtime_dir/vetro"
+ local tmux_tmpdir; tmux_tmpdir=${TMUX_TMPDIR:-/tmp}
+ local tmux_tmpdir_sock; tmux_tmpdir_sock="$tmux_tmpdir/tmux-$uid/$TMUX_NAME"
+ if [ -S "$tmux_tmpdir_sock" ] && ! [ -d "$vetro_rundir" ]; then
+  # backwards compatibility
+  printf '%s\n' "$tmux_tmpdir/tmux-$uid"
+ elif [ -d "$xdg_runtime_dir" ]; then
+  # use XDG_RUNTIME_DIR if available
+  mkdir -p -m 0700 "$vetro_rundir"
+  printf '%s\n' "$vetro_rundir"
+ else
+  # fallback
+  printf '%s\n' "$tmux_tmpdir"
  fi
 }
 
