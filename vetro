@@ -91,6 +91,8 @@ main() {  #{{{1
   [ $# -ge 1 ] && shift || true
  fi
  export TMUX_NAME="${name:-vetro}"
+ 
+ tmux_recreate_sockets
 
  local cmd="$(printf '%s\n' "$1" | head -n 1 | grep -e '^__[a-zA-Z_][a-zA-Z_0-9]*$')"
  if [ x"$cmd" != x"" ]; then
@@ -520,6 +522,13 @@ tmux_script() {  #{{{2
  awk '{ print } END { print "kill-window" }' |
  # execute via tmux's control mode
  tmux -C new-session -E > /dev/null
+}
+
+
+tmux_recreate_sockets() {  #{{{2
+ if which pkill >/dev/null 2>&1; then
+  pkill -USR1 tmux >/dev/null 2>&1 || true
+ fi
 }
 
 
