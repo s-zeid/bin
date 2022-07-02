@@ -527,9 +527,10 @@ tmux_script() {  #{{{2
 tmux_socket_dir() {  #{{{2
  local uid; uid=$(id -u)
  local xdg_runtime_dir; xdg_runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$uid}"
- local vetro_rundir; vetro_rundir="$xdg_runtime_dir/vetro"
  local tmux_tmpdir; tmux_tmpdir=${TMUX_TMPDIR:-/tmp}
  local tmux_tmpdir_sock; tmux_tmpdir_sock="$tmux_tmpdir/tmux-$uid/$TMUX_NAME"
+ local vetro_rundir; vetro_rundir="$xdg_runtime_dir/vetro"
+ local vetro_tmpdir; vetro_tmpdir="$tmux_tmpdir/vetro-$uid"
  if [ -S "$tmux_tmpdir_sock" ] && ! [ -d "$vetro_rundir" ]; then
   # backwards compatibility
   printf '%s\n' "$tmux_tmpdir/tmux-$uid"
@@ -539,7 +540,8 @@ tmux_socket_dir() {  #{{{2
   printf '%s\n' "$vetro_rundir"
  else
   # fallback
-  printf '%s\n' "$tmux_tmpdir"
+  mkdir -p -m 0700 "$vetro_tmpdir"
+  printf '%s\n' "$vetro_tmpdir"
  fi
 }
 
