@@ -1,0 +1,21 @@
+#!/bin/sh
+set -e
+
+random_b64() {
+ local length; length=$1
+ printf '%s\n' $(head -c "$length" /dev/urandom | base64 -w 0 - | head -c "$length")
+}
+
+
+main() {
+ if [ $# -ne 1 ]; then
+  echo "Usage: $(basename -- "$0") {length}" >&2
+  return 2
+ fi
+ 
+ local length; length=$1
+ random_b64 "$length"
+}
+
+
+main "$@"
