@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+input_conf='
+MBTN_LEFT ignore
+MBTN_RIGHT ignore
+y run "sh" "-c" "\"$0\" \"$@\"" printf "%s\\t%s\\n" "y" "${filename}" ; playlist-next force
+h run "sh" "-c" "\"$0\" \"$@\"" printf "%s\\t%s\\n" "h" "${filename}" ; playlist-next force
+n run "sh" "-c" "\"$0\" \"$@\"" printf "%s\\t%s\\n" "n" "${filename}" ; playlist-next force
+'
+
+# hack hack hackity hack
+input_conf_file=~/.config/mpv/input.conf
+if [ -f "$input_conf_file" ]; then
+ input_conf="$(cat "$input_conf_file")$input_conf"
+fi
+
+vf='format=rgba,scale="min(iw,4096)":"min(ih,4096)":force_original_aspect_ratio=decrease'
+
+exec mpv \
+ --input-conf=<(printf '%s\n' "$input_conf") \
+ --vf="$vf" \
+ --no-osc \
+ --pause \
+ --msg-level=all=no \
+ "$@"
