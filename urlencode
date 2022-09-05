@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+
+import argparse
+import os
+import sys
+import urllib.parse
+
+from typing import *
+
+
+def main(argv: List[str]) -> int:
+ p = argparse.ArgumentParser(
+  description="URL encode or decode FILE (or standard input) to standard output."
+ )
+ p.add_argument("-d", "--decode", default=False, action="store_true",
+                help="decode the input instead of encoding it")
+ p.add_argument("-r", "--raw", default=False, action="store_true",
+                help="do not strip whitespace from TTY input or when decoding,"
+                     " or add whitespace to TTY output or when encoding")
+ p.add_argument("input", metavar="FILE", default=None, nargs="?",
+                help="input file (default is standard input)")
+ 
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ is_stdin = options.input == None
+ 
+ try:
+  f = open(options.input, "rb") if not is_stdin else sys.stdin.buffer
+ except IOError as exc:
+  print(f"{p.prog}: {options.input}: {exc.strerror}", file=sys.stderr)
+  return 1
+ 
+ data = f.read()
+ if options.decode or (not options.raw and is_stdin and sys.stdin.isatty()):
+  data = data.rstrip(b"\r\n")
+ 
+ if options.decode:
+  result = urllib.parse.unquote_to_bytes(data)
+ else:
+  result = urllib.parse.quote_from_bytes(data).encode("utf-8")
+ 
+ if not is_stdin:
+  f.close()
+ 
+ sys.stdout.buffer.write(result)
+ if not options.decode or (not options.raw and sys.stdout.isatty()):
+  sys.stdout.buffer.write(b"\n")
+ sys.stdout.buffer.flush()
+ 
+ return 0
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
