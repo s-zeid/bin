@@ -200,7 +200,7 @@ response_main() { #{1
  local path=
  if [ x"$___PATH___" = x"" ]; then
   read -r request_line
-  if (printf '%s' "$request_line" | egrep -q -v -i -e '^(GET|HEAD) .* HTTP/[^ ]+$'); then
+  if (printf '%s' "$request_line" | grep -E -q -v -i -e '^(GET|HEAD) .* HTTP/[^ ]+$'); then
    printf '%s\r\n' "HTTP/1.0 400 Bad Request" "" "<h1>400 Bad Request</h1>"
    return 1
   fi
@@ -258,13 +258,13 @@ response_main() { #{1
  fi
  
  local disposition=inline
- if (printf '%s' "$path" | egrep -q -i -e '[/?](dl|download)([?&].*)?$'); then
+ if (printf '%s' "$path" | grep -E -q -i -e '[/?](dl|download)([?&].*)?$'); then
   disposition=attachment; re=''; #copyts=''
   path="$(printf '%s' "$path" | sed -e 's@[/?]\(dl\|download\)\([?&].*\)\?$@@i')"
  fi
  path=${path%%\?*}
  
- if (printf '%s' "$path" | egrep -q -e '^/+[^/]'); then
+ if (printf '%s' "$path" | grep -E -q -e '^/+[^/]'); then
   name="$(basename -- "$(printf '%s' "$path" | sed -e 's@^/*@@; s@/*$@@')")"
   if [ x"$___TITLE___" = x"" ]; then
    title=${name%.*}
@@ -316,7 +316,7 @@ resolve_ytdl_uri() { #{1
  if (printf '%s' "$after_scheme" | grep -q -v -e '/'); then
   format="$DEFAULT_FORMAT"
   url="$after_scheme"
- elif (printf '%s' "$format" | head -n 1 | egrep -q -e '\.[^:]*:?$|:$') &&
+ elif (printf '%s' "$format" | head -n 1 | grep -E -q -e '\.[^:]*:?$|:$') &&
       (printf '%s' "$format" | head -n 1 | grep -q -e '^[a-zA-Z.:_-]\+$'); then
   url="$format/$url" #url="$(printf '%s' "$format/$url" | sed -e "s@:/\+@://@")"
   format="$DEFAULT_FORMAT"
