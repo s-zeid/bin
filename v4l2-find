@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+if [ $# -ne 1 ]; then
+ echo "Usage: $(basename -- "$0") <regex>" >&2
+ exit 2
+fi
+
+re=$(printf "%s\n" "$1" | sed -e 's,/,\\/,g')
+
+v4l2-ctl --list-devices | sed -ne '/'"$re"'/Ns/[^\n]*\n[ \t]*\([^ \t]\)/\1/p'
