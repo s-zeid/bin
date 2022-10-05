@@ -60,7 +60,7 @@ def main(argv: List[str]) -> int:
                     f" (default: `{DEFAULT_DENY_RE}`)")
  p.add_argument("-F", "--forbidden-code", default=DEFAULT_FORBIDDEN_CODE, type=int,
                 help="the HTTP response code to use for disallowed requests"
-                     " (default: {DEFAULT_FORBIDDEN_CODE})")
+                    f" (default: {DEFAULT_FORBIDDEN_CODE})")
  p.add_argument("directory",
                 help="the root directory from which to serve")
  p.add_argument("-v", "--verbose", action="count", default=0,
