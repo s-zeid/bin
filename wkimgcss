@@ -62,7 +62,7 @@ def main(argv: List[str]):
  p.add_argument("input",
                 help="the input image (`-` for standard input)")
  p.add_argument("style",
-                help="the CSS to apply to the image")
+                help="the CSS fragment to apply to the image")
  p.add_argument("output",
                 help="the PNG output path (`-` for standard output)")
  
@@ -71,7 +71,7 @@ def main(argv: List[str]):
  except SystemExit as exc:
   return exc.code
  
- input_data = b''
+ input_data: bytes
  if options.input == '-':
   input_data = sys.stdin.buffer.read()
  else:
@@ -81,7 +81,7 @@ def main(argv: List[str]):
  try:
   output_data = wkimgcss(input_data, options.style)
  except JSModuleError as exc:
-  if exc.kind == "EncodingError":
+  if exc.name == "EncodingError":
    print(
     f"{prog}: error: input image is corrupted or its format is not supported by WebKitGTK",
     file=sys.stderr,
@@ -114,12 +114,12 @@ def wkimgcss(
  window.add(wv)
  window.show_all()
  
- result = wv_run_js_module_on_empty_page(
+ geometry_js = wv_run_js_module_on_empty_page(
   webview=wv,
   js="""
    const img = document.createElement("img");
    img.setAttribute("src", `data:image/png;base64,${params.input_data_b64}`);
-   img.style = params.style;
+   img.setAttribute("style", params.style);
    await img.decode();
    document.body.append(img);
    document.body.style = `
@@ -157,7 +157,7 @@ def wkimgcss(
     let [crop_x, crop_y, crop_width, crop_height] = crop_parts;
     function parseCSSLength(length) {
      const div = document.createElement("div");
-     div.style.width = length;
+     div.style.width = length.trim();
      document.body.append(div);
      const computed = window.getComputedStyle(div).width.match(/^(-?[0-9]*(.[0-9]+))px$/);
      div.remove();
@@ -177,8 +177,7 @@ def wkimgcss(
     height = crop_height;
    }
    
-   // the output will be cropped in the Python code
-   return [x, y, width, height].join(",");
+   return [x, y, width, height];
   """,
   params={
    "input_data_b64": base64.b64encode(input_data).decode("utf-8"),
@@ -186,12 +185,17 @@ def wkimgcss(
   },
  )
   
- geometry: Optional[List[float]] = None
  try:
-  geometry = [float(i) for i in result.split(",")]
-  geometry[3]
- except (IndexError, TypeError, ValueError) as exc:
-  raise RuntimeError("BUG: JavaScript return value is not an array [Boolean, Object]")
+  if not isinstance(geometry_js, list):
+   raise TypeError(str(type(geometry_js)))
+  if len(geometry_js) != 4:
+   raise ValueError()
+  for i in geometry_js:
+   if not isinstance(i, (int, float)):
+    raise TypeError(str(type(i)))
+ except (TypeError, ValueError) as exc:
+  raise RuntimeError("BUG: JavaScript return value is not an array of 4 Numbers")
+ geometry: List[Union[int, float]] = geometry_js
  x, y, width, height = geometry
  
  cairo_surface = None
@@ -218,12 +222,18 @@ def wkimgcss(
  buffer = io.BytesIO()
  cairo_surface_cropped.write_to_png(buffer)
  output_data = buffer.getvalue()
+ 
+ window.hide()
+ window.remove(wv)
+ wv.destroy()
+ window.destroy()
+ 
  return output_data
 
 
 @dataclasses.dataclass
 class JSModuleError(Exception):
- kind: Optional[str]
+ name: Optional[str]
  message: Optional[str]
  line: Optional[int]
  column: Optional[int]
@@ -243,6 +253,7 @@ def wv_run_js_module_on_empty_page(
  webview: webkit2.WebView,  # type: ignore
  js: str,
  params: Optional[dict],
+ timeout_s: Union[int, float] = 10
 ) -> Any:
  params_json = json.dumps(params or {})
  result = None
@@ -264,12 +275,12 @@ def wv_run_js_module_on_empty_page(
     array = json.loads(jsc_value.to_json(0))
     success, error_meta, body = array
     result_success = success
-    kind, line, column = error_meta
+    error_name, error_line, error_column = error_meta
     jsc_exception = jsc_value.get_context().get_exception()
     if jsc_exception:
-     raise JSModuleError(kind, jsc_exception.get_message(), line, column)
+     raise JSModuleError(error_name, jsc_exception.get_message(), error_line, error_column)
     if not success:
-     raise JSModuleError(kind, str(body), line, column)
+     raise JSModuleError(error_name, str(body), error_line, error_column)
     result = body
    else:
     raise TypeError("BUG: JavaScript wrapper return value is not an array")
@@ -286,35 +297,46 @@ def wv_run_js_module_on_empty_page(
  )
  
  try:
-  webview.load_html("""
+  html_1 = r"""
    <!DOCTYPE html>
    <meta charset="utf-8" />
    <body>
    <script type="module">
     window.addEventListener("error", (event) => {
-     const errorMeta = [event.error.name || null, (event.lineno - 14), event.colno];
-     window.webkit.messageHandlers.__wv_run_js_module__result.postMessage([false, errorMeta, event.error.toString()]);
+     const errorMeta = [event.error.name || null, (event.lineno - ___line_offset___), event.colno];
+     window.webkit.messageHandlers.""" + message_handler_name + r""".postMessage([false, errorMeta, event.error.toString()]);
     });
    </script>
    <script type="module">
-    const params = """ + params_json + """;
+    const params = """ + params_json + r""";
     const result = await (async function() {
      try {
- """ + js + """
+  """.rstrip(" \t")
+  html_2 = r"""
      } catch (error) {
-      const errorMeta = [error.name || null, (error.lineNumber - 14), error.columnNumber];
-      window.webkit.messageHandlers.__wv_run_js_module__result.postMessage([false, errorMeta, error.toString()]);
+      const errorMeta = [error.name || null, (error.lineNumber - ___line_offset___), error.columnNumber];
+      window.webkit.messageHandlers.""" + message_handler_name + r""".postMessage([false, errorMeta, error.toString()]);
      }
     })();
-    window.webkit.messageHandlers.__wv_run_js_module__result.postMessage([true, [null, null, null], result]);
+    window.webkit.messageHandlers.""" + message_handler_name + r""".postMessage([true, [null, null, null], result]);
    </script>
-  """, None)
+  """
+  line_offset = len(html_1.splitlines())
+  html_1 = html_1.replace("___line_offset___", json.dumps(line_offset))
+  html_2 = html_2.replace("___line_offset___", json.dumps(line_offset))
+  html = html_1 + js + html_2
+  webview.load_html(html, None)
   
   start = time.time()
   while not have_result:
    gtk.main_iteration_do(True)
-   if time.time() - start >= 10:
-    raise RuntimeError("BUG: script did not execute in time")
+   if timeout_s > 0 and time.time() - start >= timeout_s:
+    raise JSModuleError(
+     None,
+     f"script did not execute in time (timeout: {timeout_s} seconds)",
+     None,
+     None,
+    )
  finally: 
   ucm.disconnect(signal_handler_id)
   ucm.unregister_script_message_handler(message_handler_name)
