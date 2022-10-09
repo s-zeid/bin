@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+
+"""Apply CSS to an image and output the result in PNG format.
+
+The given CSS is applied to an `<img>` element using WebKitGTK.
+
+A fake "property" named `--crop` is provided to crop the image:
+
+    --crop: {x}px {y}px {width}px {height}px
+
+Transparent images are supported for both input and output.
+
+"""
+
+
+import argparse
+import base64
+import dataclasses
+import io
+import json
+import math
+import os
+import re
+import sys
+import time
+
+from typing import *
+
+if TYPE_CHECKING:
+ # these are repeated here to preserve the installation instruction
+ # comments in the tracebacks for the actual imports
+ import gi, gi.repository  # type: ignore
+
+import gi  # apt install python3-gi
+
+gi.require_version("Gtk", "3.0")  # apt install gir1.2-gtk-3.0
+from gi.repository import Gtk as gtk
+
+gi.require_version("Gdk", "3.0")  # apt install gir1.2-gtk-3.0
+from gi.repository import Gdk as gdk
+
+gi.require_version("WebKit2", "4.0")  # apt install gir1.2-webkit2-4.0
+from gi.repository import WebKit2 as webkit2
+
+from gi.repository import GLib as glib
+from gi.repository import Gio as gio
+
+import cairo  # apt install python3-cairo
+gi.require_foreign("cairo", "Surface")
+
+
+def main(argv: List[str]):
+ prog = os.path.basename(argv[0])
+ doc_lines = (__doc__.strip() or "\n\n").splitlines()
+ 
+ p = argparse.ArgumentParser(
+  prog=prog,
+  description=doc_lines[0].strip(),
+  epilog="\n".join(doc_lines[1:]).strip(),
+  formatter_class=argparse.RawDescriptionHelpFormatter,
+ )
+ p.add_argument("input",
+                help="the input image (`-` for standard input)")
+ p.add_argument("style",
+                help="the CSS to apply to the image")
+ p.add_argument("output",
+                help="the PNG output path (`-` for standard output)")
+ 
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ input_data = b''
+ if options.input == '-':
+  input_data = sys.stdin.buffer.read()
+ else:
+  with open(options.input, "rb") as f:
+   input_data = f.read()
+ 
+ try:
+  output_data = wkimgcss(input_data, options.style)
+ except JSModuleError as exc:
+  if exc.kind == "EncodingError":
+   print(
+    f"{prog}: error: input image is corrupted or its format is not supported by WebKitGTK",
+    file=sys.stderr,
+   )
+   return 1
+  else:
+   raise
+ 
+ if options.output == "-":
+  sys.stdout.buffer.write(output_data)
+  sys.stdout.buffer.flush()
+ else:
+  with open(options.output, "wb") as f:
+   f.write(output_data)
+ 
+ return 0
+
+
+def wkimgcss(
+ input_data: bytes,
+ style: str,
+):
+ window = gtk.OffscreenWindow()
+ 
+ ctx = webkit2.WebContext.new_ephemeral()
+ wv = webkit2.WebView.new_with_context(ctx)
+ settings = webkit2.Settings()
+ wv.set_settings(settings)
+ settings.set_enable_developer_extras(True)
+ window.add(wv)
+ window.show_all()
+ 
+ result = wv_run_js_module_on_empty_page(
+  webview=wv,
+  js="""
+   const img = document.createElement("img");
+   img.setAttribute("src", `data:image/png;base64,${params.input_data_b64}`);
+   img.style = params.style;
+   await img.decode();
+   document.body.append(img);
+   document.body.style = `
+    position: relative; top: 0; left: 0;
+    margin: 0;
+   `;
+   
+   const rect = img.getBoundingClientRect();
+   let { x, y, width, height } = rect;
+   
+   // adjust for negative and/or fractional positions
+   let x_abs = Math.abs(x), y_abs = Math.abs(y);
+   let x_offset = 0, y_offset = 0;
+   if (x < 0) {
+    x_offset += -x;
+   }
+   if (Math.floor(x_abs) != x_abs) {
+    x_offset += 1 - (x - Math.floor(x_abs));
+   }
+   if (y < 0) {
+    y_offset += -y;
+   }
+   if (Math.floor(y_abs) != y_abs) {
+    y_offset += 1 - (y - Math.floor(y_abs))
+   }
+   x += x_offset;
+   y += y_offset;
+   document.body.style.left = `${x_offset}px`;
+   document.body.style.top = `${y_offset}px`;
+   
+   // apply `--crop` if given
+   const crop_string = img.style.getPropertyValue("--crop");
+   const crop_parts = crop_string.split(" ");
+   if (crop_parts.length == 4) {
+    let [crop_x, crop_y, crop_width, crop_height] = crop_parts;
+    function parseCSSLength(length) {
+     const div = document.createElement("div");
+     div.style.width = length;
+     document.body.append(div);
+     const computed = window.getComputedStyle(div).width.match(/^(-?[0-9]*(.[0-9]+))px$/);
+     div.remove();
+     if (computed) {
+      return new Number(computed[1]);
+     } else {
+      return NaN;
+     }
+    }
+    crop_x = Math.max(0, Math.min(parseCSSLength(crop_x), width));
+    crop_y = Math.max(0, Math.min(parseCSSLength(crop_y), height));
+    crop_width = Math.max(0, Math.min(parseCSSLength(crop_width), width - crop_x));
+    crop_height = Math.max(0, Math.min(parseCSSLength(crop_height), height - crop_y));
+    x += crop_x;
+    y += crop_y;
+    width = crop_width;
+    height = crop_height;
+   }
+   
+   // the output will be cropped in the Python code
+   return [x, y, width, height].join(",");
+  """,
+  params={
+   "input_data_b64": base64.b64encode(input_data).decode("utf-8"),
+   "style": style,
+  },
+ )
+  
+ geometry: Optional[List[float]] = None
+ try:
+  geometry = [float(i) for i in result.split(",")]
+  geometry[3]
+ except (IndexError, TypeError, ValueError) as exc:
+  raise RuntimeError("BUG: JavaScript return value is not an array [Boolean, Object]")
+ x, y, width, height = geometry
+ 
+ cairo_surface = None
+ 
+ def snapshot_finished_cb(_object, result, _user_data=None):
+  nonlocal cairo_surface
+  cairo_surface = wv.get_snapshot_finish(result)
+  
+ wv.get_snapshot(
+  webkit2.SnapshotRegion.FULL_DOCUMENT,
+  webkit2.SnapshotOptions.TRANSPARENT_BACKGROUND,
+  None,  # cancellable
+  snapshot_finished_cb,
+  None,  # user_data
+ )
+ 
+ while cairo_surface is None:
+  gtk.main_iteration_do(False)
+ 
+ cairo_surface_cropped = cairo_surface.map_to_image(
+  cairo.RectangleInt(math.floor(x), math.floor(y), math.ceil(width), math.ceil(height)),
+ )
+ 
+ buffer = io.BytesIO()
+ cairo_surface_cropped.write_to_png(buffer)
+ output_data = buffer.getvalue()
+ return output_data
+
+
+@dataclasses.dataclass
+class JSModuleError(Exception):
+ kind: Optional[str]
+ message: Optional[str]
+ line: Optional[int]
+ column: Optional[int]
+ def __str__(self):
+  position = ", ".join([str(i) for i in [
+   f"line {self.line}" if self.line is not None else None,
+   f"column {self.column}" if self.column is not None else None,
+  ] if i])
+  result = ": ".join([i for i in [
+   position,
+   self.message,
+  ] if i])
+  return result
+
+
+def wv_run_js_module_on_empty_page(
+ webview: webkit2.WebView,  # type: ignore
+ js: str,
+ params: Optional[dict],
+) -> Any:
+ params_json = json.dumps(params or {})
+ result = None
+ have_result = False
+ result_success = False
+ 
+ ucm = webview.get_user_content_manager() 
+ 
+ def result_cb(_object, message_event, _user_data=None):
+  nonlocal result
+  nonlocal have_result
+  nonlocal result_success
+  try:
+   if have_result:
+    return
+   js_result = message_event
+   jsc_value = js_result.get_js_value()
+   if jsc_value.is_array():
+    array = json.loads(jsc_value.to_json(0))
+    success, error_meta, body = array
+    result_success = success
+    kind, line, column = error_meta
+    jsc_exception = jsc_value.get_context().get_exception()
+    if jsc_exception:
+     raise JSModuleError(kind, jsc_exception.get_message(), line, column)
+    if not success:
+     raise JSModuleError(kind, str(body), line, column)
+    result = body
+   else:
+    raise TypeError("BUG: JavaScript wrapper return value is not an array")
+  except Exception as exc:
+   result = exc
+  finally:
+   have_result = True
+ 
+ message_handler_name = "__wv_run_js_module__result"
+ ucm.register_script_message_handler(message_handler_name)
+ signal_handler_id = ucm.connect(
+  "script-message-received::" + message_handler_name,
+  result_cb,
+ )
+ 
+ try:
+  webview.load_html("""
+   <!DOCTYPE html>
+   <meta charset="utf-8" />
+   <body>
+   <script type="module">
+    window.addEventListener("error", (event) => {
+     const errorMeta = [event.error.name || null, (event.lineno - 14), event.colno];
+     window.webkit.messageHandlers.__wv_run_js_module__result.postMessage([false, errorMeta, event.error.toString()]);
+    });
+   </script>
+   <script type="module">
+    const params = """ + params_json + """;
+    const result = await (async function() {
+     try {
+ """ + js + """
+     } catch (error) {
+      const errorMeta = [error.name || null, (error.lineNumber - 14), error.columnNumber];
+      window.webkit.messageHandlers.__wv_run_js_module__result.postMessage([false, errorMeta, error.toString()]);
+     }
+    })();
+    window.webkit.messageHandlers.__wv_run_js_module__result.postMessage([true, [null, null, null], result]);
+   </script>
+  """, None)
+  
+  start = time.time()
+  while not have_result:
+   gtk.main_iteration_do(True)
+   if time.time() - start >= 10:
+    raise RuntimeError("BUG: script did not execute in time")
+ finally: 
+  ucm.disconnect(signal_handler_id)
+  ucm.unregister_script_message_handler(message_handler_name)
+ 
+ if result_success:
+  return result
+ else:
+  raise result  # type: ignore
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
