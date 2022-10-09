@@ -31,21 +31,21 @@ if TYPE_CHECKING:
  # comments in the tracebacks for the actual imports
  import gi, gi.repository  # type: ignore
 
-import gi  # apt install python3-gi
+import gi  # apt install python3-gi; apk add py3-gobject3
 
-gi.require_version("Gtk", "3.0")  # apt install gir1.2-gtk-3.0
+gi.require_version("Gtk", "3.0")  # apt install gir1.2-gtk-3.0; apk add gtk+3.0
 from gi.repository import Gtk as gtk
 
-gi.require_version("Gdk", "3.0")  # apt install gir1.2-gtk-3.0
+gi.require_version("Gdk", "3.0")  # apt install gir1.2-gtk-3.0; apk add gtk+3.0
 from gi.repository import Gdk as gdk
 
-gi.require_version("WebKit2", "4.0")  # apt install gir1.2-webkit2-4.0
+gi.require_version("WebKit2", "4.0")  # apt install gir1.2-webkit2-4.0; apk add webkit2gtk
 from gi.repository import WebKit2 as webkit2
 
 from gi.repository import GLib as glib
 from gi.repository import Gio as gio
 
-import cairo  # apt install python3-cairo
+import cairo  # apt install python3-cairo; apk add py3-cairo
 gi.require_foreign("cairo", "Surface")
 
 
