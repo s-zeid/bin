@@ -26,6 +26,11 @@ import time
 
 from typing import *
 
+if __name__ == "__main__":
+ if not sys.platform.startswith("darwin") and not sys.platform.startswith("win32"):
+  if not os.environ.get("WAYLAND_DISPLAY", os.environ.get("DISPLAY", "")):
+   os.execvp("xvfb-run", ["xvfb-run", "-a"] + sys.argv)  # apt install xvfb libgl1-mesa-dri; apk add xvfb-run mesa-dri-gallium
+
 if TYPE_CHECKING:
  # these are repeated here to preserve the installation instruction
  # comments in the tracebacks for the actual imports
