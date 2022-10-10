@@ -115,7 +115,8 @@ def wkimgcss(
  style: str,
 ):
  with xvfb_context():
-  window = gobject.new(gtk.OffscreenWindow)
+  main_context = glib.MainContext.default()
+  window = gobject.new(gtk.Window)
   
   os.environ["WEBKIT_A11Y_BUS_ADDRESS"] = ""
   ctx = webkit2.WebContext.new_ephemeral()
@@ -123,8 +124,12 @@ def wkimgcss(
   settings = webkit2.Settings()
   wv.set_settings(settings)
   settings.set_enable_developer_extras(True)
-  window.add(wv)
-  window.show_all()
+  if gtk.get_major_version() >= 4:
+   window.set_child(wv)
+  else:
+   window.add(wv)
+  wv.show()
+  #window.show()
   
   geometry_js = wv_run_js_module_on_empty_page(
    webview=wv,
@@ -225,7 +230,7 @@ def wkimgcss(
   )
   
   while cairo_surface is None:
-   gtk.main_iteration_do(False)
+   main_context.iteration(False)
   
   cairo_surface_cropped = cairo_surface.map_to_image(
    cairo.RectangleInt(math.floor(x), math.floor(y), math.ceil(width), math.ceil(height)),
@@ -236,8 +241,10 @@ def wkimgcss(
   output_data = buffer.getvalue()
   
   window.hide()
-  window.remove(wv)
-  wv.destroy()
+  if gtk.get_major_version() >= 4:
+   window.set_child(None)
+  else:
+   window.remove(wv)
   window.destroy()
   
   return output_data
@@ -267,6 +274,8 @@ def wv_run_js_module_on_empty_page(
  params: Optional[dict],
  timeout_s: Union[int, float] = 10
 ) -> Any:
+ main_context = glib.MainContext.default()
+ 
  params_json = json.dumps(params or {})
  result = None
  have_result = False
@@ -341,7 +350,7 @@ def wv_run_js_module_on_empty_page(
   
   start = time.time()
   while not have_result:
-   gtk.main_iteration_do(True)
+   main_context.iteration(False)
    if timeout_s > 0 and time.time() - start >= timeout_s:
     raise JSModuleError(
      None,
