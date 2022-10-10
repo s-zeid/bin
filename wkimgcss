@@ -117,6 +117,7 @@ def wkimgcss(
  with xvfb_context():
   window = gobject.new(gtk.OffscreenWindow)
   
+  os.environ["WEBKIT_A11Y_BUS_ADDRESS"] = ""
   ctx = webkit2.WebContext.new_ephemeral()
   wv = webkit2.WebView.new_with_context(ctx)
   settings = webkit2.Settings()
