@@ -4,9 +4,16 @@
 
 The given CSS is applied to an `<img>` element using WebKitGTK.
 
-A fake "property" named `--crop` is provided to crop the image:
+Some fake "properties" are provided to provide functions either not provided by
+or not intuitive enough to do with standard CSS; they are evaluated after the
+rest of the CSS is applied and in the following order:
 
-    --crop: {x} {y} {width} {height}  // any valid CSS length
+    --gamma: {rgb} [/ {weight}];  // unitless; initial: 1 / 1
+    --gamma: {rgb} {a} [/ {weight}];  // unitless; initial: 1 1 / 1
+    --gamma: {r} {g} {b} [/ {weight}];  // unitless; initial: 1 1 1 / 1
+    --gamma: {r} {g} {b} {a} [/ {weight}];  // unitless; initial: 1 1 1 1 / 1
+
+    --crop: {x} {y} {width} {height};  // any valid CSS length
 
 Transparent images are supported for both input and output.
 
@@ -137,15 +144,20 @@ def wkimgcss(
     async function main() {
      const img = document.createElement("img");
      img.setAttribute("src", `data:image/png;base64,${params.input_data_b64}`);
-     img.setAttribute("style", params.style);
      await img.decode();
-     document.body.append(img);
+     const canvas = document.createElement("canvas");
+     canvas.width = img.naturalWidth;
+     canvas.height = img.naturalHeight;
+     const ctx = canvas.getContext("2d");
+     ctx.drawImage(img, 0, 0);
+     canvas.setAttribute("style", params.style);
+     document.body.append(canvas);
      document.body.style = `
       position: relative; top: 0; left: 0;
       margin: 0;
      `;
      
-     const rect = img.getBoundingClientRect();
+     const rect = canvas.getBoundingClientRect();
      let { x, y, width, height } = rect;
      
      // adjust for negative and/or fractional positions
@@ -168,8 +180,69 @@ def wkimgcss(
      document.body.style.left = `${x_offset}px`;
      document.body.style.top = `${y_offset}px`;
      
+     // apply `--gamma` if given
+     const gamma_string = canvas.style.getPropertyValue("--gamma");
+     const gamma_string_parts = splitCSSValue(gamma_string, "/");
+     const gamma_rgba = [1, 1, 1, 1];
+     if (gamma_string_parts.length >= 1 && gamma_string_parts.length <= 2) {
+      const gamma_parts = splitCSSValue(gamma_string_parts[0].trim());
+      let gamma_weight = (gamma_string_parts[1] || "").trim() || 1;
+      if (gamma_parts.length >= 0 && gamma_parts.length <= 4) {
+       gamma_weight = clamp(parseCSSUnitlessNumber(gamma_weight, 1), 0, 1);
+       if (gamma_weight != null) {
+        for (let i = 0; i < gamma_parts.length; i++) {
+         gamma_parts[i] = clamp(parseCSSUnitlessNumber(gamma_parts[i].trim(), 1), 0, Infinity);
+        }
+        switch (gamma_parts.length) {
+         case 1:
+          gamma_rgba[0] = gamma_rgba[1] = gamma_rgba[2] = gamma_parts[0];
+          break;
+         case 2:
+          gamma_rgba[0] = gamma_rgba[1] = gamma_rgba[2] = gamma_parts[0];
+          gamma_rgba[3] = gamma_parts[1];
+          break;
+         case 3:
+          gamma_rgba[0] = gamma_parts[0];
+          gamma_rgba[1] = gamma_parts[1];
+          gamma_rgba[2] = gamma_parts[2];
+          break;
+         case 4:
+          gamma_rgba[0] = gamma_parts[0];
+          gamma_rgba[1] = gamma_parts[1];
+          gamma_rgba[2] = gamma_parts[2];
+          gamma_rgba[3] = gamma_parts[3];
+          break;
+        }
+        if (gamma_rgba[0] != 1 || gamma_rgba[1] != 1 || gamma_rgba[2] != 1 || gamma_rgba[3] != 1) {
+         const luts = new Array(4);
+         for (let i = 0; i < luts.length; i++) {
+          const lut = luts[i] = new Float64Array(256);
+          const [gamma, weight] = [gamma_rgba[i], gamma_weight];
+          for (let i = 0; i <= 255; i++) {
+           let v = i / 255;
+           if (v <= 0) {
+            lut[i] = 0;
+            continue;
+           }
+           v = v * (1 - weight) + Math.pow(v, gamma) * weight;
+           lut[i] = (v >= 1) ? 255 : 255 * v;
+          }
+         }
+         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+         const data = imageData.data
+         for (let pixel = 0; pixel < data.length; pixel += 4) {
+          for (let subpixel = 0; subpixel < 4; subpixel++) {
+           data[pixel + subpixel] = luts[subpixel][data[pixel + subpixel]];
+          }
+         }
+         ctx.putImageData(imageData, 0, 0);
+        }
+       }
+      }
+     }
+     
      // apply `--crop` if given
-     const crop_string = img.style.getPropertyValue("--crop");
+     const crop_string = canvas.style.getPropertyValue("--crop");
      const crop_parts = splitCSSValue(crop_string);
      if (crop_parts.length == 4) {
       let [crop_x, crop_y, crop_width, crop_height] = crop_parts;
@@ -214,6 +287,20 @@ def wkimgcss(
        const computed = computeCSSValue("width", length).match(/^(-?[0-9]*(\.[0-9]+)?|-?[0-9]+)px$/);
        if (computed) {
         return new Number(computed[1]);
+       }
+      }
+     }
+     return (typeof default_ == "undefined") ? NaN : default_;
+    }
+    
+    function parseCSSUnitlessNumber(number, default_) {
+     if (number != null && number != "") {
+      number = String(number).trim();
+      const px = `calc(1px * ${number})`;
+      if (CSS.supports("left", px)) {
+       const computed = computeCSSValue("left", px).match(/^(-?[0-9]*(\.[0-9]+)?)px$/);
+       if (computed) {
+        return Number(computed[1]);
        }
       }
      }
