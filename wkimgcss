@@ -133,7 +133,7 @@ def wkimgcss(
   
   geometry_js = wv_run_js_module_on_empty_page(
    webview=wv,
-   js="""
+   js=r"""
     async function main() {
      const img = document.createElement("img");
      img.setAttribute("src", `data:image/png;base64,${params.input_data_b64}`);
@@ -170,7 +170,7 @@ def wkimgcss(
      
      // apply `--crop` if given
      const crop_string = img.style.getPropertyValue("--crop");
-     const crop_parts = crop_string.split(" ");
+     const crop_parts = splitCSSValue(crop_string);
      if (crop_parts.length == 4) {
       let [crop_x, crop_y, crop_width, crop_height] = crop_parts;
       crop_x = clamp(parseCSSLength(crop_x, 0), 0,  width);
@@ -190,19 +190,97 @@ def wkimgcss(
      return Math.max(min, Math.min(n, max));
     }
     
+    function computeCSSValue(property, value, parentValue) {
+     const haveParentValue = typeof parentValue != "undefined";
+     value = (value == null) ? "" : String(value);
+     parentValue = (parentValue == null) ? "" : String(parentValue);
+     const parent = document.createElement("div");
+     const test = document.createElement("div");
+     if (haveParentValue) {
+      parent.style.setProperty(property, parentValue, "important");
+     }
+     test.style.setProperty(property, value);
+     parent.append(test);
+     document.body.append(parent);
+     const result = window.getComputedStyle(test).getPropertyValue(property);
+     parent.remove();
+     return result;
+    }
+    
     function parseCSSLength(length, default_) {
-     length = length.trim();
-     if (CSS.supports("width", length)) {
-      const div = document.createElement("div");
-      div.style.width = length;
-      document.body.append(div);
-      const computed = window.getComputedStyle(div).width.match(/^(-?[0-9]*(\.[0-9]+)?|-?[0-9]+)px$/);
-      div.remove();
-      if (computed) {
-       return new Number(computed[1]);
+     if (length != null && length != "") {
+      length = String(length).trim();
+      if (CSS.supports("width", length)) {
+       const computed = computeCSSValue("width", length).match(/^(-?[0-9]*(\.[0-9]+)?|-?[0-9]+)px$/);
+       if (computed) {
+        return new Number(computed[1]);
+       }
       }
      }
      return (typeof default_ == "undefined") ? NaN : default_;
+    }
+    
+    function splitCSSValue(s, sep) {
+     // This does not properly support separators that are sigils,
+     // i.e. `#`, `+`, `-`, `.`, `<`, `@`, or `\`.  Splitting on
+     // those characters may result in invalid or corrupted output.
+     // See <https://www.w3.org/TR/css-syntax/#consume-token>.
+     s = s.trim();
+     sep = sep || " \t\n\r\f";
+     let result = [];
+     let sepIsWhitespace = (sep.trim() == "");
+     let commentLevel = 0, dQuoteLevel = 0, sQuoteLevel = 0, parenLevel = 0;
+     let item = "";
+     let haveItem = !sepIsWhitespace;
+     for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (commentLevel == 0) {
+       if (ch == '"' && sQuoteLevel == 0) {
+        if (dQuoteLevel == 1 && s[i - 1] != '\\') {
+         dQuoteLevel = 0;
+        } else {
+         dQuoteLevel = Math.min(dQuoteLevel + 1, 1);
+        }
+       }
+       if (ch == '\'' && dQuoteLevel == 0) {
+        if (sQuoteLevel == 1 && s[i - 1] != '\\') {
+         sQuoteLevel = 0;
+        } else {
+         sQuoteLevel = Math.min(sQuoteLevel + 1, 1);
+        }
+       }
+      }
+      if (dQuoteLevel == 0 && sQuoteLevel == 0) {
+       if (ch == '/' && s[i + 1] == '*' && commentLevel == 0) {
+        commentLevel += 1;
+       }
+       if (ch == '*' && s[i + 1] == '/' && commentLevel == 1) {
+        commentLevel -= 1;
+       }
+       if (commentLevel == 0) {
+        if (ch == '(') {
+         parenLevel += 1;
+        }
+        if (ch == ')' && parenLevel > 0) {
+         parenLevel -= 1;
+        }
+       }
+      }
+      const levelSum = commentLevel + dQuoteLevel + sQuoteLevel + parenLevel;
+      let isSep = sep.includes(ch) && levelSum == 0;
+      let isEnd = i + 1 == s.length;
+      if (!isSep) {
+       haveItem = true;
+       item += ch;
+      }
+      if ((isSep || isEnd) && haveItem) {
+       result.push(item.trim());
+       item = "";
+       haveItem = !sepIsWhitespace;
+       continue;
+      }
+     }
+     return result;
     }
     
     return await main();
