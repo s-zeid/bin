@@ -134,69 +134,78 @@ def wkimgcss(
   geometry_js = wv_run_js_module_on_empty_page(
    webview=wv,
    js="""
-    const img = document.createElement("img");
-    img.setAttribute("src", `data:image/png;base64,${params.input_data_b64}`);
-    img.setAttribute("style", params.style);
-    await img.decode();
-    document.body.append(img);
-    document.body.style = `
-     position: relative; top: 0; left: 0;
-     margin: 0;
-    `;
-    
-    const rect = img.getBoundingClientRect();
-    let { x, y, width, height } = rect;
-    
-    // adjust for negative and/or fractional positions
-    let x_abs = Math.abs(x), y_abs = Math.abs(y);
-    let x_offset = 0, y_offset = 0;
-    if (x < 0) {
-     x_offset += -x;
-    }
-    if (Math.floor(x_abs) != x_abs) {
-     x_offset += 1 - (x - Math.floor(x_abs));
-    }
-    if (y < 0) {
-     y_offset += -y;
-    }
-    if (Math.floor(y_abs) != y_abs) {
-     y_offset += 1 - (y - Math.floor(y_abs))
-    }
-    x += x_offset;
-    y += y_offset;
-    document.body.style.left = `${x_offset}px`;
-    document.body.style.top = `${y_offset}px`;
-    
-    // apply `--crop` if given
-    const crop_string = img.style.getPropertyValue("--crop");
-    const crop_parts = crop_string.split(" ");
-    if (crop_parts.length == 4) {
-     let [crop_x, crop_y, crop_width, crop_height] = crop_parts;
-     function parseCSSLength(length, default_) {
-      length = length.trim();
-      if (CSS.supports("width", length)) {
-       const div = document.createElement("div");
-       div.style.width = length;
-       document.body.append(div);
-       const computed = window.getComputedStyle(div).width.match(/^(-?[0-9]*(\.[0-9]+)?|-?[0-9]+)px$/);
-       div.remove();
-       if (computed) {
-        return new Number(computed[1]);
-       }
-      }
-      return (typeof default_ == "undefined") ? NaN : default_;
+    async function main() {
+     const img = document.createElement("img");
+     img.setAttribute("src", `data:image/png;base64,${params.input_data_b64}`);
+     img.setAttribute("style", params.style);
+     await img.decode();
+     document.body.append(img);
+     document.body.style = `
+      position: relative; top: 0; left: 0;
+      margin: 0;
+     `;
+     
+     const rect = img.getBoundingClientRect();
+     let { x, y, width, height } = rect;
+     
+     // adjust for negative and/or fractional positions
+     let x_abs = Math.abs(x), y_abs = Math.abs(y);
+     let x_offset = 0, y_offset = 0;
+     if (x < 0) {
+      x_offset += -x;
      }
-     crop_x = Math.max(0, Math.min(parseCSSLength(crop_x, 0), width));
-     crop_y = Math.max(0, Math.min(parseCSSLength(crop_y, 0), height));
-     crop_width = Math.max(0, Math.min(parseCSSLength(crop_width, width - crop_x), width - crop_x));
-     crop_height = Math.max(0, Math.min(parseCSSLength(crop_height, height - crop_y), height - crop_y));
-     x += crop_x;
-     y += crop_y;
-     width = crop_width;
-     height = crop_height;
+     if (Math.floor(x_abs) != x_abs) {
+      x_offset += 1 - (x - Math.floor(x_abs));
+     }
+     if (y < 0) {
+      y_offset += -y;
+     }
+     if (Math.floor(y_abs) != y_abs) {
+      y_offset += 1 - (y - Math.floor(y_abs))
+     }
+     x += x_offset;
+     y += y_offset;
+     document.body.style.left = `${x_offset}px`;
+     document.body.style.top = `${y_offset}px`;
+     
+     // apply `--crop` if given
+     const crop_string = img.style.getPropertyValue("--crop");
+     const crop_parts = crop_string.split(" ");
+     if (crop_parts.length == 4) {
+      let [crop_x, crop_y, crop_width, crop_height] = crop_parts;
+      crop_x = clamp(parseCSSLength(crop_x, 0), 0,  width);
+      crop_y = clamp(parseCSSLength(crop_y, 0), 0, height);
+      crop_width = clamp(parseCSSLength(crop_width, width - crop_x), 0, width - crop_x);
+      crop_height = clamp(parseCSSLength(crop_height, height - crop_y), 0, height - crop_y);
+      x += crop_x;
+      y += crop_y;
+      width = crop_width;
+      height = crop_height;
+     }
+     
+     return [x, y, width, height];
     }
     
-    return [x, y, width, height];
+    function clamp(n, min, max) {
+     return Math.max(min, Math.min(n, max));
+    }
+    
+    function parseCSSLength(length, default_) {
+     length = length.trim();
+     if (CSS.supports("width", length)) {
+      const div = document.createElement("div");
+      div.style.width = length;
+      document.body.append(div);
+      const computed = window.getComputedStyle(div).width.match(/^(-?[0-9]*(\.[0-9]+)?|-?[0-9]+)px$/);
+      div.remove();
+      if (computed) {
+       return new Number(computed[1]);
+      }
+     }
+     return (typeof default_ == "undefined") ? NaN : default_;
+    }
+    
+    return await main();
    """,
    params={
     "input_data_b64": base64.b64encode(input_data).decode("utf-8"),
