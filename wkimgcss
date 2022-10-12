@@ -6,7 +6,7 @@ The given CSS is applied to an `<img>` element using WebKitGTK.
 
 A fake "property" named `--crop` is provided to crop the image:
 
-    --crop: {x}px {y}px {width}px {height}px
+    --crop: {x} {y} {width} {height}  // any valid CSS length
 
 Transparent images are supported for both input and output.
 
