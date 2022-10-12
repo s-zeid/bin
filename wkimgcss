@@ -172,22 +172,24 @@ def wkimgcss(
     const crop_parts = crop_string.split(" ");
     if (crop_parts.length == 4) {
      let [crop_x, crop_y, crop_width, crop_height] = crop_parts;
-     function parseCSSLength(length) {
-      const div = document.createElement("div");
-      div.style.width = length.trim();
-      document.body.append(div);
-      const computed = window.getComputedStyle(div).width.match(/^(-?[0-9]*(.[0-9]+))px$/);
-      div.remove();
-      if (computed) {
-       return new Number(computed[1]);
-      } else {
-       return NaN;
+     function parseCSSLength(length, default_) {
+      length = length.trim();
+      if (CSS.supports("width", length)) {
+       const div = document.createElement("div");
+       div.style.width = length;
+       document.body.append(div);
+       const computed = window.getComputedStyle(div).width.match(/^(-?[0-9]*(\.[0-9]+)?|-?[0-9]+)px$/);
+       div.remove();
+       if (computed) {
+        return new Number(computed[1]);
+       }
       }
+      return (typeof default_ == "undefined") ? NaN : default_;
      }
-     crop_x = Math.max(0, Math.min(parseCSSLength(crop_x), width));
-     crop_y = Math.max(0, Math.min(parseCSSLength(crop_y), height));
-     crop_width = Math.max(0, Math.min(parseCSSLength(crop_width), width - crop_x));
-     crop_height = Math.max(0, Math.min(parseCSSLength(crop_height), height - crop_y));
+     crop_x = Math.max(0, Math.min(parseCSSLength(crop_x, 0), width));
+     crop_y = Math.max(0, Math.min(parseCSSLength(crop_y, 0), height));
+     crop_width = Math.max(0, Math.min(parseCSSLength(crop_width, width - crop_x), width - crop_x));
+     crop_height = Math.max(0, Math.min(parseCSSLength(crop_height, height - crop_y), height - crop_y));
      x += crop_x;
      y += crop_y;
      width = crop_width;
