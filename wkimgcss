@@ -284,7 +284,7 @@ def wkimgcss(
      if (length != null && length != "") {
       length = String(length).trim();
       if (CSS.supports("margin-left", length)) {
-       const computed = computeCSSValue("margin-left", length).match(/^(-?[0-9]*(\.[0-9]+)?|-?[0-9]+)px$/);
+       const computed = computeCSSValue("margin-left", length).match(/^(-?[0-9]*(\.[0-9]+)|-?[0-9]+)px$/);
        if (computed) {
         return new Number(computed[1]);
        }
@@ -298,7 +298,7 @@ def wkimgcss(
       number = String(number).trim();
       const px = `calc(1px * ${number})`;
       if (CSS.supports("margin-left", px)) {
-       const computed = computeCSSValue("margin-left", px).match(/^(-?[0-9]*(\.[0-9]+)?)px$/);
+       const computed = computeCSSValue("margin-left", px).match(/^(-?[0-9]*(\.[0-9]+)|-?[0-9]+)px$/);
        if (computed) {
         return Number(computed[1]);
        }
