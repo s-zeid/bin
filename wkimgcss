@@ -5,14 +5,16 @@
 The given CSS is applied to an `<img>` element using WebKitGTK.
 
 Some fake "properties" are provided to provide functions either not provided by
-or not intuitive enough to do with standard CSS; they are evaluated after the
-rest of the CSS is applied and in the following order:
+or not intuitive enough to do with standard CSS; they are evaluated in the
+following order:
 
+    /* Before any CSS is applied */
     --gamma: {rgb} [/ {weight}];  // unitless; initial: 1 / 1
     --gamma: {rgb} {a} [/ {weight}];  // unitless; initial: 1 1 / 1
     --gamma: {r} {g} {b} [/ {weight}];  // unitless; initial: 1 1 1 / 1
     --gamma: {r} {g} {b} {a} [/ {weight}];  // unitless; initial: 1 1 1 1 / 1
 
+    /* After the CSS is applied */
     --crop: {x} {y} {width} {height};  // any valid CSS length
 
 Transparent images are supported for both input and output.
@@ -224,7 +226,7 @@ def wkimgcss(
             lut[i] = 0;
             continue;
            }
-           v = v * (1 - weight) + Math.pow(v, gamma) * weight;
+           v = v * (1 - weight) + Math.pow(v, 1 / gamma) * weight;
            lut[i] = (v >= 1) ? 255 : 255 * v;
           }
          }
