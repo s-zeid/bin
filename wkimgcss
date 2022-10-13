@@ -186,8 +186,8 @@ def wkimgcss(
      const gamma_rgba = [1, 1, 1, 1];
      if (gamma_string_parts.length >= 1 && gamma_string_parts.length <= 2) {
       const gamma_parts = splitCSSValue(gamma_string_parts[0].trim());
-      let gamma_weight = (gamma_string_parts[1] || "").trim() || 1;
-      if (gamma_parts.length >= 0 && gamma_parts.length <= 4) {
+      if (gamma_parts.length >= 1 && gamma_parts.length <= 4) {
+       let gamma_weight = (gamma_string_parts[1] || "").trim() || 1;
        gamma_weight = clamp(parseCSSUnitlessNumber(gamma_weight, 1), 0, 1);
        if (gamma_weight != null) {
         for (let i = 0; i < gamma_parts.length; i++) {
