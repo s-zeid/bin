@@ -4,18 +4,24 @@
 
 The given CSS is applied to an `<img>` element using WebKitGTK.
 
-Some fake "properties" are provided to provide functions either not provided by
+Some extensions to CSS are provided to provide functions either not provided by
 or not intuitive enough to do with standard CSS; they are evaluated in the
 following order:
 
-    /* Before any CSS is applied */
-    --gamma: {rgb} [/ {weight}];  // unitless; initial: 1 / 1
-    --gamma: {rgb} {a} [/ {weight}];  // unitless; initial: 1 1 / 1
-    --gamma: {r} {g} {b} [/ {weight}];  // unitless; initial: 1 1 1 / 1
-    --gamma: {r} {g} {b} {a} [/ {weight}];  // unitless; initial: 1 1 1 1 / 1
+* Before any CSS is applied:
+  
+    * Filters:
+          
+          --gamma({rgb} [/ {weight}])  /* unitless; initial: 1 / 1 */
+          --gamma({rgb} {a} [/ {weight}])  /* unitless; initial: 1 1 / 1 */
+          --gamma({r} {g} {b} [/ {weight}])  /* unitless; initial: 1 1 1 / 1 */
+          --gamma({r} {g} {b} {a} [/ {weight}])  /* unitless; initial: 1 1 1 1 / 1 */
 
-    /* After the CSS is applied */
-    --crop: {x} {y} {width} {height};  // any valid CSS length
+* After the CSS is applied:
+  
+    * Properties:
+          
+          --crop: {x} {y} {width} {height};  // any valid CSS length
 
 Transparent images are supported for both input and output.
 
@@ -152,7 +158,6 @@ def wkimgcss(
      canvas.height = img.naturalHeight;
      const ctx = canvas.getContext("2d");
      ctx.drawImage(img, 0, 0);
-     canvas.setAttribute("style", params.style);
      document.body.append(canvas);
      document.body.style = `
       position: relative; top: 0; left: 0;
@@ -162,6 +167,120 @@ def wkimgcss(
      const rect = canvas.getBoundingClientRect();
      let { x, y, width, height } = rect;
      
+     const style_declarations = splitCSSDeclarations(params.style);
+     let style_string = "";
+     for (let i = 0; i < style_declarations.length; i++) {
+      let [property, value] = style_declarations[i];
+      
+      // handle custom filters if given
+      if (property == "filter") {
+       const filter_string = value;
+       const filter_string_parts = splitCSSValue(filter_string);
+       if (filter_string_parts.length > 0) {
+        const SVG_NS = "http://www.w3.org/2000/svg";
+        const FILTER_ID_PREFIX = "custom_filter_";
+        const filter_container = document.createElementNS(SVG_NS, "svg");
+        filter_container.id = "${FILTER_ID_PREFIX}container";
+        document.body.append(filter_container);
+        for (let index = 0; index < filter_string_parts.length; index++) {
+         let filter_string_part = filter_string_parts[index].trim();
+         if (filter_string_part.match(/^([^(]+)\(/) && filter_string_part.match(/\)$/)) {
+          let [_, name, rest] = filter_string_part.match(/^([^(]+)\((.*)$/);
+          let value = rest.replace(/\)$/, "");
+          const filter_id = `${FILTER_ID_PREFIX}${name}_${index}`;
+          
+          // apply `--gamma` if given
+          if (name == "--gamma") {
+           const gamma_string = value;
+           const gamma_string_parts = splitCSSValue(gamma_string, "/");
+           const gamma_rgba = [1, 1, 1, 1];
+           if (gamma_string_parts.length >= 1 && gamma_string_parts.length <= 2) {
+            const gamma_parts = splitCSSValue(gamma_string_parts[0].trim());
+            if (gamma_parts.length >= 1 && gamma_parts.length <= 4) {
+             let gamma_weight = (gamma_string_parts[1] || "").trim() || 1;
+             gamma_weight = clamp(parseCSSUnitlessNumber(gamma_weight, 1), 0, 1);
+             if (gamma_weight != null) {
+              for (let i = 0; i < gamma_parts.length; i++) {
+               gamma_parts[i] = clamp(parseCSSUnitlessNumber(gamma_parts[i].trim(), 1), 0, Infinity);
+              }
+              switch (gamma_parts.length) {
+               case 1:
+                gamma_rgba[0] = gamma_rgba[1] = gamma_rgba[2] = gamma_parts[0];
+                break;
+               case 2:
+                gamma_rgba[0] = gamma_rgba[1] = gamma_rgba[2] = gamma_parts[0];
+                gamma_rgba[3] = gamma_parts[1];
+                break;
+               case 3:
+                gamma_rgba[0] = gamma_parts[0];
+                gamma_rgba[1] = gamma_parts[1];
+                gamma_rgba[2] = gamma_parts[2];
+                break;
+               case 4:
+                gamma_rgba[0] = gamma_parts[0];
+                gamma_rgba[1] = gamma_parts[1];
+                gamma_rgba[2] = gamma_parts[2];
+                gamma_rgba[3] = gamma_parts[3];
+                break;
+              }
+              // non-constant offsets are not supported with `<feFunc* type="gamma">`,
+              // so we have to manually make the LUTs for use with `type="table"`
+              const luts = new Array(4);
+              if (gamma_rgba[0] != 1 || gamma_rgba[1] != 1 || gamma_rgba[2] != 1 || gamma_rgba[3] != 1) {
+               for (let i = 0; i < luts.length; i++) {
+                if (gamma_rgba[i] == 1) {
+                 continue;
+                }
+                const lut = luts[i] = new Float64Array(256);
+                const [gamma, weight] = [gamma_rgba[i], gamma_weight];
+                for (let i = 0; i <= 255; i++) {
+                 let v = i / 255;
+                 if (v <= 0) {
+                  lut[i] = 0;
+                  continue;
+                 }
+                 v = v * (1 - weight) + Math.pow(v, 1 / gamma) * weight;
+                 v = (v >= 1) ? 255 : 255 * v;
+                 lut[i] = v / 255;
+                }
+               }
+              }
+              const filter = document.createElementNS(SVG_NS, "filter");
+              filter.id = filter_id;
+              filter.setAttribute("color-interpolation-filters", "sRGB");
+              filter_container.append(filter);
+              const feComponentTransfer = document.createElementNS(SVG_NS, "feComponentTransfer");
+              filter.append(feComponentTransfer);
+              for (const [c_offset, component] of ["R", "G", "B", "A"].entries()) {
+               const feFunc = document.createElementNS(SVG_NS, `feFunc${component}`);
+               if (gamma_rgba[c_offset] == 1) {
+                feFunc.setAttribute("type", "identity");
+               } else {
+                feFunc.setAttribute("type", "table");
+                feFunc.setAttribute("tableValues", luts[c_offset].join(" "));
+               }
+               feComponentTransfer.append(feFunc);
+              }
+              name = "url";
+             }
+            }
+           }
+          }
+          
+          if (name == "url") {
+           value = `#${filter_id}`;
+          }
+          filter_string_parts[index] = `${name}(${value})`;
+         }
+         value = filter_string_parts.join(" ");
+        }
+       }
+      }
+      
+      style_string += `${style_string.length == 0 ? "" : " "}${property}: ${value};`;
+     }
+     canvas.setAttribute("style", style_string);
+      
      // adjust for negative and/or fractional positions
      let x_abs = Math.abs(x), y_abs = Math.abs(y);
      let x_offset = 0, y_offset = 0;
@@ -181,67 +300,6 @@ def wkimgcss(
      y += y_offset;
      document.body.style.left = `${x_offset}px`;
      document.body.style.top = `${y_offset}px`;
-     
-     // apply `--gamma` if given
-     const gamma_string = canvas.style.getPropertyValue("--gamma");
-     const gamma_string_parts = splitCSSValue(gamma_string, "/");
-     const gamma_rgba = [1, 1, 1, 1];
-     if (gamma_string_parts.length >= 1 && gamma_string_parts.length <= 2) {
-      const gamma_parts = splitCSSValue(gamma_string_parts[0].trim());
-      if (gamma_parts.length >= 1 && gamma_parts.length <= 4) {
-       let gamma_weight = (gamma_string_parts[1] || "").trim() || 1;
-       gamma_weight = clamp(parseCSSUnitlessNumber(gamma_weight, 1), 0, 1);
-       if (gamma_weight != null) {
-        for (let i = 0; i < gamma_parts.length; i++) {
-         gamma_parts[i] = clamp(parseCSSUnitlessNumber(gamma_parts[i].trim(), 1), 0, Infinity);
-        }
-        switch (gamma_parts.length) {
-         case 1:
-          gamma_rgba[0] = gamma_rgba[1] = gamma_rgba[2] = gamma_parts[0];
-          break;
-         case 2:
-          gamma_rgba[0] = gamma_rgba[1] = gamma_rgba[2] = gamma_parts[0];
-          gamma_rgba[3] = gamma_parts[1];
-          break;
-         case 3:
-          gamma_rgba[0] = gamma_parts[0];
-          gamma_rgba[1] = gamma_parts[1];
-          gamma_rgba[2] = gamma_parts[2];
-          break;
-         case 4:
-          gamma_rgba[0] = gamma_parts[0];
-          gamma_rgba[1] = gamma_parts[1];
-          gamma_rgba[2] = gamma_parts[2];
-          gamma_rgba[3] = gamma_parts[3];
-          break;
-        }
-        if (gamma_rgba[0] != 1 || gamma_rgba[1] != 1 || gamma_rgba[2] != 1 || gamma_rgba[3] != 1) {
-         const luts = new Array(4);
-         for (let i = 0; i < luts.length; i++) {
-          const lut = luts[i] = new Float64Array(256);
-          const [gamma, weight] = [gamma_rgba[i], gamma_weight];
-          for (let i = 0; i <= 255; i++) {
-           let v = i / 255;
-           if (v <= 0) {
-            lut[i] = 0;
-            continue;
-           }
-           v = v * (1 - weight) + Math.pow(v, 1 / gamma) * weight;
-           lut[i] = (v >= 1) ? 255 : 255 * v;
-          }
-         }
-         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-         const data = imageData.data
-         for (let pixel = 0; pixel < data.length; pixel += 4) {
-          for (let subpixel = 0; subpixel < 4; subpixel++) {
-           data[pixel + subpixel] = luts[subpixel][data[pixel + subpixel]];
-          }
-         }
-         ctx.putImageData(imageData, 0, 0);
-        }
-       }
-      }
-     }
      
      // apply `--crop` if given
      const crop_string = canvas.style.getPropertyValue("--crop");
@@ -309,20 +367,77 @@ def wkimgcss(
      return (typeof default_ == "undefined") ? NaN : default_;
     }
     
-    function splitCSSValue(s, sep) {
+    function splitCSSDeclarations(s) {
+     s = s.trim();
+     const sep = " \t\n\r\f";
+     let result = [];
+     let skip = 0;
+     let commentLevel = 0;
+     let property = "", value = "";
+     let haveProperty = false;
+     for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch == '/' && s[i + 1] == '*' && commentLevel == 0) {
+       commentLevel += 1;
+       skip = 2;
+      }
+      if (ch == '*' && s[i + 1] == '/' && commentLevel == 1) {
+       commentLevel -= 1;
+       skip = 2;
+      }
+      if (commentLevel == 0 && skip == 0) {
+       if (sep.includes(ch) && (haveProperty || property == "")) {
+        continue;
+       } else if (haveProperty) {
+        const splitValueResult = _splitCSSValueImpl(s.substring(i), ";", 1);
+        if (splitValueResult.items.length >= 1) {
+         value = splitValueResult.items[0];
+        }
+        i += splitValueResult.consumed - 1;
+        result.push([property, value]);
+        property = value = "";
+        haveProperty = false;
+        continue;
+       } else {
+        if (ch == ";") {
+         property = value = "";
+         haveProperty = false;
+         continue;
+        } else if (ch == ":") {
+         property = property.trim();
+         haveProperty = true;
+        } else {
+         property += ch;
+        }
+       }
+      }
+      skip = Math.max(skip - 1, 0);
+     }
+     return result;
+    }
+    
+    function splitCSSValue(s, sep, limit) {
      // This does not properly support separators that are sigils,
      // i.e. `#`, `+`, `-`, `.`, `<`, `@`, or `\`.  Splitting on
      // those characters may result in invalid or corrupted output.
      // See <https://www.w3.org/TR/css-syntax/#consume-token>.
+     return _splitCSSValueImpl(s, sep, limit).items;
+    }
+    
+    function _splitCSSValueImpl(s, sep, limit) {
      s = s.trim();
      sep = sep || " \t\n\r\f";
+     limit = limit || 0;
      let result = [];
      let sepIsWhitespace = (sep.trim() == "");
      let commentLevel = 0, dQuoteLevel = 0, sQuoteLevel = 0, parenLevel = 0;
+     let skip = 0;
      let item = "";
      let haveItem = !sepIsWhitespace;
-     for (let i = 0; i < s.length; i++) {
+     let i;
+     for (i = 0; i < s.length; i++) {
       const ch = s[i];
+      let isEnd = false;
       if (commentLevel == 0) {
        if (ch == '"' && sQuoteLevel == 0) {
         if (dQuoteLevel == 1 && s[i - 1] != '\\') {
@@ -342,9 +457,11 @@ def wkimgcss(
       if (dQuoteLevel == 0 && sQuoteLevel == 0) {
        if (ch == '/' && s[i + 1] == '*' && commentLevel == 0) {
         commentLevel += 1;
+        skip = 2;
        }
        if (ch == '*' && s[i + 1] == '/' && commentLevel == 1) {
         commentLevel -= 1;
+        skip = 2;
        }
        if (commentLevel == 0) {
         if (ch == '(') {
@@ -353,23 +470,33 @@ def wkimgcss(
         if (ch == ')' && parenLevel > 0) {
          parenLevel -= 1;
         }
+        if (ch == ';') {
+         isEnd = true;
+        }
        }
       }
       const levelSum = commentLevel + dQuoteLevel + sQuoteLevel + parenLevel;
       let isSep = sep.includes(ch) && levelSum == 0;
-      let isEnd = i + 1 == s.length;
-      if (!isSep) {
+      isEnd = isEnd || i + 1 == s.length;
+      if (!isSep && skip == 0 && commentLevel == 0) {
        haveItem = true;
        item += ch;
       }
+      skip = Math.max(skip - 1, 0);
       if ((isSep || isEnd) && haveItem) {
        result.push(item.trim());
        item = "";
        haveItem = !sepIsWhitespace;
-       continue;
+       skip = 0;
+       if (limit > 0 && result.length >= limit) {
+        i += 1;
+        break;
+       } else {
+        continue;
+       }
       }
      }
-     return result;
+     return { items: result, consumed: i };
     }
     
     return await main();
