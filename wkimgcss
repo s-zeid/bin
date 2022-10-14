@@ -181,6 +181,7 @@ def wkimgcss(
         const FILTER_ID_PREFIX = "custom_filter_";
         const filter_container = document.createElementNS(SVG_NS, "svg");
         filter_container.id = "${FILTER_ID_PREFIX}container";
+        filter_container.setAttribute("color-interpolation-filters", "sRGB");
         document.body.append(filter_container);
         for (let index = 0; index < filter_string_parts.length; index++) {
          let filter_string_part = filter_string_parts[index].trim();
@@ -247,7 +248,6 @@ def wkimgcss(
               }
               const filter = document.createElementNS(SVG_NS, "filter");
               filter.id = filter_id;
-              filter.setAttribute("color-interpolation-filters", "sRGB");
               filter_container.append(filter);
               const feComponentTransfer = document.createElementNS(SVG_NS, "feComponentTransfer");
               filter.append(feComponentTransfer);
