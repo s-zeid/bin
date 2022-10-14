@@ -306,10 +306,10 @@ def wkimgcss(
      const crop_parts = splitCSSValue(crop_string);
      if (crop_parts.length == 4) {
       let [crop_x, crop_y, crop_width, crop_height] = crop_parts;
-      crop_x = clamp(parseCSSLength(crop_x, 0), 0,  width);
-      crop_y = clamp(parseCSSLength(crop_y, 0), 0, height);
-      crop_width = clamp(parseCSSLength(crop_width, width - crop_x), 0, width - crop_x);
-      crop_height = clamp(parseCSSLength(crop_height, height - crop_y), 0, height - crop_y);
+      crop_x = clamp(parseCSSLength(crop_x, 0, width), 0,  width);
+      crop_y = clamp(parseCSSLength(crop_y, 0, height), 0, height);
+      crop_width = clamp(parseCSSLength(crop_width, width - crop_x, width), 0, width - crop_x);
+      crop_height = clamp(parseCSSLength(crop_height, height - crop_y, height), 0, height - crop_y);
       x += crop_x;
       y += crop_y;
       width = crop_width;
@@ -323,14 +323,14 @@ def wkimgcss(
      return Math.max(min, Math.min(n, max));
     }
     
-    function computeCSSValue(property, value, parentValue) {
-     const haveParentValue = typeof parentValue != "undefined";
+    function computeCSSValue(property, value, parentStyle) {
+     const haveParentStyle = typeof parentStyle != "undefined";
      value = (value == null) ? "" : String(value);
-     parentValue = (parentValue == null) ? "" : String(parentValue);
+     parentStyle = (parentStyle == null) ? "" : String(parentStyle);
      const parent = document.createElement("div");
      const test = document.createElement("div");
-     if (haveParentValue) {
-      parent.style.setProperty(property, parentValue, "important");
+     if (haveParentStyle) {
+      parent.setAttribute("style", parentStyle);
      }
      test.style.setProperty(property, value);
      parent.append(test);
@@ -340,11 +340,20 @@ def wkimgcss(
      return result;
     }
     
-    function parseCSSLength(length, default_) {
+    function parseCSSLength(length, default_, referenceLength) {
+     if (referenceLength != null && referenceLength != "") {
+      referenceLength = Number(String(referenceLength).trim());
+     } else {
+      referenceLength = null;
+     }
+     if (isNaN(referenceLength)) {
+      throw new TypeError("referenceLength must be a Number");
+     }
      if (length != null && length != "") {
       length = String(length).trim();
       if (CSS.supports("margin-left", length)) {
-       const computed = computeCSSValue("margin-left", length).match(/^(-?[0-9]*(\.[0-9]+)|-?[0-9]+)px$/);
+       const referenceStyle = referenceLength != null ? `position: absolute; width: ${Math.abs(referenceLength)}px;` : "";
+       const computed = computeCSSValue("margin-left", length, referenceStyle).match(/^(-?[0-9]*(\.[0-9]+)|-?[0-9]+)px$/);
        if (computed) {
         return new Number(computed[1]);
        }
