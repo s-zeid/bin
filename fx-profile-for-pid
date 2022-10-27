@@ -1,0 +1,66 @@
+#!/bin/sh
+set -e
+
+main() {
+ if [ $# -ne 1 ]; then
+  echo "Usage: $(basename -- "$0") {pid}" >&2
+  exit 2
+ fi
+ 
+ local pid; pid=$1
+ if (! [ -e "/proc/$pid/status" ]) || (! grep -q -e '^Pid:' "/proc/$pid/status"); then
+  echo "error: no such process: $pid" >&2
+  exit 1
+ fi
+ 
+ local profile_path; profile_path=$(search_fds "$pid")
+ if [ x"$profile_path" = x"" ]; then
+  echo "error: could not find profile path for PID $pid" >&2
+  exit 1
+ fi
+ 
+ echo "$profile_path"
+}
+
+
+search_fds() {
+ local pid; pid=$1
+ local try_files; try_files=$(cat <<'FILES'
+startupCache/scriptCache-child-current.bin
+formhistory.sqlite
+.parentlock
+storage.sqlite
+cookies.sqlite
+places.sqlite
+FILES
+)
+ local bin; bin=firefox-bin
+ local profile_path; profile_path=
+ local fd; local try_file
+ for fd in "/proc/$pid/fd/"*; do
+  target=$(readlink "$fd")
+  for try_file in $try_files; do
+   if [ x"${target%/$try_file}" != x"$target" ]; then
+    profile_path=${target%/$try_file}
+    break
+   fi
+  done
+ done
+ if [ x"$profile_path" = x"" ]; then
+  local ppid; ppid=$(get_ppid "$pid")
+  echo $ppid >&2
+  if [ x"$(basename -- $(readlink "/proc/$ppid/exe"))" = x"$bin" ]; then
+   profile_path=$(search_fds "$ppid")
+  fi
+ fi
+ printf '%s\n' "$profile_path"
+}
+
+
+get_ppid() {
+ local pid; pid=$1
+ grep -e '^PPid:' "/proc/$pid/status" | sed -e 's/^[^0-9]\+//'
+}
+
+
+main "$@"
