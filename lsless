@@ -1,0 +1,37 @@
+#!/bin/sh
+set -e
+
+main() {
+ local path
+ for arg; do
+  if printf '%s\n' "$arg" | head -n 1 | grep -q -e '^[^-]'; then
+   path=$arg
+   break
+  fi
+ done
+ 
+ if [ x"$path" = x"" ]; then
+  echo "Usage: $(basename -- "$0") [ls options] {path}" >&2
+  return 2
+ fi
+ 
+ if [ -d "$path" ]; then
+  local ls_args; ls_args=$LS_ARGS
+  local less_args; less_args=$LESS_ARGS
+  if [ -t 1 ]; then
+   less_args="-R $less_args"
+   ls_args="-C $ls_args"
+   if ls --color=auto /dev/null >/dev/null 2>&1; then
+    if ! printf '%s\n' "$ls_args" | grep -q -E -e '(^|[ \t])--color=never([ \t]|$)'; then
+     ls_args="$ls_args --color=always"
+    fi
+   fi
+  fi
+  ls $ls_args "$@" | less $less_args
+ else
+  less $less_args "$path"
+ fi
+}
+
+
+main "$@"
