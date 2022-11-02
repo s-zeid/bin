@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+
+"""Copies the modification time of one file to one or more other files.
+
+"""
+
+
+import argparse
+import os
+import sys
+
+from typing import *
+
+
+def mtime_copy(src: str, dest: Union[str, List[str]]):
+ if isinstance(dest, str):
+  dest = [dest]
+ 
+ src_mtime = get_mtime_ns(src)
+ 
+ for i in range(len(dest)):
+  set_mtime_ns(dest[i], src_mtime)
+
+
+def get_mtime_ns(path: str) -> int:
+ return os.stat(path).st_mtime_ns
+
+
+def set_mtime_ns(path: str, mtime_ns: int):
+ atime_ns = os.stat(path).st_atime_ns
+ os.utime(path, ns=(atime_ns, mtime_ns))
+
+
+def main(argv):
+ doc_lines = (__doc__.strip() or "\n\n").splitlines()
+ 
+ p = argparse.ArgumentParser(
+  prog=os.path.basename(argv[0]),
+  description=doc_lines[0].strip(),
+  epilog="\n".join(doc_lines[1:]).strip(),
+  formatter_class=argparse.RawDescriptionHelpFormatter,
+ )
+ p.add_argument("src", metavar="SRC",
+                help="the file from which to copy the modification time")
+ p.add_argument("dest", metavar="DEST", nargs="+",
+                help="the file(s) on which to set the modification time")
+ 
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return exc.code
+ 
+ mtime_copy(options.src, options.dest)
+ 
+ return 0
+
+
+if __name__ == "__main__":
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
