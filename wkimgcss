@@ -59,7 +59,10 @@ from gi.repository import Gtk as gtk
 gi.require_version("Gdk", "3.0")  # apt install gir1.2-gtk-3.0; apk add gtk+3.0
 from gi.repository import Gdk as gdk
 
-gi.require_version("WebKit2", "4.0")  # apt install gir1.2-webkit2-4.0; apk add webkit2gtk
+try:
+ gi.require_version("WebKit2", "4.1")  # apt install gir1.2-webkit2-4.1; apk add webkit2gtk-4.1
+except ValueError:
+ gi.require_version("WebKit2", "4.0")  # apt install gir1.2-webkit2-4.0 (4.1 preferred); apk add webkit2gtk
 from gi.repository import WebKit2 as webkit2
 
 from gi.repository import GLib as glib
