@@ -5,12 +5,14 @@ import html.entities
 import re
 import sys
 
+from typing import *
 
-def char2entity(char):
+
+def char2entity(char: str) -> str:
  return "&%s;" % html.entities.codepoint2name.get(ord(char), "#x%s" % hex(ord(char))[2:])
 
 
-def entity2char(entity):
+def entity2char(entity: str) -> Optional[str]:
  entity = re.match(r"^&?(.*?);?$", entity).group(1)
  if re.match(r"^#([0-9]+)$", entity):
   return chr(int(entity[1:], 10))
@@ -20,7 +22,7 @@ def entity2char(entity):
  return chr(codepoint) if codepoint else None
 
 
-def main(argv):
+def main(argv: List[str]) -> int:
  p = argparse.ArgumentParser()
  p.add_argument("-x", "--code-point", "--hex", dest="code_point", action="store_true",
                 help="show the version number and exit")
