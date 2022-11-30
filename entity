@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import html
 import html.entities
 import re
 import sys
@@ -30,15 +31,31 @@ def entity2char(entity: str) -> Optional[str]:
 
 def main(argv: List[str]) -> int:
  p = argparse.ArgumentParser()
- p.add_argument("-x", "--code-point", "--hex", dest="code_point", action="store_true",
+ m = p.add_mutually_exclusive_group()
+ m.add_argument("-e", "--escape", action="store_true",
+                help="escape HTML special characters in standard input,"
+                     " including single and double quotes")
+ m.add_argument("-u", "--unescape", action="store_true",
+                help="unescape entities in standard input")
+ m.add_argument("-x", "--code-point", "--hex", dest="code_point", action="store_true",
                 help="print the character as a Unicode code point")
- p.add_argument("input", metavar="entity-or-char",
+ p.add_argument("input", metavar="entity-or-char", nargs="?", default=None,
                 help="the character to convert to an entity or"
                      " the entity to convert to a character")
  try:
   args = p.parse_args(argv[1:])
+  if args.input is None and not (args.escape or args.unescape):
+   p.error("the following arguments are required: entity-or-char")
  except SystemExit as exc:
   return exc.code
+ 
+ if args.escape:
+  print(html.escape(sys.stdin.read(), quote=True))
+  return 0
+ 
+ if args.unescape:
+  print(html.unescape(sys.stdin.read()))
+  return 0
  
  input_ = args.input
  mode   = (char2entity if len(input_) == 1 else entity2char)
