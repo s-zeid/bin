@@ -16,7 +16,7 @@ def entity2char(entity: str) -> Optional[str]:
  entity = re.match(r"^&?(.*?);?$", entity).group(1)
  if re.match(r"^#([0-9]+)$", entity):
   return chr(int(entity[1:], 10))
- if re.match(r"^#x([0-9a-fA-F]+)$", entity):
+ if re.match(r"^#[xX]([0-9a-fA-F]+)$", entity):
   return chr(int(entity[2:], 16))
  codepoint = html.entities.name2codepoint.get(entity, None)
  return chr(codepoint) if codepoint else None
