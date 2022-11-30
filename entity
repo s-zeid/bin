@@ -8,18 +8,24 @@ import sys
 from typing import *
 
 
+XML_ENTITY_NAME_RE = r"[:A-Z_a-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02FF\u0370-\u037D\u037F-\u1FFF\u200C-\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD\U00010000-\U000EFFFF][:A-Z_a-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02FF\u0370-\u037D\u037F-\u1FFF\u200C-\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD\U00010000-\U000EFFFF-.0-9\u00B7\u0300-\u036F\u203F-\u2040]*"
+
+
 def char2entity(char: str) -> str:
  return "&%s;" % html.entities.codepoint2name.get(ord(char), "#x%s" % hex(ord(char))[2:])
 
 
 def entity2char(entity: str) -> Optional[str]:
- entity = re.match(r"^&?(.*?);?$", entity).group(1)
+ match = re.match(fr"^&?(#[0-9]+|#[xX][0-9a-fA-F]+|{XML_ENTITY_NAME_RE});?$", entity)
+ if not match:
+  return None
+ entity = match[1]
  if re.match(r"^#([0-9]+)$", entity):
   return chr(int(entity[1:], 10))
  if re.match(r"^#[xX]([0-9a-fA-F]+)$", entity):
   return chr(int(entity[2:], 16))
- codepoint = html.entities.name2codepoint.get(entity, None)
- return chr(codepoint) if codepoint else None
+ char = html.entities.html5.get(f"{entity};", None)
+ return char or None
 
 
 def main(argv: List[str]) -> int:
