@@ -47,6 +47,7 @@ def mini_browser(
  cookies: bool = False,
  user_agent: str = None,
  dev_tools: bool = True,
+ zoom: float = 1,
  size: str = None,
  fullscreen: bool = False,
  position: str = None,
@@ -103,6 +104,7 @@ def mini_browser(
   cookies=cookies,
   user_agent=user_agent,
   dev_tools=dev_tools,
+  zoom=zoom,
  )
  s.add(wv)
  
@@ -118,6 +120,7 @@ def _setup_webview(
  cookies: bool,
  user_agent: Union[str, None],
  dev_tools: bool,
+ zoom: float,
 ):
  param_hash = hashlib.sha512("\0".join([
   wm_class or "",
@@ -163,6 +166,8 @@ def _setup_webview(
  wv = webkit2.WebView.new_with_context(ctx)
  settings = webkit2.Settings()
  wv.set_settings(settings)
+ 
+ wv.set_zoom_level(zoom)
  
  if not hash_matches:
   with open(hash_path, "w") as f:
@@ -216,6 +221,8 @@ def main(argv: List[str]):
                 help="the user agent to use (default: auto)")
  p.add_argument("-C", "--cookies", action="store_true",
                 help="enable persistent cookies (default: disabled)")
+ p.add_argument("-z", "--zoom", type=float, default=1,
+                help="the zoom level to use (default: 1)")
  p.add_argument("--no-dev-tools", action="store_false", default=True, dest="dev_tools",
                 help="disable developer tools (default: enabled)")
  
@@ -271,6 +278,7 @@ you should set the -c/--wm-class argument yourself.
   cookies=options.cookies,
   user_agent=options.user_agent,
   dev_tools=options.dev_tools,
+  zoom=options.zoom,
   size=options.size,
   fullscreen=options.fullscreen,
   position=options.position,
