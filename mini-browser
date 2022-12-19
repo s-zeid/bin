@@ -51,6 +51,7 @@ def mini_browser(
  size: str = None,
  fullscreen: bool = False,
  position: str = None,
+ allow_all_permissions: bool = False,
  _args_compat_mode: bool = False,
 ):
  default_wm_class = APP_WM_CLASS
@@ -105,6 +106,7 @@ def mini_browser(
   user_agent=user_agent,
   dev_tools=dev_tools,
   zoom=zoom,
+  allow_all_permissions=allow_all_permissions,
  )
  s.add(wv)
  
@@ -121,6 +123,7 @@ def _setup_webview(
  user_agent: Union[str, None],
  dev_tools: bool,
  zoom: float,
+ allow_all_permissions: bool,
 ):
  param_hash = hashlib.sha512("\0".join([
   wm_class or "",
@@ -180,6 +183,23 @@ def _setup_webview(
  if dev_tools:
   settings.set_enable_developer_extras(True)
  
+ if allow_all_permissions:
+  if hasattr(settings, "set_enable_encrypted_media"):
+   settings.set_enable_encrypted_media(True)
+  settings.set_enable_media_stream(True)
+  if hasattr(settings, "set_enable_webrtc"):
+   settings.set_enable_webrtc(True)
+  settings.set_media_playback_requires_user_gesture(False)
+  
+  def allow_all_permissions_handler(_wv, request, _unused = None):
+   request.allow()
+   if isinstance(request, webkit2.UserMediaPermissionRequest):
+    if request.get_property("is-for-audio-device"):
+     wv.set_microphone_capture_state(True)
+     print(wv.get_microphone_capture_state())
+  
+  wv.connect("permission-request", allow_all_permissions_handler)
+ 
  return wv
 
 
@@ -223,6 +243,8 @@ def main(argv: List[str]):
                 help="enable persistent cookies (default: disabled)")
  p.add_argument("-z", "--zoom", type=float, default=1,
                 help="the zoom level to use (default: 1)")
+ p.add_argument("--allow-all-permissions", action="store_true",
+                help="allow all permissions requested by Web content")
  p.add_argument("--no-dev-tools", action="store_false", default=True, dest="dev_tools",
                 help="disable developer tools (default: enabled)")
  
@@ -268,6 +290,7 @@ you should set the -c/--wm-class argument yourself.
  
  url = options.url
  if url is None or url == ".":
+  import readline
   url = input("Please enter a URL: ")
  
  mini_browser(
@@ -282,6 +305,7 @@ you should set the -c/--wm-class argument yourself.
   size=options.size,
   fullscreen=options.fullscreen,
   position=options.position,
+  allow_all_permissions=options.allow_all_permissions,
   _args_compat_mode=compat_mode,
  )
 
