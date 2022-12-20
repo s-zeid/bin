@@ -213,6 +213,7 @@ setup_tmux() {  #{{{1
   bind-key -n C-S-"$(escape_tmux_arg "$f_key_next")" swap-window -t :+1
   bind-key -n C-M-Right swap-window -t :+1
   bind-key -n "$(escape_tmux_arg "$f_key_new")" new-window -n "$(escape_tmux_arg "$default_window_name")"
+  bind-key -T prefix c new-window -n "$(escape_tmux_arg "$default_window_name")"
   bind-key -n S-"$(escape_tmux_arg "$f_key_new")" split-window -c "#{pane_current_path}"
   bind-key -n C-"$(escape_tmux_arg "$f_key_new")" split-window -c "#{pane_current_path}" -h
   bind-key -n "$(escape_tmux_arg "$f_key_choose")" choose-tree -w
