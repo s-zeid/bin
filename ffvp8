@@ -1,0 +1,153 @@
+#!/bin/sh
+set -e
+
+tmpdir=
+
+
+main() {
+  if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+    echo "Usage: $(basename -- "$0") INPUT OUTPUT [QUALITY]" >&2
+    echo "QUALITY can be \`best\`, \`good\`, or \`realtime\` (default: \`good\`)" >&2
+    return 2
+  fi
+  
+  local input="$1"
+  local output="$2"
+  local quality="${3:-good}"
+  if ! (echo '|best|good|realtime|' | grep -F -q -e "|$quality|"); then
+    echo "$(basename -- "$0"): invalid quality value: $quality" >&2
+    return 2
+  fi
+  
+  tmpdir=$(mktemp -d "/tmp/$(basename -- "$0").XXXXXX")
+  trap 'rm -rf "$tmpdir"' 0 INT TERM QUIT EXIT
+  
+  local probe; probe=$(
+    ffprobe \
+      -hide_banner -loglevel fatal \
+      -show_format \
+      -show_streams \
+      -print_format json \
+      -i "$input"
+  )
+  if [ x"$probe" = x"" ]; then
+    printf '%s\n' "$input: ffprobe failed" >&2
+    return 3
+  fi
+  
+  local has_video; has_video=$(
+    printf '%s\n' "$probe" \
+    | jq -r '.streams // [] | if map(select(.codec_type == "video"))[0] then 1 else 0 end'
+  )
+  local has_audio; has_audio=$(
+    printf '%s\n' "$probe" \
+    | jq -r '.streams // [] | if map(select(.codec_type == "audio"))[0] then 1 else 0 end'
+  )
+  if [ $has_video -eq 0 ] && [ $has_audio -eq 0 ]; then
+    printf '%s\n' "$input: no video or audio streams" >&2
+    return 1
+  fi
+  
+  local ab; ab=$(
+    printf '%s\n' "$probe" \
+    | jq -r '.streams // [] | map(select(.codec_type == "audio"))[0].bit_rate // empty'
+  )
+  if [ $has_audio -ne 0 ] && [ x"$ab" = x"" ]; then
+    ffmpeg -hide_banner -loglevel fatal \
+      -i "$input" -vn -sn -dn -c:a copy -f nut "$tmpdir/audio_60s.nut"
+    local audio_60s_probe; audio_60s_probe=$(
+      ffprobe \
+        -hide_banner -loglevel fatal \
+        -show_format \
+        -show_streams \
+        -print_format json \
+        -i "$tmpdir/audio_60s.nut"
+    )
+    rm -f "$tmpdir/audio_60s.nut"
+    ab=$(
+      printf '%s\n' "$audio_60s_probe" \
+      | jq -r '.format.bit_rate // empty'
+    )
+    if [ x"$ab" = x"" ]; then
+      printf '%s\n' "$input: could not get audio bitrate" >&2
+      return 1
+    fi
+  fi
+  if printf '%s\n' "$ab" | grep -q -e '[^0-9.]'; then
+    printf '%s\n' "$input: invalid audio bitrate: $ab" >&2
+    return 1
+  fi
+  
+  local vb; vb=$(
+    printf '%s\n' "$probe" \
+    | jq -r '.streams // [] | map(select(.codec_type == "video"))[0].bit_rate // empty'
+  )
+  if [ $has_video -ne 0 ] && [ x"$vb" = x"" ]; then
+    local cb; cb=$(
+      printf '%s\n' "$probe" \
+      | jq -r '.format.bit_rate // empty'
+    )
+    if [ x"$cb" = x"" ]; then
+      printf '%s\n' "$input: could not get container bitrate" >&2
+      return 1
+    fi
+    vb=$(jq -n -r --arg cb "$cb" --arg ab "${ab:-0}" '($cb | tonumber) - ($ab | tonumber)')
+    if [ x"$vb" = x"" ]; then
+      printf '%s\n' "$input: could not get video bitrate" >&2
+      return 1
+    fi
+  fi
+  if printf '%s\n' "$vb" | grep -q -e '[^0-9.]'; then
+    printf '%s\n' "$input: invalid video bitrate: $vb" >&2
+    return 1
+  fi
+  
+  local fps; fps=$(
+    printf '%s\n' "$probe" \
+    | jq -r '.streams // [] | map(select(.codec_type == "video"))[0].avg_frame_rate // empty'
+  )
+  if [ $has_video -ne 0 ] && [ x"$fps" = x"" ]; then
+    printf '%s\n' "$input: could not get video framerate" >&2
+    return 1
+  fi
+  if printf '%s\n' "$fps" | grep -q -e '/'; then
+    fps=$(jq -n -r --arg x "${fps%%/*}" --arg y "${fps##*/}" \
+      '($x | tonumber) / ($y | tonumber)')
+  fi
+  if [ x"$fps" = x"" ] || (printf '%s\n' "$fps" | grep -q -e '[^0-9.]'); then
+    printf '%s\n' "$input: invalid framerate: $fps" >&2
+    return 1
+  fi
+  
+  local video_args; video_args=''
+  if [ $has_video -ne 0 ]; then
+    video_args="-c:v libvpx -b:v $vb -g $fps"
+    video_args="$video_args -deadline $quality -quality $quality"
+    if [ x"$quality" = x"$realtime" ]; then
+      video_args="$video_args -cpu-used 10 -lag-in-frames 0"
+    else
+      video_args="$video_args -cpu-used 8"
+    fi
+    video_args="$video_args -error-resilient +default+partitions"
+  fi
+  
+  local audio_args; audio_args=''
+  if [ $has_audio -ne 0 ]; then
+    audio_args="-c:a libopus -b:a $ab"
+  fi
+  
+  echo_exec ffmpeg \
+    -i "$input" \
+    $video_args \
+    $audio_args \
+    "$output"
+}
+
+
+echo_exec() {
+  echo + "$@" >&2
+  exec "$@"
+}
+
+
+main "$@"
