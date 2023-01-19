@@ -96,8 +96,12 @@ def main(argv: List[str]) -> int:
  return 0
 
 
-class VerboseRequestHandler(http.server.SimpleHTTPRequestHandler):
- error_message_format = "<h1>%(code)d %(message)s</h1>%(explain)s"
+class TCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+ options: Any
+
+
+class RequestHandler(http.server.SimpleHTTPRequestHandler):
+ error_message_format = "<h1>%(code)d %(message)s</h1>%(explain)s\n"
  extensions_map: Dict[str, str]  # defined later
  
  def guess_type(self, path: Union[str, os.PathLike[str]]) -> str:
@@ -134,6 +138,10 @@ class VerboseRequestHandler(http.server.SimpleHTTPRequestHandler):
    super().send_header(name, value)
 
 
+class VerboseRequestHandler(RequestHandler):
+ pass
+
+
 class LoggingRequestHandler(VerboseRequestHandler):
  def log_error(self, *args, **kwargs):
   pass
@@ -144,9 +152,8 @@ class TerseRequestHandler(LoggingRequestHandler):
   pass
 
 
-class VerboseTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+class VerboseTCPServer(TCPServer):
  allow_reuse_address = True
- options: Any
 
 
 class TerseTCPServer(VerboseTCPServer):
@@ -196,6 +203,8 @@ _extensions_map = {
  ".m4a": "audio/mpeg",
  ".md": "text/markdown; charset=utf-8",
  ".markdown": "text/markdown; charset=utf-8",
+ ".mka": "audio/x-matroska",
+ ".mkv": "video/x-matroska",
  ".mov": "video/quicktime",
  ".mpe": "video/mpeg",
  ".mpeg": "video/mpeg",
@@ -205,6 +214,7 @@ _extensions_map = {
  ".mp2": "audio/mpeg",
  ".mp3": "audio/mpeg",
  ".mp4": "video/mp4",
+ ".nut": "video/x-nut",
  ".oga": "audio/ogg",
  ".ogg": "audio/ogg",
  ".opus": "audio/ogg",
