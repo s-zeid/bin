@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+
+exec ffprobe -hide_banner -loglevel fatal -show_error -show_format -show_streams -print_format json "$@"
