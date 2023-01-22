@@ -1,5 +1,4 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 # vim: set fdm=marker:
 
 """Runs a Java class file.
@@ -12,9 +11,11 @@ Unlike the javawrapper in java.txt, this does not require a binary helper to
 be compiled in order to read the class name.  Instead, the code that reads
 the Java class file is included right here.
 
-Copyright (c) 2013 Scott Zeid.  Released under the X11 License.
+Copyright (c) 2013, 2023 Scott Zeid.  Released under the X11 License.
 
 """
+
+# imports  #{{{1
 
 import codecs
 import os
@@ -28,29 +29,40 @@ import tempfile
 
 from collections import namedtuple
 
-class JavaWrapperError(StandardError): pass
 
-def main(argv):
- if len(argv) != 2:
-  print >> sys.stderr, "Usage: %s file.class" % argv[0]
+class JavaWrapperError(RuntimeError):
+ pass
+
+
+def main(argv):  #{{{1
+ prog = os.path.basename(argv[0])
+ 
+ if len(argv) < 2:
+  print("Usage: %s file.class" % prog, file=sys.stderr)
   return 2
  
  try:
   run_class_file(argv[1], argv[2:], True)
  except JavaWrapperError as exc:
-  print >> sys.stderr, "error:", exc
+  print(f"{prog}: error:", exc, file=sys.stderr)
   return 1
 
-def split_class_name(class_name, sep="."):
- fqname = class_name.encode(getfilesystemencoding()).replace(".", "/").strip("/")
+
+def split_class_name(class_name, sep=b"."):  #{{{1
+ if isinstance(class_name, str):
+  class_name = class_name.encode(getfilesystemencoding())
+ if isinstance(sep, str):
+  sep = sep.encode(getfilesystemencoding())
+ fqname = class_name.replace(b".", b"/").strip(b"/")
  fqpath, fqbase = posixpath.split(posixpath.normpath(fqname))
- return fqpath.replace("/", sep), fqbase
+ return fqpath.replace(b"/", sep), fqbase
  
-def get_classpath(filename):
- if isinstance(filename, unicode):
+
+def get_classpath(filename):  #{{{1
+ if isinstance(filename, str):
   filename = filename.encode(getfilesystemencoding())
  
- fqpath, fqbase = split_class_name(get_class_name(filename), "/")
+ fqpath, fqbase = split_class_name(get_class_name(filename), b"/")
  
  # try to resolve symlink if file basename is not "{fqbase}.class"
  # one level at a time
@@ -66,43 +78,60 @@ def get_classpath(filename):
               os.path.realpath(os.path.dirname(filename))]:
   if path.endswith(fqpath):
    return path.rsplit(fqpath)[0] if fqpath else path
- raise JavaWrapperError("%s should be in a path ending with %s"
-                         % (filename, fqpath))
+ filename_str = filename.decode(getfilesystemencoding(), errors="replace")
+ fqpath_str = fqpath.decode("utf-8", errors="replace")
+ raise JavaWrapperError("`%s` should be in a path ending with `%s`"
+                         % (filename_str, fqpath_str))
 
-def filename_matches_class(filename, class_name=None):
+
+def filename_matches_class(filename, class_name=None):  #{{{1
+ if isinstance(filename, str):
+  filename = filename.encode(getfilesystemencoding())
+ if isinstance(class_name, str):
+  class_name = class_name.encode(getfilesystemencoding())
  if not class_name:
-  class_name = split_class_name(get_class_name(filename), "/")[1]
+  class_name = split_class_name(get_class_name(filename), b"/")[1]
  filename  = os.path.basename(filename)
  base, ext = os.path.splitext(filename)
- return base + ext.lower() == class_name + ".class"
+ return base + ext.lower() == class_name + b".class"
 
-def run_class_file(filename, args=[], exec_=False, classpath_prepend="",
-                   **subprocess_kwargs):
+
+def run_class_file(  #{{{1
+ filename,
+ args=[],
+ exec_=False,
+ classpath_prepend="",
+ **subprocess_kwargs,
+):
+ os_pathsep = os.pathsep.encode(getfilesystemencoding())
  classpath = get_classpath(filename)
- environ = os.environ.copy()
- if "CLASSPATH" in environ:
-  if not re.search(r"(^|%s)(%s)(:|$)" % (os.path.pathsep, re.escape(classpath)),
-                   environ["CLASSPATH"], re.MULTILINE):
-   environ["CLASSPATH"] = classpath + os.pathsep + environ["CLASSPATH"]
+ environb = os.environb.copy()
+ if "CLASSPATH" in environb:
+  if not re.search(rb"(^|%s)(%s)(:|$)" % (os_pathsep, re.escape(classpath)),
+                   environb["CLASSPATH"], re.MULTILINE):
+   environb["CLASSPATH"] = classpath + os_pathsep + environb["CLASSPATH"]
  else:
-  environ["CLASSPATH"] = classpath
+  environb["CLASSPATH"] = classpath
  
+ if isinstance(classpath_prepend, str):
+  classpath_prepend = classpath_prepend.encode(getfilesystemencoding())
  if classpath_prepend:
-  environ["CLASSPATH"] = classpath_prepend + os.pathsep + environ["CLASSPATH"]
+  environb["CLASSPATH"] = classpath_prepend + os_pathsep + environb["CLASSPATH"]
  
  if not filename_matches_class(filename):
-  tmp_dir = tempfile.mkdtemp()
+  tmp_dir = tempfile.mkdtemp().encode(getfilesystemencoding())
   class_dir, class_name = split_class_name(get_class_name(filename), "/")
-  class_dir = os.path.join(tmp_dir, class_dir.replace("/", os.sep))
+  os_sep = os.sep.encode(getfilesystemencoding())
+  class_dir = os.path.join(tmp_dir, class_dir.replace(b"/", os_sep))
   if not os.path.samefile(tmp_dir, class_dir):
    os.makedirs(class_dir)
-  new_filename = os.path.join(class_dir, class_name + ".class")
+  new_filename = os.path.join(class_dir, class_name + b".class")
   if hasattr(os, "symlink"):
    os.symlink(os.path.realpath(filename), new_filename)
   else:
    shutil.copy2(filename, new_filename)
   if classpath_prepend:
-   classpath_prepend = class_dir + os.pathsep + classpath_prepend
+   classpath_prepend = class_dir + os_pathsep + classpath_prepend
   else:
    classpath_prepend = class_dir
   ret = None
@@ -117,11 +146,12 @@ def run_class_file(filename, args=[], exec_=False, classpath_prepend="",
  
  argv = ["java", get_class_name(filename)] + args
  if exec_:
-  os.execvpe(argv[0], argv, environ)
+  os.execvpe(argv[0], argv, environb)
  else:
-  return subprocess.call(argv, env=environ, **subprocess_kwargs)
+  return subprocess.call(argv, env=environb, **subprocess_kwargs)
 
-def getfilesystemencoding():
+
+def getfilesystemencoding():  #{{{1
  """Returns the file system encoding, but substitutes UTF-8 for ASCII."""
  enc = sys.getfilesystemencoding()
  try:
@@ -131,16 +161,17 @@ def getfilesystemencoding():
   return "utf-8"
  return enc
 
-### Java class name reading {{{1
+
+# Java class name reading  #{{{1
 
 Tag = namedtuple("Tag", "n,size,name")
 TagData = namedtuple("TagData", "i,tag,size,data")
 Version = namedtuple("Version", "major,minor")
 
 class Tag(Tag):
- def __repr__(self):    return self.name
+ def __repr__(self):    return repr(self.name)
  def __str__(self):     return repr(self)
- def __unicode__(self): return repr(self)
+
 
 # Negative sizes indicate a -n-byte size prefix,
 # with the total size being  value of prefix + 2.
@@ -157,8 +188,9 @@ TAGS = {
  11: Tag(11, 4,  "INTERFACE_METHOD_REFERENCE"),
  12: Tag(12, 4,  "NAME_AND_TYPE_DESCRIPTOR")
 }
-for n in TAGS.keys(): TAGS[TAGS[n].name] = TAGS[n]
+for n in list(TAGS.keys()): TAGS[TAGS[n].name] = TAGS[n]
 FORMATS = {None: '', 2: '>H', 4: '>I', 8: '>Q'}
+
 
 def read_tag(fo, i):
  n = struct.unpack("B", fo.read(1))[0]
@@ -174,11 +206,16 @@ def read_tag(fo, i):
   return TagData(i, tag, prefix + size, data)
  return TagData(i, tag, size, struct.unpack(FORMATS[size], fo.read(size))[0])
 
+
 def get_class_name(filename):
  with open(filename, "rb") as fo:
   magic = struct.unpack(">I", fo.read(4))[0]
-  if magic != 0xCafeBabe:  # obligatory Emily reference... ಠ_ಠ
-   raise ValueError("'%s' is not a valid Java class file" % filename)
+  if magic != 0xCAFEBABE:
+   if isinstance(filename, bytes):
+    filename_str = filename.decode(getfilesystemencoding(), errors="replace")
+   else:
+    filename_str = filename
+   raise JavaWrapperError("`%s` is not a valid Java class file" % filename_str)
   version = Version(minor=struct.unpack(">H", fo.read(2)),
                     major=struct.unpack(">H", fo.read(2)))
   cp = [None]
@@ -194,13 +231,15 @@ def get_class_name(filename):
   class_name = cp[this_class.data]
   return class_name.data
 
+
 def print_cp(cp):
  for i in range(len(cp)):
   if i != 0:
    if cp[i]:
-    print "%d: [%d] %s" % (i, cp[i].tag.n, cp[i].data)
+    print("%d: [%d] %s" % (i, cp[i].tag.n, cp[i].data))
    else:
-    print "%d: None" % i
+    print("%d: None" % i)
+
 
 if __name__ == "__main__":  #{{{1
  try:
