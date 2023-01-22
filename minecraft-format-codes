@@ -128,11 +128,7 @@ TAG_FORMATS = TagFormats(
    open=lambda color, shadow=None, *_, **__: color.ansi,
    close=lambda: "\x1b[22m",
   ),
-  MAGIC_TAG=Tag(
-   open=lambda color, shadow=None, *_, **__:
-    "%s\x1b[4%dm" % (color.ansi, color.ansi_n),
-   close=lambda: "\x1b[39m\x1b[49m",
-  ),
+  MAGIC_TAG=Tag(open=lambda *_, **__: "\x1b[8m", close=lambda: "\x1b[28m"),
   BOLD_TAG=Tag(open=lambda *_, **__: "\x1b[1m", close=lambda: "\x1b[21m"),
   STRIKE_TAG=Tag(open=lambda *_, **__: "\x1b[9m", close=lambda: "\x1b[29m"),
   UNDERLINE_TAG=Tag(open=lambda *_, **__: "\x1b[4m", close=lambda: "\x1b[24m"),
