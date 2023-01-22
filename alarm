@@ -94,14 +94,24 @@ DEFAULT_YML_NAME     = ".alarm.yml"
 DEFAULT_YML_PATH     = os.path.join("~", DEFAULT_YML_NAME)
 DEFAULT_YML_CONTENTS = """\
 alarm:
- sound: null  # default is a loud beeping sound
- loop: 45  # default sound is 2 seconds long, so this loops for 90 seconds
+ sound: null  # {ALARM_COMMENTS[sound]}
+ loop: 45  # {ALARM_COMMENTS[loop]}
  command: ["mpv", "--loop=@loop", "@sound"]
 disable-if-missed: 2
 missed: 0
 """
 ALARM_KEYS_ORDERED   = ["sound", "loop", "command"]
 OTHER_KEYS_ORDERED   = ["disable-if-missed", "missed"]
+ALARM_COMMENTS       = {
+ "sound": "path to the alarm sound; the default is a 2-second loud beeping sound",
+ "loop": "number of times to loop the alarm sound",
+}
+OTHER_COMMENTS       = {}
+
+DEFAULT_YML_CONTENTS = DEFAULT_YML_CONTENTS.format(
+ ALARM_COMMENTS=ALARM_COMMENTS,
+ OTHER_COMMENTS=OTHER_COMMENTS,
+)
 
 
 class Alarm:  #{{{1
@@ -165,17 +175,36 @@ class Config:  #{{{1
   self.__save()
  
  def __save(self):
-  yml = "alarm:\n"
+  yml = ""
+  indent_width = 1
   
-  for key in ALARM_KEYS_ORDERED:
-   flow = None if isinstance(self.__data["alarm"][key], (list, tuple)) else False
-   yml += " " + yaml.safe_dump({key: self.__data["alarm"][key]}, default_flow_style=flow)
-   if not yml.endswith("\n"): yml += "\n"
-  
-  for key in OTHER_KEYS_ORDERED:
-   flow = None if isinstance(self.__data[key], (list, tuple)) else False
-   yml += yaml.safe_dump({key: self.__data[key]}, default_flow_style=flow)
-   if not yml.endswith("\n"): yml += "\n"
+  for section, keys, comments, indent_level in (
+   ("alarm", ALARM_KEYS_ORDERED, ALARM_COMMENTS, 1),
+   (None, OTHER_KEYS_ORDERED, OTHER_COMMENTS, 0),
+  ):
+   indent_length = indent_width * indent_level
+   indent_string = " " * indent_length
+   if section:
+    yml += f"{section}:\n"
+    data = self.__data[section]
+   else:
+    data = self.__data
+   for key in keys:
+    flow = None if isinstance(data[key], (list, tuple)) else False
+    dumped = indent_string + yaml.safe_dump(
+     {key: data[key]},
+     default_flow_style=flow,
+     indent=indent_length + indent_width,
+    )
+    if key in comments:
+     comment = f"# {comments[key]}"
+     if len(dumped.splitlines()) > 1:
+      dumped = f"{indent_string}{comment}\n{dumped}"
+     else:
+      dumped = dumped[:-1] if dumped.endswith("\n") else dumped
+      dumped += f"  {comment}"
+    yml += dumped
+    if not yml.endswith("\n"): yml += "\n"
   
   with open(self.path, "w") as fo:
    fo.write(yml)
