@@ -1,9 +1,8 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 
 "Sets the X cursor theme, either once or at a regular interval."
 
-# Copyright (c) 2016 Scott Zeid <https://s.zeid.me/>.
+# Copyright (c) 2016, 2023 S. Zeid <https://s.zeid.me/>.
 # 
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public
@@ -127,7 +126,7 @@ def main(argv):
   
  display = XOpenDisplay(None)
  if not display:
-  print >> sys.stderr, error % "could not open X display"
+  print(error % "could not open X display", file=sys.stderr)
   return 1
  
  while True:
@@ -139,7 +138,7 @@ def main(argv):
 
 
 def load_images(display, name, theme, size):
- images = XcursorLibraryLoadImages(name, theme, size)
+ images = XcursorLibraryLoadImages(name.encode("utf-8"), theme.encode("utf-8"), size)
  if images:
   return images
 
@@ -147,7 +146,7 @@ def load_images(display, name, theme, size):
 def load_cursor(display, name, images):
  cursor = XcursorImagesLoadCursor(display, images)
  #XcursorImagesDestroy(images)
- XFixesSetCursorName(display, cursor, name)
+ XFixesSetCursorName(display, cursor, name.encode("utf-8"))
  return cursor
 
 
@@ -161,7 +160,7 @@ def set_cursor_theme(display, theme, size):
     cursor.images = False
   if cursor.images:
    cursor_xid = load_cursor(display, cursor.name, cursor.images)
-   XFixesChangeCursorByName(display, cursor_xid, cursor.name)
+   XFixesChangeCursorByName(display, cursor_xid, cursor.name.encode("utf-8"))
    XFreeCursor(display, cursor_xid)
 
 
@@ -219,7 +218,7 @@ pirate
  
  cursor_list = [i for i in cursor_list_file.strip().replace("#", "\n#").splitlines()
                 if i and not i.startswith("#")]
- for i in xrange(len(cursor_list)):
+ for i in range(len(cursor_list)):
   if " " in cursor_list[i]:
    name, alternative = cursor_list[i].split(" ", 2)
   else:
@@ -229,7 +228,7 @@ pirate
  return cursor_list
 
 
-class Cursor(object):
+class Cursor():
  def __init__(self, name, alternative=None):
   self.name = name
   self.alternative = alternative
