@@ -61,7 +61,8 @@
 
 """Plays an alarm sound.  To dismiss, kill the process.
 
-The alarm is automatically disabled if missed too many times (default is 2).
+The alarm is automatically disabled if it has been missed too many times
+(the default is 2).
 
 Depends on Python 3, PyYAML, and something that can play media files
 (the default is mpv):
@@ -75,6 +76,7 @@ Depends on Python 3, PyYAML, and something that can play media files
 
 # imports  {{{1
 
+import argparse
 import base64
 import os
 import shutil
@@ -220,15 +222,31 @@ class Config:  #{{{1
 
 
 def main(argv):  #{{{1
- if len(argv) > 1 and argv[1] in ("--help", "-h"):
-  print("Usage: %s [--help|-h] [config-file, default=%s]" % (argv[0], DEFAULT_YML_PATH))
-  print("If config-file is a directory, then this will look for a file called")
-  print("\"%s\" in that directory.  ~ and ~username are expanded." % DEFAULT_YML_NAME)
-  print()
-  print(__doc__.rstrip())
-  return 0
+ prog = os.path.basename(argv[0])
  
- yml_path = os.path.expanduser(argv[1] if len(argv) > 1 else DEFAULT_YML_PATH)
+ epilog = f"""\
+If CONFIG is a directory, then the file called `{DEFAULT_YML_NAME}` in that
+directory will be used.  `~` and `~username` will be expanded for CONFIG
+and for the `alarm.sound` key in it.
+"""
+ epilog = epilog.strip() + "\n\n" + __doc__.split("\n", 1)[1].strip()
+ 
+ p = argparse.ArgumentParser(
+  prog=prog,
+  description=__doc__.split("\n", 1)[0].strip(),
+  epilog=epilog,
+  formatter_class=argparse.RawDescriptionHelpFormatter,
+ )
+ p.add_argument("-C", "--config", default=None,
+                help="the path to or directory of the configuration file"
+                    f" (default: `{DEFAULT_YML_PATH}`")
+ 
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return int(exc.code) if exc.code is not None else 127
+ 
+ yml_path = os.path.expanduser(options.config or DEFAULT_YML_PATH)
  if os.path.isdir(os.path.realpath(yml_path)):
   yml_path = os.path.join(yml_path, DEFAULT_YML_NAME)
  if not os.path.exists(os.path.realpath(yml_path)):
@@ -237,6 +255,7 @@ def main(argv):  #{{{1
  
  config = Config(yml_path)
  config.alarm.play()
+ return 0
 
 
 def get_default_sound_file(dir):  #{{{1
