@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # vim: set fdm=marker:
 
 # alarm
@@ -58,11 +58,12 @@
 # * <https://android.googlesource.com/platform/frameworks/base/+/9066cfe9886ac131c34d59ed0e2d287b0e3c0087/NOTICE>
 #   * or <https://github.com/aosp-mirror/platform_frameworks_base/blob/9066cfe9886ac131c34d59ed0e2d287b0e3c0087/NOTICE>
 
+
 """Plays an alarm sound.  To dismiss, kill the process.
 
 The alarm is automatically disabled if missed too many times (default is 2).
 
-Depends on Python 2.7, PyYAML, and something that can play media files
+Depends on Python 3, PyYAML, and something that can play media files
 (the default is mplayer):
 
     fedora$ sudo yum install PyYAML
@@ -70,7 +71,9 @@ Depends on Python 2.7, PyYAML, and something that can play media files
 
 """
 
-# Imports {{{1
+
+# imports  {{{1
+
 import atexit
 import base64
 import os
@@ -80,14 +83,11 @@ import subprocess
 import sys
 import tempfile
 
-try:
- from cStringIO import StringIO
-except ImportError:
- from StringIO import StringIO
-
 import yaml
 
-# Constants {{{1
+
+# constants  {{{1
+
 DEFAULT_SOUND_NAME   = "Alarm_Beep_03_plus10dB.ogg"
 DEFAULT_YML_NAME     = ".alarm.yml"
 DEFAULT_YML_PATH     = os.path.join("~", DEFAULT_YML_NAME)
@@ -102,25 +102,30 @@ missed: 0
 ALARM_KEYS_ORDERED   = ["sound", "loop", "command"]
 OTHER_KEYS_ORDERED   = ["disable-if-missed", "missed"]
 
-class Alarm(object): #{{{1
+
+class Alarm:  #{{{1
  class PlayCommandTemplate(string.Template):
   delimiter = "@"
+ 
  def __init__(self, config, sound, loop, command):
   self.config  = config
   self.sound   = sound
   self.loop    = loop
   self.command = command
+ 
  def play(self):
   config = self.config
   if isinstance(config, Config) and config.missed >= config.disable_if_missed:
    config.missed += 1
    return
+  
   default = get_default_sound_file() if self.sound == None else False
   if default:
    def clean():
     if os.path.exists(os.path.dirname(default)):
      shutil.rmtree(os.path.dirname(default))
    atexit.register(clean)
+  
   sub = dict(sound=default if default else self.sound, loop=self.loop)
   cmd = [type(self).PlayCommandTemplate(arg).substitute(sub) for arg in self.command]
   r = subprocess.call(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -128,70 +133,85 @@ class Alarm(object): #{{{1
    # process exited normally (i.e., the user did not kill the alarm)
    config.missed += 1
 
-class Config(object): #{{{1
+
+class Config:  #{{{1
  def __init__(self, path):
   self.__path  = path
   with open(path, "rb") as fo:
-   self.__data = yaml.load(fo.read().decode("utf-8"))
+   self.__data = yaml.safe_load(fo.read().decode("utf-8"))
   self.__alarm = Alarm(self, **self.__data["alarm"])
+ 
  @property
  def path(self):
   return self.__path
+ 
  @property
  def alarm(self):
   return self.__alarm
+ 
  @property
  def disable_if_missed(self):
   return self.__data["disable-if-missed"]
+ 
  @property
  def missed(self):
   return self.__data["missed"]
+ 
  @missed.setter
  def missed(self, n):
   n = int(n)
   self.__data["missed"] = n
   self.__save()
+ 
  def __save(self):
   yml = "alarm:\n"
+  
   for key in ALARM_KEYS_ORDERED:
    flow = None if isinstance(self.__data["alarm"][key], (list, tuple)) else False
-   yml += " " + yaml.dump({key: self.__data["alarm"][key]}, default_flow_style=flow)
+   yml += " " + yaml.safe_dump({key: self.__data["alarm"][key]}, default_flow_style=flow)
    if not yml.endswith("\n"): yml += "\n"
+  
   for key in OTHER_KEYS_ORDERED:
    flow = None if isinstance(self.__data[key], (list, tuple)) else False
-   yml += yaml.dump({key: self.__data[key]}, default_flow_style=flow)
+   yml += yaml.safe_dump({key: self.__data[key]}, default_flow_style=flow)
    if not yml.endswith("\n"): yml += "\n"
-  with open(self.path, "wb") as fo:
+  
+  with open(self.path, "w") as fo:
    fo.write(yml)
 
-def main(argv): #{{{1
+
+def main(argv):  #{{{1
  if len(argv) > 1 and argv[1] in ("--help", "-h"):
-  print "Usage: %s [--help|-h] [config-file, default=%s]" % (argv[0], DEFAULT_YML_PATH)
-  print "If config-file is a directory, then this will look for a file called"
-  print "\"%s\" in that directory.  ~ and ~username are expanded." % DEFAULT_YML_NAME
-  print
-  print __doc__.rstrip()
+  print("Usage: %s [--help|-h] [config-file, default=%s]" % (argv[0], DEFAULT_YML_PATH))
+  print("If config-file is a directory, then this will look for a file called")
+  print("\"%s\" in that directory.  ~ and ~username are expanded." % DEFAULT_YML_NAME)
+  print()
+  print(__doc__.rstrip())
   return 0
+ 
  yml_path = os.path.expanduser(argv[1] if len(argv) > 1 else DEFAULT_YML_PATH)
  if os.path.isdir(os.path.realpath(yml_path)):
   yml_path = os.path.join(yml_path, DEFAULT_YML_NAME)
  if not os.path.exists(os.path.realpath(yml_path)):
-  with open(yml_path, "wb") as fo:
+  with open(yml_path, "w") as fo:
    fo.write(DEFAULT_YML_CONTENTS)
+ 
  config = Config(yml_path)
  config.alarm.play()
 
-def get_default_sound_file(): #{{{1
+
+def get_default_sound_file():  #{{{1
  tmpdir = tempfile.mkdtemp()
  path = os.path.join(tmpdir, DEFAULT_SOUND_NAME)
  with open(path, "wb") as fo:
   fo.write(get_default_sound_data())
  notice_path = path + ".NOTICE.txt"
- with open(notice_path, "wb") as fo:
+ with open(notice_path, "w") as fo:
   fo.write(get_default_sound_data(notice=True))
  return path
 
-def get_default_sound_data(notice=False): #{{{1
+
+def get_default_sound_data(notice=False):  #{{{1
  if notice:
   notice = """\
 The following notice applies to Alarm_Beep_03_plus10dB.ogg:
@@ -889,7 +909,8 @@ rK3v3jxgTZeeztmi75SurxfDWvGr8OTsBzk0sBT3OgBrNqd2AR3gtVYMj2TWtNe17bc3eTxevS5+
 3t68ddbVW3Rt59H2SVnUhAWcAQ==
 """)
 
-# Text of the Apache License, Version 2.0 #{{{1
+
+# Text of the Apache License, Version 2.0  #{{{1
 
 APACHE_LICENSE_VERSION_2_0 = """\
 
@@ -1096,7 +1117,7 @@ APACHE_LICENSE_VERSION_2_0 = """\
    limitations under the License.
 """
 
-if __name__ == "__main__": #{{{1
+if __name__ == "__main__":  #{{{1
  try:
   sys.exit(main(sys.argv))
  except KeyboardInterrupt:
