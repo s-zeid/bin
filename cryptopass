@@ -68,18 +68,20 @@ def main(argv: List[str]) -> int:
   description=__doc__.strip().splitlines()[0].strip(),
   formatter_class=argparse.RawDescriptionHelpFormatter,
  )
- p.add_argument("--file", "-f", default=None,
+ p.add_argument("-f", "--file", default=None,
                 help="a space-separated CSV file containing parameters for URLs")
- p.add_argument("--username", "-u", default=None,
+ p.add_argument("-u", "--username", default=None,
                 help="the username to use (required unless --file/-f is given)")
- p.add_argument("--length", "-l", type=int, default=None,
+ p.add_argument("-l", "--length", type=int, default=None,
                 help=f"the length to use (default: {DEFAULT_LENGTH})")
  p.add_argument("url", nargs="?", default=None,
                 help=f"the URL to use")
  p.epilog = """
-file format for --file/-f:
-  URL username length
-  ...
+file format for -f/--file:
+
+    URL username length
+    ...
+
 where parameters may be quoted with double quotes, and the double quotes may be
 escaped by doubling them.
 """.strip()
@@ -92,7 +94,7 @@ escaped by doubling them.
     p.error("error: the following arguments are required: url")
   else:
    if options.username is None or options.url is None:
-    p.error("error: the following arguments are required: --file/-f or --username/-u, url")
+    p.error("error: the following arguments are required: -f/--file or -u/--username, url")
  except SystemExit as exc:
   return exc.code
  
