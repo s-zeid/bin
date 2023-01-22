@@ -147,10 +147,17 @@ class Alarm:  #{{{1
    
    sub = dict(sound=sound, loop=self.loop)
    cmd = [type(self).PlayCommandTemplate(arg).substitute(sub) for arg in self.command]
-   r = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-   if isinstance(config, Config) and r == 0:
-    # process exited normally (i.e., the user did not kill the alarm)
+   p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+   try:
+    p.wait()
+   except (KeyboardInterrupt, BrokenPipeError):
+    pass
+   if isinstance(config, Config) and p.returncode == 0:
+    # process exited normally (i.e., the user did not kill the alarm process)
     config.missed += 1
+   elif config.missed != 0:
+    # the user did kill the alarm process (or the process failed)
+    config.missed = 0
   finally:
    if tmpdir and os.path.exists(tmpdir):
     shutil.rmtree(tmpdir)
