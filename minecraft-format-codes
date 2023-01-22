@@ -12,7 +12,7 @@ from collections import namedtuple
 _Color = namedtuple("Color", "html,ansi,ansi_n,xterm256")
 class Color(_Color):
  def __new__(cls, html=None, ansi=None, xterm256=None):
-  if ansi >= 10:
+  if ansi is not None and ansi >= 10:
    intense = 1
    ansi = int(int(ansi) % 10)
   else:
@@ -306,7 +306,7 @@ def test_main(fmt):
   test_color_1 = "#123456"
   test_color_2 = "123456;"
  elif fmt in (ANSI, XTERM256):
-  test_color_1 = test_color_2 = "4"
+  test_color_1 = test_color_2 = 4
  
  test('')
  test('hi')
