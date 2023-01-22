@@ -28,6 +28,7 @@ COLOR_VALUES = {
  0x4: ("#aa0000",  1), 0x5: ("#aa00aa",  5), 0x6: ("#ffaa00",  3), 0x7: ("#aaaaaa",  7),
  0x8: ("#555555", 10), 0x9: ("#5555ff", 14), 0xa: ("#55ff55", 12), 0xb: ("#55ffff", 16),
  0xc: ("#ff5555", 11), 0xd: ("#ff55ff", 15), 0xe: ("#ffff55", 13), 0xf: ("#ffffff", 17),
+ 'g': ("#ddd605",  3),
 }
 for i in COLOR_VALUES:
  COLOR_VALUES[i] = Color(*COLOR_VALUES[i])
@@ -37,6 +38,7 @@ DARK_COLOR_VALUES = {
  0x4: ("#540000",  1), 0x5: ("#540054",  5), 0x6: ("#7f5400",  3), 0x7: ("#545454",  7),
  0x8: ("#2a2a2a", 10), 0x9: ("#2a2a7f", 14), 0xa: ("#2a7f2a", 12), 0xb: ("#2a7f7f", 16),
  0xc: ("#7f2a2a", 11), 0xd: ("#7f2a7f", 15), 0xe: ("#7f7f2a", 13), 0xf: ("#7f7f7f", 17),
+ 'g': ("#6e6b02",  3),
 }
 for i in DARK_COLOR_VALUES:
  DARK_COLOR_VALUES[i] = Color(*DARK_COLOR_VALUES[i])
@@ -46,6 +48,7 @@ SHADOW_VALUES = {
  0x4: ("#2a0000",  1), 0x5: ("#2a002a",  5), 0x6: ("#2a2a00",  3), 0x7: ("#2a2a2a",  7),
  0x8: ("#151515", 10), 0x9: ("#15153f", 14), 0xa: ("#153f15", 12), 0xb: ("#153f3f", 16),
  0xc: ("#3f1515", 11), 0xd: ("#3f153f", 15), 0xe: ("#3f3f15", 13), 0xf: ("#3f3f3f", 17),
+ 'g': ("#373501",  3),
 }
 for i in SHADOW_VALUES:
  SHADOW_VALUES[i] = Color(*SHADOW_VALUES[i])
@@ -234,6 +237,9 @@ def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False,
   r += tags.RESET_TAG.open(color_values[color], shadow_values[color] if shadow else None,
                            attribs(tags.RESET_TAG), styles(tags.RESET_TAG))
  
+ color_chars = "0-9a-fg"
+ format_chars = "kl-or"
+ 
  len_ = len(s)
  for i in range(len_ + 1):
   if i == len_:
@@ -245,7 +251,7 @@ def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False,
   
   if not reading_format:
    if c == "§" or c == "&":
-    if i + 1 < len_ and re.search(r"^[0-9a-fkl-or]$", s[i+1], re.I):
+    if i + 1 < len_ and re.search(rf"^[{color_chars}{format_chars}]$", s[i+1], re.I):
      reading_format = True
      continue
     elif c == "§":
@@ -253,15 +259,18 @@ def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False,
    r += c
   else:
    c = c.lower()
-   if c == "r" or re.search(r"^[0-9a-f]$", c, re.S):
+   if c == "r" or re.search(rf"^[{color_chars}]$", c, re.S):
     # close all tags if the current format is RESET or a color
     color = DEFAULT_COLOR
     for tag in reversed(current_tags):
      r += tag.close()
     current_tags = []
-   if re.search(r"^[0-9a-f]$", c, re.S):
+   if re.search(rf"^[{color_chars}]$", c, re.S):
     tag = tags.COLOR_TAG
-    color = int(c, 16)
+    if re.search(r"^[0-9a-f]$", c, re.S):
+     color = int(c, 16)
+    else:
+     color = c
     r += tag.open(color_values[color], shadow_values[color] if shadow else None,
                   attribs(tag), styles(tag))
     current_tags += [tag]
