@@ -1,5 +1,5 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# vim: set fdm=marker:
 
 """Returns the name of a Java class.
 
@@ -13,28 +13,34 @@ script is provided separately in case it is useful to someone by itself.)
 Special thanks to Wikipedia for documenting the Java class file format:
     <https://en.wikipedia.org/wiki/Java_class_file>
 
-Copyright (c) 2013 Scott Zeid.  Released under the X11 License.
+Copyright (c) 2013, 2023 S. Zeid.  Released under the X11 License.
 
 """
 
+
+# imports  {{{1
+
+import io
 import os
 import struct
 import sys
 
 from collections import namedtuple
 
-try:
- from cStringIO import StringIO
-except ImportError:
- from StringIO import StringIO
 
-def get_class_name(filename):
- return JavaClass(filename).this_class
+def get_class_name(filename):  #{{{1
+ return JavaClass(filename).this_class.decode("utf-8")
 
-def get_source_file(filename):
- return JavaClass(filename).source_file
 
-class JavaClass(object):
+def get_source_file(filename):  #{{{1
+ return JavaClass(filename).source_file.decode("utf-8")
+
+
+class JavaClassNameError(RuntimeError):  #{{{1
+ pass
+
+
+class JavaClass:  #{{{1
  __slots__ = ["version", "cp", "access_flags", "this_class", "super_class",
               "interfaces", "fields", "methods", "attributes",
               "source_file"]
@@ -48,9 +54,8 @@ class JavaClass(object):
  Attribute = namedtuple("Attribute", "i,name,data")
  
  class Tag(Tag):
-  def __repr__(self):    return self.name
+  def __repr__(self):    return repr(self.name)
   def __str__(self):     return repr(self)
-  def __unicode__(self): return repr(self)
  
  # Negative sizes indicate a -n-byte size prefix,
  # with the total size being the value of prefix + 2.
@@ -61,7 +66,7 @@ class JavaClass(object):
   1:  Tag(1,  -2, str,   "UTF8"),
   3:  Tag(3,  4,  int,   "INTEGER"),
   4:  Tag(4,  4,  float, "FLOAT"),
-  5:  Tag(5,  8,  long,  "LONG"),
+  5:  Tag(5,  8,  int,   "LONG"),
   6:  Tag(6,  8,  float, "DOUBLE"),
   7:  Tag(7,  2,  int,   "CLASS_REFERENCE"),
   8:  Tag(8,  2,  int,   "STRING_REFERENCE"),
@@ -70,14 +75,14 @@ class JavaClass(object):
   11: Tag(11, 4., [int], "INTERFACE_METHOD_REFERENCE"),
   12: Tag(12, 4., [int], "NAME_AND_TYPE_DESCRIPTOR")
  }
- for n in TAGS.keys(): TAGS[TAGS[n].name] = TAGS[n]
+ for n in list(TAGS.keys()): TAGS[TAGS[n].name] = TAGS[n]
  FORMATS = {None: '', 2: '>H', 4: '>I', 8: '>Q'}
  
  def __init__(self, filename):
   with open(filename, "rb") as fo:
    magic = struct.unpack(">I", fo.read(4))[0]
-   if magic != 0xCafeBabe:  # obligatory Emily reference... ಠ_ಠ
-    raise ValueError("'%s' is not a valid Java class file" % filename)
+   if magic != 0xCAFEBABE:
+    raise JavaClassNameError("`%s` is not a valid Java class file" % filename)
    self.version = self.Version(minor=struct.unpack(">H", fo.read(2)),
                                major=struct.unpack(">H", fo.read(2)))
    self.cp = self.__read_table(fo, None, 1)
@@ -88,21 +93,25 @@ class JavaClass(object):
    self.fields = self.__read_table(fo, self.__read_field)
    self.methods = self.__read_table(fo, self.__read_method)
    self.attributes = self.read_attributes(fo)
-   self.source_file = self.cp[self.read_data(self.attributes["SourceFile"].data, 2)].data
+   self.source_file = self.cp[self.read_data(self.attributes[b"SourceFile"].data, 2)].data
+ 
  def read_attributes(self, fo):
   return dict([(i.name, i) for i in self.__read_table(fo, self.__read_attribute)])
+ 
  @classmethod
  def read_data(cls, fo, size, use_raw=False):
-  if isinstance(fo, basestring):
-   fo = StringIO(fo)
+  if isinstance(fo, bytes):
+   fo = io.BytesIO(fo)
   raw = fo.read(size)
   fmt = cls.FORMATS.get(size, None)
   if fmt and not use_raw:
    return struct.unpack(cls.FORMATS[size], raw)[0]
   return raw
+ 
  @classmethod
  def __read_ptr(cls, fo):
   return cls.read_data(fo, 2)
+ 
  @classmethod
  def __read_table(cls, fo, callback=None, starting_index=0):
   if not callback:
@@ -115,6 +124,7 @@ class JavaClass(object):
    table += [tag_data]
    i += 1
   return table
+ 
  @classmethod
  def __read_tag(cls, fo, i):
   n = struct.unpack("B", fo.read(1))[0]
@@ -132,7 +142,7 @@ class JavaClass(object):
   elif isinstance(size, float):
    # this is a list of 2-byte pointers
    data_size = size = int(size)
-   fmt = cls.FORMATS[2][0] + (cls.FORMATS[2][1:] * (data_size / 2))
+   fmt = cls.FORMATS[2][0] + (cls.FORMATS[2][1:] * (data_size // 2))
   else:
    # regular tag
    data_size = size
@@ -143,18 +153,23 @@ class JavaClass(object):
   if isinstance(data, (list, tuple)) and not isinstance(tag.type, (list, tuple)):
    data = data[0]
   return cls.TagData(i, tag, data_size, data)
+ 
  def __read_interface(self, fo, i):
   return self.Interface(i, self.cp[self.__read_tag(fo, i)].data)
+ 
  def __read_field_or_method(self, fo, i, type_):
   flags      = self.__read_ptr(fo)
   name       = self.cp[self.__read_ptr(fo)].data
   descriptor = self.cp[self.__read_ptr(fo)].data
   attributes = self.__read_table(fo, self.__read_attribute)
   return type_(i, flags, name, descriptor, attributes)
+ 
  def __read_field(self, fo, i):
   return self.__read_field_or_method(fo, i, self.Field)
+ 
  def __read_method(self, fo, i):
   return self.__read_field_or_method(fo, i, self.Method)
+ 
  def __read_attribute(self, fo, i):
   name = self.cp[self.__read_ptr(fo)].data
   size = self.read_data(fo, 4)
@@ -165,23 +180,34 @@ class JavaClass(object):
   for i in range(len(self.cp)):
    if self.cp[i] != None:
     if self.cp[i]:
-     print "%d(%d): [%d] %s" % (i, self.cp[i].i, self.cp[i].tag.n, self.cp[i].data)
+     print("%d(%d): [%d] %s" % (i, self.cp[i].i, self.cp[i].tag.n, self.cp[i].data))
     else:
-     print "%d: None" % i
+     print("%d: None" % i)
 
-def main(argv):
- usage = "Usage: %s [-s|--source] file.class" % argv[0]
+
+def main(argv):  #{{{1
+ prog = os.path.basename(argv[0])
+ 
+ usage = "Usage: %s [-s|--source] file.class" % prog
  if len(argv) < 2:
-  print >> sys.stderr, usage
+  print(usage, file=sys.stderr)
   return 2
  
- if argv[1] in ("-s", "--source"):
-  if len(argv) < 3:
-   print >> sys.stderr, usage
-   return 2
-  print get_source_file(argv[2])
- else:
-  print get_class_name(argv[1]).replace("/", ".")
+ try:
+  if argv[1] in ("-s", "--source"):
+   if len(argv) < 3:
+    print(usage, file=sys.stderr)
+    return 2
+   print(get_source_file(argv[2]))
+  else:
+   print(get_class_name(argv[1]).replace("/", "."))
+ except JavaClassNameError as exc:
+  print(f"{prog}: error:", exc, file=sys.stderr)
+  return 1
 
-if __name__ == "__main__":
- sys.exit(main(sys.argv))
+
+if __name__ == "__main__":  #{{{1
+ try:
+  sys.exit(main(sys.argv))
+ except KeyboardInterrupt:
+  pass
