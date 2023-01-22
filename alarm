@@ -75,7 +75,6 @@ Depends on Python 3, PyYAML, and something that can play media files
 
 # imports  {{{1
 
-import atexit
 import base64
 import os
 import shutil
@@ -130,19 +129,27 @@ class Alarm:  #{{{1
    config.missed += 1
    return
   
-  default = get_default_sound_file() if self.sound == None else False
-  if default:
-   def clean():
-    if os.path.exists(os.path.dirname(default)):
-     shutil.rmtree(os.path.dirname(default))
-   atexit.register(clean)
+  sound = self.sound
+  tmpdir = None
   
-  sub = dict(sound=default if default else self.sound, loop=self.loop)
-  cmd = [type(self).PlayCommandTemplate(arg).substitute(sub) for arg in self.command]
-  r = subprocess.call(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-  if isinstance(config, Config) and r == 0:
-   # process exited normally (i.e., the user did not kill the alarm)
-   config.missed += 1
+  use_default = sound is None
+  
+  if use_default:
+   tmpdir = tempfile.mkdtemp(prefix="alarm-")
+  
+  try:
+   if use_default:
+    sound = get_default_sound_file(tmpdir)
+   
+   sub = dict(sound=sound, loop=self.loop)
+   cmd = [type(self).PlayCommandTemplate(arg).substitute(sub) for arg in self.command]
+   r = subprocess.call(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+   if isinstance(config, Config) and r == 0:
+    # process exited normally (i.e., the user did not kill the alarm)
+    config.missed += 1
+  finally:
+   if tmpdir and os.path.exists(tmpdir):
+    shutil.rmtree(tmpdir)
 
 
 class Config:  #{{{1
@@ -230,9 +237,8 @@ def main(argv):  #{{{1
  config.alarm.play()
 
 
-def get_default_sound_file():  #{{{1
- tmpdir = tempfile.mkdtemp()
- path = os.path.join(tmpdir, DEFAULT_SOUND_NAME)
+def get_default_sound_file(dir):  #{{{1
+ path = os.path.join(dir, DEFAULT_SOUND_NAME)
  with open(path, "wb") as fo:
   fo.write(get_default_sound_data())
  notice_path = path + ".NOTICE.txt"
