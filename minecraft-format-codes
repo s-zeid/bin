@@ -32,6 +32,15 @@ COLOR_VALUES = {
 for i in COLOR_VALUES:
  COLOR_VALUES[i] = Color(*COLOR_VALUES[i])
 
+DARK_COLOR_VALUES = {
+ 0x0: ("#000000",  0), 0x1: ("#000054",  4), 0x2: ("#005400",  2), 0x3: ("#005454",  6),
+ 0x4: ("#540000",  1), 0x5: ("#540054",  5), 0x6: ("#7f5400",  3), 0x7: ("#545454",  7),
+ 0x8: ("#2a2a2a", 10), 0x9: ("#2a2a7f", 14), 0xa: ("#2a7f2a", 12), 0xb: ("#2a7f7f", 16),
+ 0xc: ("#7f2a2a", 11), 0xd: ("#7f2a7f", 15), 0xe: ("#7f7f2a", 13), 0xf: ("#7f7f7f", 17),
+}
+for i in DARK_COLOR_VALUES:
+ DARK_COLOR_VALUES[i] = Color(*DARK_COLOR_VALUES[i])
+
 SHADOW_VALUES = {
  0x0: ("#000000",  0), 0x1: ("#00002a",  4), 0x2: ("#002a00",  2), 0x3: ("#002a2a",  6),
  0x4: ("#2a0000",  1), 0x5: ("#2a002a",  5), 0x6: ("#2a2a00",  3), 0x7: ("#2a2a2a",  7),
@@ -180,14 +189,14 @@ def _attribs_styles_to_dict(x, fmt):
 
 
 def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False,
-         attribs=None, styles=None):
+         attribs=None, styles=None, dark=False):
  # reject invalid formats
  if fmt not in FORMATS:
   raise ValueError("\"%s\" is not a valid output format" % str(fmt))
  
  tags = getattr(TAG_FORMATS, fmt.lower())
  
- color_values  = COLOR_VALUES.copy()
+ color_values  = (COLOR_VALUES if not dark else DARK_COLOR_VALUES).copy()
  shadow_values = SHADOW_VALUES.copy()
  
  # parse default_color argument
@@ -362,6 +371,8 @@ def main(argv):
    m.add_argument(fmt_arg, dest=fmt_name, action="store_true",
                   help=help)
  
+ p.add_argument("-d", "--dark", action="store_true",
+                help="use dark colors when format is HTML")
  p.add_argument("-e", "--escape", action="store_true",
                 help="backslash-escape ANSI escape codes when format is ANSI")
  p.add_argument("--test", action="store_true",
@@ -395,7 +406,7 @@ def main(argv):
   if sys.stdin.isatty():
    print(file=sys.stderr)
  
- result = to_x(text, fmt=fmt)
+ result = to_x(text, fmt=fmt, dark=options.dark)
  if options.escape and fmt == ANSI:
   print(result.replace("\033", "\\033"))
  else:
