@@ -1,13 +1,13 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
 
-# Copyright (c) 2013 Scott Zeid.  Released under the X11 License.
+# Copyright (c) 2013, 2015, 2023 S. Zeid.  Released under the X11 License.
 
 import os
 import re
 import sys
 
 from collections import namedtuple
+
 
 _Color = namedtuple("Color", "html,ansi,ansi_n,xterm256")
 class Color(_Color):
@@ -18,14 +18,15 @@ class Color(_Color):
   else:
    intense = 0
   ansi_n = int(ansi or 0)
-  ansi = u'\x1b[%dm\x1b[3%dm' % (intense, ansi_n)
-  return super(Color, cls).__new__(cls, html, ansi, ansi_n, xterm256)
+  ansi = '\x1b[%dm\x1b[3%dm' % (intense, ansi_n)
+  return super().__new__(cls, html, ansi, ansi_n, xterm256)
+
 
 COLOR_VALUES = {
  0x0: ("#000000",  0), 0x1: ("#0000aa",  4), 0x2: ("#00aa00",  2), 0x3: ("#00aaaa",  6),
  0x4: ("#aa0000",  1), 0x5: ("#aa00aa",  5), 0x6: ("#ffaa00",  3), 0x7: ("#aaaaaa",  7),
  0x8: ("#555555", 10), 0x9: ("#5555ff", 14), 0xa: ("#55ff55", 12), 0xb: ("#55ffff", 16),
- 0xc: ("#ff5555", 11), 0xd: ("#ff55ff", 15), 0xe: ("#ffff55", 13), 0xf: ("#ffffff", 17)
+ 0xc: ("#ff5555", 11), 0xd: ("#ff55ff", 15), 0xe: ("#ffff55", 13), 0xf: ("#ffffff", 17),
 }
 for i in COLOR_VALUES:
  COLOR_VALUES[i] = Color(*COLOR_VALUES[i])
@@ -34,23 +35,26 @@ SHADOW_VALUES = {
  0x0: ("#000000",  0), 0x1: ("#00002a",  4), 0x2: ("#002a00",  2), 0x3: ("#002a2a",  6),
  0x4: ("#2a0000",  1), 0x5: ("#2a002a",  5), 0x6: ("#2a2a00",  3), 0x7: ("#2a2a2a",  7),
  0x8: ("#151515", 10), 0x9: ("#15153f", 14), 0xa: ("#153f15", 12), 0xb: ("#153f3f", 16),
- 0xc: ("#3f1515", 11), 0xd: ("#3f153f", 15), 0xe: ("#3f3f15", 13), 0xf: ("#3f3f3f", 17)
+ 0xc: ("#3f1515", 11), 0xd: ("#3f153f", 15), 0xe: ("#3f3f15", 13), 0xf: ("#3f3f3f", 17),
 }
 for i in SHADOW_VALUES:
  SHADOW_VALUES[i] = Color(*SHADOW_VALUES[i])
 
 DEFAULT_COLOR = -1
 
+
 _TagFormats = namedtuple("TagFormats", "html,ansi,xterm256")
 class TagFormats(_TagFormats):
  def __new__(cls, html=None, ansi=None, xterm256=None):
   if not xterm256:
    xterm256 = ansi
-  return super(TagFormats, cls).__new__(cls, html, ansi, xterm256)
+  return super().__new__(cls, html, ansi, xterm256)
 
 Tag = namedtuple("Tag", "open,close")
-Tags = namedtuple("Tags", "RESET_TAG,COLOR_TAG,MAGIC_TAG,BOLD_TAG,STRIKE_TAG,"
-                          "UNDERLINE_TAG,ITALIC_TAG")
+class Tags:
+ def __init__(self, **kwargs):
+  for k, v in kwargs.items():
+   setattr(self, k, v)
 
 TAG_FORMATS = TagFormats(
  html=Tags(
@@ -61,7 +65,7 @@ TAG_FORMATS = TagFormats(
      % (" " + attribs if attribs else "",
         color.html, " text-shadow: 1px 1px %s;" % shadow.html if shadow else "",
         " " + style if style else "")),
-   close=lambda: "</span>"
+   close=lambda: "</span>",
   ),
   COLOR_TAG=Tag(
    open=lambda color, shadow=None, attribs=None, style=None:
@@ -69,7 +73,7 @@ TAG_FORMATS = TagFormats(
      % (" " + attribs if attribs else "",
         color.html, " text-shadow: 1px 1px %s;" % shadow.html if shadow else "",
         " " + style if style else "")),
-   close=lambda: "</span>"
+   close=lambda: "</span>",
   ),
   MAGIC_TAG=Tag(
    open=lambda color, shadow=None, attribs=None, style=None:
@@ -77,44 +81,44 @@ TAG_FORMATS = TagFormats(
      %(" " + attribs if attribs else "",
        color.html, color.html, " text-shadow: 1px 1px %s;" % shadow.html if shadow else "",
        " " + style if style else "")),
-   close=lambda: "</span>"
+   close=lambda: "</span>",
   ),
   BOLD_TAG=Tag(
    open=lambda attribs=None, style=None:
     "<b%s%s>" % (" " + attribs if attribs else "", " style=\"%s\""%style if style else ""),
-   close=lambda: "</b>"
+   close=lambda: "</b>",
   ),
   STRIKE_TAG=Tag(
    open=lambda attribs=None, style=None:
     ("<span%s style=\"text-decoration: line-through;%s\">"
      % (" " + attribs if attribs else "", " " + style if style else "")),
-   close=lambda: "</span>"
+   close=lambda: "</span>",
   ),
   UNDERLINE_TAG=Tag(
    open=lambda attribs=None, style=None:
     "<u%s%s>" % (" " + attribs if attribs else "", " style=\"%s\""%style if style else ""),
-   close=lambda: "</u>"
+   close=lambda: "</u>",
   ),
   ITALIC_TAG=Tag(
    open=lambda attribs=None, style=None:
     "<i%s%s>" % (" " + attribs if attribs else "", " style=\"%s\""%style if style else ""),
-   close=lambda: "</i>"
+   close=lambda: "</i>",
   ),
  ),
  ansi=Tags(
   RESET_TAG=Tag(
    open=lambda color, shadow=None, *_, **__:
     "\x1b[0m" + color.ansi,
-   close=lambda: "\x1b[0m"
+   close=lambda: "\x1b[0m",
   ),
   COLOR_TAG=Tag(
    open=lambda color, shadow=None, *_, **__: color.ansi,
-   close=lambda: "\x1b[22m"
+   close=lambda: "\x1b[22m",
   ),
   MAGIC_TAG=Tag(
    open=lambda color, shadow=None, *_, **__:
     "%s\x1b[4%dm" % (color.ansi, color.ansi_n),
-   close=lambda: "\x1b[39m\x1b[49m"
+   close=lambda: "\x1b[39m\x1b[49m",
   ),
   BOLD_TAG=Tag(open=lambda *_, **__: "\x1b[1m", close=lambda: "\x1b[21m"),
   STRIKE_TAG=Tag(open=lambda *_, **__: "\x1b[9m", close=lambda: "\x1b[29m"),
@@ -123,10 +127,12 @@ TAG_FORMATS = TagFormats(
  )
 )
 
+
 ANSI = "ANSI"
 HTML = "HTML"
 XTERM256 = "XTERM256"
 FORMATS = (ANSI, HTML, XTERM256)
+
 
 def to_ansi(s="", **kwargs):
  return to_x(s, fmt=ANSI, **kwargs)
@@ -134,6 +140,7 @@ def to_html(s="", **kwargs):
  return to_x(s, fmt=HTML, **kwargs)
 def to_xterm256(s="", **kwargs):
  return to_x(s, fmt=XTERM256, **kwargs)
+
 
 _TAG_ALIASES_BY_FORMAT = dict()
 def _attribs_styles_to_dict(x, fmt):
@@ -155,7 +162,7 @@ def _attribs_styles_to_dict(x, fmt):
  d = dict([(t[0], all_) for t in tags])
  not_default = []
  for k in x:
-  n = k.upper() if isinstance(k, basestring) else k
+  n = k.upper() if isinstance(k, str) else k
   for t, aliases in tags:
    if n == t or n in aliases:
     d[t] += (" " + x[k]) if d[t] and x[k] else x[k]
@@ -169,6 +176,7 @@ def _attribs_styles_to_dict(x, fmt):
     return d[tag[0]]
  return r
 
+
 def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False,
          attribs=None, styles=None):
  # reject invalid formats
@@ -181,7 +189,7 @@ def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False,
  shadow_values = SHADOW_VALUES.copy()
  
  # parse default_color argument
- if isinstance(default_color, (int, long, float)) and default_color != -1:
+ if isinstance(default_color, (int, float)) and default_color != -1:
   default_color_code = default_color
   default_color = color_values[default_color]
   color_values[DEFAULT_COLOR] = default_color
@@ -192,7 +200,7 @@ def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False,
     default_color = Color(ansi=9)
    else:
     default_color = color_values[0]
-  elif isinstance(default_color, basestring):
+  elif isinstance(default_color, str):
    if fmt == HTML:
     default_color = re.sub(r";$", r"", default_color)
    kwargs = {fmt.lower(): default_color}
@@ -205,11 +213,7 @@ def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False,
  attribs = _attribs_styles_to_dict(attribs or {}, fmt)
  styles = _attribs_styles_to_dict(styles or {}, fmt)
  
- # convert input string to Unicode object, assuming utf-8
- if isinstance(s, str):
-  s = unicode(s, "utf-8")
- 
- r = u""
+ r = ""
  color = DEFAULT_COLOR
  current_tags = []
  reading_format = False
@@ -220,7 +224,7 @@ def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False,
                            attribs(tags.RESET_TAG), styles(tags.RESET_TAG))
  
  len_ = len(s)
- for i in xrange(len_ + 1):
+ for i in range(len_ + 1):
   if i == len_:
    # invoke tag closing if at end of string
    reading_format = True
@@ -229,11 +233,11 @@ def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False,
    c = s[i]
   
   if not reading_format:
-   if c == u"§" or c == "&":
+   if c == "§" or c == "&":
     if i + 1 < len_ and re.search(r"^[0-9a-fkl-or]$", s[i+1], re.I):
      reading_format = True
      continue
-    elif c == u"§":
+    elif c == "§":
      continue
    r += c
   else:
@@ -284,15 +288,15 @@ def to_x(s="", fmt=HTML, reset=True, default_color=None, shadow=False,
  if reset:
   r += tags.RESET_TAG.close()
  
- return r.encode("utf-8")
+ return r
 
 
 def test_to_x(s, fmt, reset=True, default_color=None, shadow=False):
- print s
- print "-" * (len(unicode(s, "utf-8")) if len(unicode(s, "utf-8")) != 0 else 4)
+ print(s)
+ print("-" * (len(s) if len(s) != 0 else 4))
  
- print to_x(s, fmt, reset, default_color, shadow)
- print
+ print(to_x(s, fmt, reset, default_color, shadow))
+ print()
 
 
 def test_main(fmt):
@@ -353,9 +357,9 @@ def main(argv):
      fmt_name = fmt_name.replace("--", "", 1)
     elif fmt_name.startswith("-"):
      fmt_name = fmt_name.replace("-", "", 1)
-    print >> sys.stderr, "error: invalid output format \"%s\"" % fmt_name
+    print("error: invalid output format \"%s\"" % fmt_name, file=sys.stderr)
   if fmt == None:
-   print >> sys.stderr, usage_generic
+   print(usage_generic, file=sys.stderr)
    return 2
   args = argv[2:]
  
@@ -364,7 +368,7 @@ def main(argv):
    test_main(fmt=fmt)
    return 0
   if args[0] in ("-h", "--help"):
-   print usage_generic if generic else usage_format
+   print(usage_generic if generic else usage_format)
    return 0
  
  escape = False
@@ -376,13 +380,13 @@ def main(argv):
  if not text:
   text = sys.stdin.read()
   if sys.stdin.isatty():
-   print >> sys.stderr
+   print(file=sys.stderr)
  
  result = to_x(text, fmt=fmt)
  if escape and fmt == ANSI:
-  print result.replace("\033", "\\033")
+  print(result.replace("\033", "\\033"))
  else:
-  print result
+  print(result)
 
 
 if __name__ == "__main__":
