@@ -1,37 +1,41 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import re
 import sys
 
+
 COLORS = {
  0:"000000", 1:"000054", 2:"005400", 3:"005454", 4:"540000", 5:"540054",
- 6:"7F5400", 7:"545454", 8:"2A2A2A", 9:"2A2A7F"
+ 6:"7F5400", 7:"545454", 8:"2A2A2A", 9:"2A2A7F",
 }
 COLORS.update(dict(
  A="2A7F2A", B="2A7F7F", C="7F2A2A", D="7F2A7F", E="7F7F2A", F="7F7F7F",
  a="2A7F2A", b="2A7F7F", c="7F2A2A", d="7F2A7F", e="7F7F2A", f="7F7F7F",
 ))
 
+
 def colors_to_html(text):
- text = text.decode("utf-8").split("\n")
+ text = text.split("\n")
  for i in range(len(text)):
   line = text[i]
   for j in COLORS:
-   line = re.sub(u"((\xa7|&)%s)" % j,
-		    u'</span><span style="color: #%s;">' % COLORS[j],
-		    line)
-  line = (u"<span>" + line + u"</span>")
+   line = re.sub("((\xa7|&)%s)" % j,
+                 '</span><span style="color: #%s;">' % COLORS[j],
+                 line)
+  line = ("<span>" + line + "</span>")
   line = line.replace("<span></span><span", "<span")
   text[i] = line
  return "\n".join(text)
+
 
 def main(argv):
  text = " ".join(argv[1:])
  if not text:
   text = sys.stdin.read()
   if sys.stdin.isatty():
-   print >> sys.stderr
- print colors_to_html(text)
+   print(file=sys.stderr)
+ print(colors_to_html(text))
+
 
 if __name__ == "__main__":
  sys.exit(main(sys.argv)) 
