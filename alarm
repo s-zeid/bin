@@ -64,10 +64,11 @@
 The alarm is automatically disabled if missed too many times (default is 2).
 
 Depends on Python 3, PyYAML, and something that can play media files
-(the default is mplayer):
+(the default is mpv):
 
-    fedora$ sudo yum install PyYAML
-    ubuntu$ sudo apt-get install python-yaml
+    fedora$ sudo yum install PyYAML mpv
+    ubuntu$ sudo apt-get install python-yaml mpv
+    alpine$ sudo apk add py3-yaml mpv
 
 """
 
@@ -93,9 +94,9 @@ DEFAULT_YML_NAME     = ".alarm.yml"
 DEFAULT_YML_PATH     = os.path.join("~", DEFAULT_YML_NAME)
 DEFAULT_YML_CONTENTS = """\
 alarm:
- sound: Null  # default is a loud beeping sound
+ sound: null  # default is a loud beeping sound
  loop: 45  # default sound is 2 seconds long, so this loops for 90 seconds
- command: ["mplayer", "-loop", "@loop", "@sound"]
+ command: ["mpv", "--loop=@loop", "@sound"]
 disable-if-missed: 2
 missed: 0
 """
