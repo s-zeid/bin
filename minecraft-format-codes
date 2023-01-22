@@ -2,6 +2,7 @@
 
 # Copyright (c) 2013, 2015, 2023 S. Zeid.  Released under the X11 License.
 
+import argparse
 import os
 import re
 import sys
@@ -132,6 +133,7 @@ ANSI = "ANSI"
 HTML = "HTML"
 XTERM256 = "XTERM256"
 FORMATS = (ANSI, HTML, XTERM256)
+HIDE_FORMATS = (XTERM256,)
 
 
 def to_ansi(s="", **kwargs):
@@ -335,7 +337,6 @@ def main(argv):
  usage_generic = "%s --<format> %s" % (usage_prefix, usage_suffix)
  usage_format  = "%s %s" % (usage_prefix, usage_suffix)
  
- args = argv[1:]
  basename = os.path.basename(argv[0])
  fmt = None
  generic = True
@@ -345,45 +346,57 @@ def main(argv):
  elif basename.endswith("-ansi"):
   fmt = ANSI
   generic = False
- else:
-  if len(argv) > 1:
-   for i in FORMATS:
-    if argv[1] == "--" + i.lower().replace("_", "-").replace(" ", "-"):
-     fmt = i
-     break
-   if fmt == None:
-    fmt_name = argv[1]
-    if fmt_name.startswith("--"):
-     fmt_name = fmt_name.replace("--", "", 1)
-    elif fmt_name.startswith("-"):
-     fmt_name = fmt_name.replace("-", "", 1)
-    print("error: invalid output format \"%s\"" % fmt_name, file=sys.stderr)
-  if fmt == None:
-   print(usage_generic, file=sys.stderr)
+ 
+ p = argparse.ArgumentParser(
+  prog=basename,
+  epilog="Use `--` to stop parsing options.",
+ )
+ 
+ if generic:
+  g = p.add_argument_group("format options")
+  m = g.add_mutually_exclusive_group()
+  for fmt_name in FORMATS:
+   fmt_arg = "--" + fmt_name.lower().replace("_", "-").replace(" ", "-")
+   hide = fmt_name in HIDE_FORMATS
+   help = f"format the output as {fmt_name}" if not hide else argparse.SUPPRESS
+   m.add_argument(fmt_arg, dest=fmt_name, action="store_true",
+                  help=help)
+ 
+ p.add_argument("-e", "--escape", action="store_true",
+                help="backslash-escape ANSI escape codes when format is ANSI")
+ p.add_argument("--test", action="store_true",
+                help=argparse.SUPPRESS)
+ p.add_argument("text", metavar="...", nargs=argparse.REMAINDER,
+                help="the text to format (default: from standard input)")
+ 
+ try:
+  options = p.parse_args(argv[1:])
+ except SystemExit as exc:
+  return int(exc.code) if exc.code is not None else 127
+ 
+ if generic:
+  for fmt_name in FORMATS:
+   if getattr(options, fmt_name, None):
+    fmt = fmt_name
+    break
+  else:
+   print(f"{basename}: error: an output format option is required", file=sys.stderr)
    return 2
-  args = argv[2:]
  
- if len(args) == 1:
-  if args[0] == "--test":
-   test_main(fmt=fmt)
-   return 0
-  if args[0] in ("-h", "--help"):
-   print(usage_generic if generic else usage_format)
-   return 0
+ if options.test:
+  test_main(fmt=fmt)
+  return 0
  
- escape = False
- if args[0] in ("-e", "--escape"):
-  escape = True
-  args = args[1:]
- 
- text = " ".join(args)
+ if len(options.text) > 0 and options.text[0] == "--":
+  options.text[:] = options.text[1:]
+ text = " ".join(options.text)
  if not text:
   text = sys.stdin.read()
   if sys.stdin.isatty():
    print(file=sys.stderr)
  
  result = to_x(text, fmt=fmt)
- if escape and fmt == ANSI:
+ if options.escape and fmt == ANSI:
   print(result.replace("\033", "\\033"))
  else:
   print(result)
