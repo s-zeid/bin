@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+if [ x"$1" = x"-h" ] || [ x"$1" = x"-help" ] || [ x"$1" = x"--help" ]; then
+  echo "Usage: $(basename -- "$0") [xprop-arg [...]]" >&2
+  exit 0
+fi
+
+result=$(xprop "$@" 0c '\n$0\n' _NET_WM_PID | tail -n 1)
+if ! printf '%s\n' "$result" | grep -q -e '^[0-9][0-9]*$'; then
+  echo "$(basename -- "$0"): error: selected window has no _NET_WM_PID property" >&2
+  exit 1
+fi
+printf '%s\n' "$result"
