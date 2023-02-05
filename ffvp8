@@ -54,7 +54,7 @@ main() {
   )
   if [ $has_audio -ne 0 ] && [ x"$ab" = x"" ]; then
     ffmpeg -hide_banner -loglevel fatal \
-      -i "$input" -vn -sn -dn -c:a copy -f nut "$tmpdir/audio_60s.nut"
+      -i "$input" -vn -sn -dn -c:a copy -t 60 -f nut "$tmpdir/audio_60s.nut"
     local audio_60s_probe; audio_60s_probe=$(
       ffprobe \
         -hide_banner -loglevel fatal \
@@ -136,17 +136,11 @@ main() {
     audio_args="-c:a libopus -b:a $ab"
   fi
   
-  echo_exec ffmpeg \
+  (set -x; ffmpeg \
     -i "$input" \
     $video_args \
     $audio_args \
-    "$output"
-}
-
-
-echo_exec() {
-  echo + "$@" >&2
-  exec "$@"
+    "$output")
 }
 
 
