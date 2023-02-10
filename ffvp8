@@ -48,6 +48,10 @@ main() {
     return 1
   fi
   
+  local ac; ac=$(
+    printf '%s\n' "$probe" \
+    | jq -r '.streams // [] | map(select(.codec_type == "audio"))[0].codec_name // empty'
+  )
   local ab; ab=$(
     printf '%s\n' "$probe" \
     | jq -r '.streams // [] | map(select(.codec_type == "audio"))[0].bit_rate // empty'
@@ -78,6 +82,10 @@ main() {
     return 1
   fi
   
+  local vc; vc=$(
+    printf '%s\n' "$probe" \
+    | jq -r '.streams // [] | map(select(.codec_type == "video"))[0].codec_name // empty'
+  )
   local vb; vb=$(
     printf '%s\n' "$probe" \
     | jq -r '.streams // [] | map(select(.codec_type == "video"))[0].bit_rate // empty'
@@ -121,19 +129,27 @@ main() {
   
   local video_args; video_args=''
   if [ $has_video -ne 0 ]; then
-    video_args="-c:v libvpx -b:v $vb -g $fps"
-    video_args="$video_args -deadline $quality -quality $quality"
-    if [ x"$quality" = x"$realtime" ]; then
-      video_args="$video_args -cpu-used 10 -lag-in-frames 0"
+    if [ x"$vc" = x"vp8" ]; then
+      video_args="-c:v copy"
     else
-      video_args="$video_args -cpu-used 8"
+      video_args="-c:v libvpx -b:v $vb -g $fps"
+      video_args="$video_args -deadline $quality -quality $quality"
+      if [ x"$quality" = x"$realtime" ]; then
+        video_args="$video_args -cpu-used 10 -lag-in-frames 0"
+      else
+        video_args="$video_args -cpu-used 8"
+      fi
+      video_args="$video_args -error-resilient +default+partitions"
     fi
-    video_args="$video_args -error-resilient +default+partitions"
   fi
   
   local audio_args; audio_args=''
   if [ $has_audio -ne 0 ]; then
-    audio_args="-c:a libopus -b:a $ab"
+    if [ x"$ac" = x"opus" ] || [ x"$ac" = x"vorbis" ]; then
+      audio_args="-c:a copy"
+    else
+      audio_args="-c:a libopus -b:a $ab"
+    fi
   fi
   
   (set -x; ffmpeg \
