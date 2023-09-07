@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+
+"""Center windows in Xorg."""
+
+import array
+import os
+import sys
+
+from dataclasses import dataclass
+
+import Xlib.X  # type: ignore
+import Xlib.display  # type: ignore
+
+
+def main(argv: list[str]) -> int:
+  prog = os.path.basename(argv[0])
+
+  if len(argv) > 1:
+    import argparse
+
+    p = argparse.ArgumentParser(
+      prog=prog,
+      description=__doc__.splitlines()[0],
+      formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("--debug", "-D", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--select", "-s", action="store_true",
+                   help="select the window to move (requires xdotool)")
+    p.add_argument("window_id", metavar="WINDOW_ID", nargs="?",
+                   help="the window ID to move (default: active window,"
+                        " unless -s/--select is used)")
+
+    try:
+      options = p.parse_args(argv[1:])
+    except SystemExit as exc:
+      return int(exc.code) if exc.code is not None else 127
+
+    window_id = options.window_id
+    select = options.select
+    debug = options.debug
+  else:
+    window_id = None
+    select = False
+    debug = False
+
+  if select and window_id is not None:
+    print(
+      f"{prog}: error: argument -s/--select: not allowed when window ID is given",
+      file=sys.stderr,
+    )
+    return 2
+
+  if select:
+    import shutil
+    import subprocess
+    if not shutil.which("xdotool"):
+      print(f"{prog}: error: xdotool is required to select windows", file=sys.stderr)
+      return 1
+    r = subprocess.run(["xdotool", "selectwindow"], stdout=subprocess.PIPE)
+    if r.returncode == 0:
+      window_id = int(r.stdout)
+    else:
+      print(
+        f"{prog}: error: `xdotool selectwindow` failed with return code {r.returncode}",
+        file=sys.stderr,
+      )
+      return r.returncode
+
+  display = Xlib.display.Display()
+
+  if window_id:
+    if isinstance(window_id, str):
+      try:
+        window_id = int(window_id, 16 if window_id.lower().startswith("0x") else 10)
+      except ValueError:
+        print(f"{prog}: error: invalid window ID: {window_id}", file=sys.stderr)
+        return 2
+    window = display.create_resource_object("window", window_id)
+  else:
+    window = get_active_window(display)
+
+  center_window(display, window, debug=debug)
+  return 0
+
+
+def get_active_window(display) -> int:
+  window_id = display.screen().root.get_full_property(
+    display.intern_atom("_NET_ACTIVE_WINDOW"),
+    display.intern_atom("WINDOW"),
+  ).value[0]
+  return display.create_resource_object("window", window_id)
+
+
+def center_window(display, window, *, debug: bool = False):
+  def debug_print(*args, **kwargs):
+    if debug:
+      kwargs["file"] = sys.stderr
+      print(*args, **kwargs)
+
+  root = display.screen().root
+
+  if debug:
+    debug_print("WINDOW ID:", window.id)
+    debug_print("WINDOW NAME:", window.get_wm_name())
+    debug_print("WINDOW CLASS:", window.get_wm_class())
+    debug_print()
+
+  # MONITORS
+  monitors = []
+  for monitor_info in window.xrandr_get_monitors().monitors:
+    geometry = Geometry(
+      monitor_info["x"],
+      monitor_info["y"],
+      monitor_info["width_in_pixels"],
+      monitor_info["height_in_pixels"],
+    )
+    monitors += [geometry]
+    if monitor_info["primary"]:
+      primary_monitor = geometry
+  if not primary_monitor:
+    primary_monitor = monitors[0]
+  monitors.sort(key=lambda monitor: (monitor.y, monitor.x))
+  debug_print("MONITORS:", "empty" if not len(monitors) else "")
+  for monitor in monitors:
+    debug_print(f"  {monitor}", "(primary)" if monitor == primary_monitor else "")
+  debug_print()
+
+  # WORKAREAS
+  workareas = [monitor.copy() for monitor in monitors]
+  workareas_kind = "UNKNOWN"
+
+  ## desktop number for _GTK_WORKAREAS_D# atom
+  current_desktop = get_property(display, root, "_NET_CURRENT_DESKTOP", "CARDINAL", -1)
+  current_desktop = current_desktop or 0
+  use_desktop = get_property(display, window, "_NET_WM_DESKTOP", "CARDINAL", -1) or 0
+  use_desktop = use_desktop if use_desktop < (2 ** 32 - 1) else current_desktop
+  debug_print("CURRENT DESKTOP:", current_desktop)
+  debug_print("USE DESKTOP:", use_desktop)
+
+  ## get workareas from GTK
+  gtk_workareas_atom = f"_GTK_WORKAREAS_D{use_desktop}"
+  gtk_workareas_raw = get_property(display, root, gtk_workareas_atom, "CARDINAL")
+  if gtk_workareas_raw:
+    gtk_workareas = []
+    for n in range(0, len(gtk_workareas_raw), 4):
+      gtk_workareas += [Geometry(
+        gtk_workareas_raw[n + 0],
+        gtk_workareas_raw[n + 1],
+        gtk_workareas_raw[n + 2],
+        gtk_workareas_raw[n + 3],
+      )]
+    workareas = gtk_workareas[:]
+    workareas_kind = "GTK"
+
+  debug_print(f"WORKAREAS ({workareas_kind}):", "empty" if not len(workareas) else "")
+  for workarea in workareas:
+    debug_print(f"  {workarea}")
+  debug_print()
+
+  # WINDOW GEOMETRY AND CROPS
+  raw_xlib_geometry = window.get_geometry()
+  translated_coords = root.translate_coords(window, 0, 0)
+  real_geometry = Geometry(
+    translated_coords.x,
+    translated_coords.y,
+    raw_xlib_geometry.width,
+    raw_xlib_geometry.height,
+  )
+  debug_print("REAL GEOMETRY:", real_geometry)
+  tangible_geometry, visible_geometry = [real_geometry.copy() for _ in range(2)]
+
+  tangible_crops, visible_crops = [Geometry(0, 0, 0, 0) for _ in range(2)]
+
+  ## increase crops by _NET_FRAME_EXTENTS
+  net_frame_extents = get_property(display, window, "_NET_FRAME_EXTENTS", "CARDINAL", 4)
+  debug_print("_NET_FRAME_EXTENTS:", net_frame_extents)
+  if net_frame_extents:
+    for crops in (tangible_crops, visible_crops):
+      crops.x -= net_frame_extents[0]
+      crops.y -= net_frame_extents[2]
+      crops.width += net_frame_extents[1]
+      crops.height += net_frame_extents[3]
+
+  ## decrease visible crops by _GTK_FRAME_EXTENTS
+  gtk_frame_extents = get_property(display, window, "_GTK_FRAME_EXTENTS", "CARDINAL", 4)
+  debug_print("_GTK_FRAME_EXTENTS:", gtk_frame_extents)
+  if gtk_frame_extents:
+    for crops in (tangible_crops, visible_crops):
+      crops.x += gtk_frame_extents[0]
+      crops.y += gtk_frame_extents[2]
+      crops.width -= gtk_frame_extents[1]
+      crops.height -= gtk_frame_extents[3]
+
+  ## apply crops
+  for geometry, crops in (
+    (tangible_geometry, tangible_crops),
+    (visible_geometry, visible_crops),
+  ):
+    geometry.x += crops.x
+    geometry.y += crops.y
+    geometry.width += crops.x + crops.width
+    geometry.height += crops.y + crops.height
+
+  debug_print("TANGIBLE GEOMETRY:", tangible_geometry)
+  debug_print("VISIBLE GEOMETRY:", visible_geometry)
+  debug_print("TANGIBLE CROPS:", tangible_crops)
+  debug_print("VISIBLE CROPS:", visible_crops)
+  debug_print()
+
+  # SELECT WORKAREA OR MONITOR
+  use_area = primary_monitor
+  for area in workareas + monitors:
+    if all([
+      visible_geometry.x + (visible_geometry.width / 2) >= area.x,
+      visible_geometry.y + (visible_geometry.height / 2) >= area.y,
+      visible_geometry.x + (visible_geometry.width / 2) < area.x + area.width,
+      visible_geometry.y + (visible_geometry.height / 2) < area.y + area.height,
+    ]):
+      use_area = area
+      break
+  debug_print("USE AREA:", use_area)
+
+  # COORDINATES
+  excess = Geometry(
+    x=visible_crops.x - tangible_crops.x,
+    y=visible_crops.y - tangible_crops.y,
+    width=visible_crops.width - tangible_crops.width,
+    height=visible_crops.height - tangible_crops.height,
+  )
+  debug_print("EXCESS:", excess)
+  use_x = use_area.x + round((use_area.width - tangible_geometry.width) / 2)
+  use_x += round((abs(excess.width) - abs(excess.x)) / 2)
+  use_y = use_area.y + round((use_area.height - tangible_geometry.height) / 2)
+  use_y += round((abs(excess.height) - abs(excess.y)) / 2)
+  debug_print("USE X:", use_x)
+  debug_print("USE Y:", use_y)
+
+  # MOVE
+  window.configure(x=use_x, y=use_y)
+  window.change_attributes(
+    win_gravity=Xlib.X.NorthWestGravity,
+    bit_gravity=Xlib.X.StaticGravity,
+  )
+  display.sync()
+
+
+@dataclass
+class Geometry:
+  x: int
+  y: int
+  width: int
+  height: int
+
+  def copy(self):
+    return Geometry(self.x, self.y, self.width, self.height)
+
+  def __str__(self):
+    return f"x={self.x}, y={self.y}, width={self.width}, height={self.height}"
+
+
+def get_property(
+  display,
+  window,
+  name: str | int,
+  type: str | int,
+  length: int = 0,  # 0 = any; -1 = return only item if array
+):
+  name = name if isinstance(name, int) else display.intern_atom(name)
+  type = type if isinstance(type, int) else display.intern_atom(type)
+  prop = window.get_full_property(name, type)
+  if prop and hasattr(prop, "value"):
+    list_types = (array.array, list, tuple)
+    lenabs = abs(length)
+    if isinstance(prop.value, list_types):
+      if ((len(prop.value) == lenabs) or not length):
+        if length == -1:
+          return prop.value[0]
+        else:
+          return prop.value
+    else:
+      return prop.value
+
+
+if __name__ == "__main__":
+  try:
+    sys.exit(main(sys.argv))
+  except KeyboardInterrupt:
+    pass
