@@ -167,43 +167,35 @@ def center_window(display, window, *, debug: bool = False):
     raw_xlib_geometry.height,
   )
   debug_print("REAL GEOMETRY:", real_geometry)
-  tangible_geometry, visible_geometry = [real_geometry.copy() for _ in range(2)]
+  visible_geometry = real_geometry.copy()
 
-  tangible_crops, visible_crops = [Geometry(0, 0, 0, 0) for _ in range(2)]
+  visible_crops = Geometry(0, 0, 0, 0)
 
   ## increase crops by _NET_FRAME_EXTENTS
   net_frame_extents = get_property(display, window, "_NET_FRAME_EXTENTS", "CARDINAL", 4)
   debug_print("_NET_FRAME_EXTENTS:", net_frame_extents)
   if net_frame_extents:
-    for crops in (tangible_crops, visible_crops):
-      crops.x -= net_frame_extents[0]
-      crops.y -= net_frame_extents[2]
-      crops.width += net_frame_extents[1]
-      crops.height += net_frame_extents[3]
+    visible_crops.x -= net_frame_extents[0]
+    visible_crops.y -= net_frame_extents[2]
+    visible_crops.width += net_frame_extents[1]
+    visible_crops.height += net_frame_extents[3]
 
   ## decrease visible crops by _GTK_FRAME_EXTENTS
   gtk_frame_extents = get_property(display, window, "_GTK_FRAME_EXTENTS", "CARDINAL", 4)
   debug_print("_GTK_FRAME_EXTENTS:", gtk_frame_extents)
   if gtk_frame_extents:
-    for crops in (tangible_crops, visible_crops):
-      crops.x += gtk_frame_extents[0]
-      crops.y += gtk_frame_extents[2]
-      crops.width -= gtk_frame_extents[1]
-      crops.height -= gtk_frame_extents[3]
+    visible_crops.x += gtk_frame_extents[0]
+    visible_crops.y += gtk_frame_extents[2]
+    visible_crops.width -= gtk_frame_extents[1]
+    visible_crops.height -= gtk_frame_extents[3]
 
   ## apply crops
-  for geometry, crops in (
-    (tangible_geometry, tangible_crops),
-    (visible_geometry, visible_crops),
-  ):
-    geometry.x += crops.x
-    geometry.y += crops.y
-    geometry.width += crops.x + crops.width
-    geometry.height += crops.y + crops.height
+  visible_geometry.x += visible_crops.x
+  visible_geometry.y += visible_crops.y
+  visible_geometry.width += visible_crops.x + visible_crops.width
+  visible_geometry.height += visible_crops.y + visible_crops.height
 
-  debug_print("TANGIBLE GEOMETRY:", tangible_geometry)
   debug_print("VISIBLE GEOMETRY:", visible_geometry)
-  debug_print("TANGIBLE CROPS:", tangible_crops)
   debug_print("VISIBLE CROPS:", visible_crops)
   debug_print()
 
@@ -221,17 +213,8 @@ def center_window(display, window, *, debug: bool = False):
   debug_print("USE AREA:", use_area)
 
   # COORDINATES
-  excess = Geometry(
-    x=visible_crops.x - tangible_crops.x,
-    y=visible_crops.y - tangible_crops.y,
-    width=visible_crops.width - tangible_crops.width,
-    height=visible_crops.height - tangible_crops.height,
-  )
-  debug_print("EXCESS:", excess)
-  use_x = use_area.x + round((use_area.width - tangible_geometry.width) / 2)
-  use_x += round((abs(excess.width) - abs(excess.x)) / 2)
-  use_y = use_area.y + round((use_area.height - tangible_geometry.height) / 2)
-  use_y += round((abs(excess.height) - abs(excess.y)) / 2)
+  use_x = use_area.x + round((use_area.width - visible_geometry.width) / 2)
+  use_y = use_area.y + round((use_area.height - visible_geometry.height) / 2)
   debug_print("USE X:", use_x)
   debug_print("USE Y:", use_y)
 
