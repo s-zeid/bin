@@ -64,6 +64,7 @@ config() {  #{{{1
   defaults
   local config_file; config_file="${XDG_CONFIG_HOME:-$HOME/.config}/vetro.conf"
   if [ -f "$config_file" ]; then
+    # shellcheck disable=SC1090
     . "$config_file"
   fi
 }
@@ -81,19 +82,23 @@ main() {  #{{{1
     return 0
   fi
 
-  local hostspec="" name=""
+  local hostspec; hostspec=""
+  local name; name=""
   if ! (printf '%s\n' "$1" | grep -q -e '^-'); then
     if (printf '%s\n' "$1" | grep -q -e '/'); then
       hostspec=${1%%/*}; name=$(basename -- "${1#/*}" | sed -e 's/[^a-zA-Z0-9_]/_/g')
     else
       hostspec=$1
     fi
-    [ $# -ge 1 ] && shift || true
+    if [ $# -ge 1 ]; then
+      shift
+    fi
   fi
-  export TMUX_NAME="${name:-vetro}"
-  export TMUX_SOCK="$(tmux_socket_dir)/$TMUX_NAME"
+  export TMUX_NAME; TMUX_NAME="${name:-vetro}"
+  export TMUX_SOCK; TMUX_SOCK="$(tmux_socket_dir)/$TMUX_NAME"
 
-  local cmd="$(printf '%s\n' "$1" | head -n 1 | grep -e '^__[a-zA-Z_][a-zA-Z_0-9]*$')"
+  local cmd
+  cmd="$(printf '%s\n' "$1" | head -n 1 | grep -e '^__[a-zA-Z_][a-zA-Z_0-9]*$' || true)"
   if [ x"$cmd" != x"" ]; then
     shift
     "main__${cmd#__}" "$@"
@@ -176,8 +181,8 @@ main__setup_tmux() {  #{{{1
 
 
 main__ssh_agent_lock_toggle() {  #{{{1
-  local test_exit_code="$(set +e; ssh-add -l >/dev/null 2>&1; echo $?)"
-  if [ $test_exit_code -lt 2 ]; then  # 1 means no identities or locked
+  local test_exit_code; test_exit_code="$(set +e; ssh-add -l >/dev/null 2>&1; echo $?)"
+  if [ "$test_exit_code" -lt 2 ]; then  # 1 means no identities or locked
     if (env LANG=C LC_ALL=C ssh-add -l | grep -q -e '^[0-9]'); then
       tmux new-window -n 'ssh-add -x (lock)' sh -c 'ssh-add -x || sleep 3'
     else
@@ -189,7 +194,7 @@ main__ssh_agent_lock_toggle() {  #{{{1
 
 setup_tmux() {  #{{{1
   local startup="${1:-0}"
-  [ $startup -ne 0 ] && true || tmux display-message 'vetro: reloading configuration'
+  [ "$startup" -ne 0 ] || tmux display-message 'vetro: reloading configuration'
 
   tmux_script <<TMUX
     set-option -g base-index 1
@@ -267,7 +272,7 @@ TMUX
   #                    our defaults, which are trusted inputs.  Command output
   #                    is piped into a sed command for escaping before being
   #                    sent to `tmux display-message`, where applicable.
-  if [ $enable_volume_keys -ne 0 ] && [ x"$f_key_mute" != x"" ]; then
+  if [ "$enable_volume_keys" -ne 0 ] && [ x"$f_key_mute" != x"" ]; then
     tmux_script <<TMUX
       bind-key -n "$(escape_tmux_arg "$f_key_mute")" \
         run-shell -b "tmux display-message \"Volume: \$($(unsafe_escape_tmux_arg "${cmd_vol_get:-true}") | sed -e 's/#/##/g'); Muted: \$($(unsafe_escape_tmux_arg "${cmd_mute_get:-true}") | sed -e 's/#/##/g')\""
@@ -280,7 +285,7 @@ TMUX
       unbind-key -n S-"$(escape_tmux_arg "$f_key_mute")"
 TMUX
   fi
-  if [ $enable_volume_keys -ne 0 ] && [ x"$f_key_vol_down" != x"" ]; then
+  if [ "$enable_volume_keys" -ne 0 ] && [ x"$f_key_vol_down" != x"" ]; then
     tmux_script <<TMUX
       bind-key -n "$(escape_tmux_arg "$f_key_vol_down")" \
         run-shell -b "$(unsafe_escape_tmux_arg "${cmd_vol_down:-true}"); tmux display-message \"Volume: \$($(unsafe_escape_tmux_arg "${cmd_vol_get:-true}") | sed -e 's/#/##/g'); Muted: \$($(unsafe_escape_tmux_arg "${cmd_mute_get:-true}") | sed -e 's/#/##/g')\""
@@ -293,7 +298,7 @@ TMUX
       unbind-key -n S-"$(escape_tmux_arg "$f_key_vol_down")"
 TMUX
   fi
-  if [ $enable_volume_keys -ne 0 ] && [ x"$f_key_vol_up" != x"" ]; then
+  if [ "$enable_volume_keys" -ne 0 ] && [ x"$f_key_vol_up" != x"" ]; then
     tmux_script <<TMUX
       bind-key -n "$(escape_tmux_arg "$f_key_vol_up")" \
         run-shell -b "$(unsafe_escape_tmux_arg "${cmd_vol_up:-true}"); tmux display-message \"Volume: \$($(unsafe_escape_tmux_arg "${cmd_vol_get:-true}") | sed -e 's/#/##/g'); Muted: \$($(unsafe_escape_tmux_arg "${cmd_mute_get:-true}") | sed -e 's/#/##/g')\""
@@ -312,7 +317,7 @@ TMUX
   #                    our defaults, which are trusted inputs.  Command output
   #                    is piped into a sed command for escaping before being
   #                    sent to `tmux display-message`, where applicable.
-  if [ $enable_media_keys -ne 0 ] && [ x"$f_key_mute" != x"" ]; then
+  if [ "$enable_media_keys" -ne 0 ] && [ x"$f_key_mute" != x"" ]; then
     tmux_script <<TMUX
       bind-key -n C-"$(escape_tmux_arg "$f_key_mute")" \
         run-shell -b "tmux display-message \"\$($(unsafe_escape_tmux_arg "${cmd_media_get_current:-true}") | sed -e 's/#/##/g')\""
@@ -325,7 +330,7 @@ TMUX
       unbind-key -n C-S-"$(escape_tmux_arg "$f_key_mute")"
 TMUX
   fi
-  if [ $enable_media_keys -ne 0 ] && [ x"$f_key_vol_down" != x"" ]; then
+  if [ "$enable_media_keys" -ne 0 ] && [ x"$f_key_vol_down" != x"" ]; then
     tmux_script <<TMUX
       bind-key -n C-"$(escape_tmux_arg "$f_key_vol_down")" \
         run-shell -b "$(unsafe_escape_tmux_arg "${cmd_media_prev:-false}") && tmux display-message \"\$($(unsafe_escape_tmux_arg "${cmd_media_get_current:-true}") | sed -e 's/#/##/g')\" || true"
@@ -338,7 +343,7 @@ TMUX
       unbind-key -n C-S-"$(escape_tmux_arg "$f_key_vol_down")"
 TMUX
   fi
-  if [ $enable_media_keys -ne 0 ] && [ x"$f_key_vol_up" != x"" ]; then
+  if [ "$enable_media_keys" -ne 0 ] && [ x"$f_key_vol_up" != x"" ]; then
     tmux_script <<TMUX
       bind-key -n C-"$(escape_tmux_arg "$f_key_vol_up")" \
         run-shell -b "$(unsafe_escape_tmux_arg "${cmd_media_next:-false}") && tmux display-message \"\$($(unsafe_escape_tmux_arg "${cmd_media_get_current:-true}") | sed -e 's/#/##/g')\" || true"
@@ -353,12 +358,12 @@ TMUX
   fi
 
   # Startup-only settings
-  if [ $startup -eq 1 ]; then
+  if [ "$startup" -eq 1 ]; then
     # Apply default_window_name to initial window
     tmux rename-window "$default_window_name"
   fi
 
-  [ $startup -ne 0 ] && true || tmux display-message 'vetro: configuration reloaded'
+  [ "$startup" -ne 0 ] || tmux display-message 'vetro: configuration reloaded'
 }
 
 
@@ -376,15 +381,16 @@ print_status_inner() {  #{{{1
       printf '#[fg=white,bg=black]'
       # f: (proc|sys)fs file; s: uptime in seconds; r: result string
       local f='' s='' r=''
+      # shellcheck disable=SC2043
       for f in \
         /proc/uptime
       do
         if [ -f "$f" ]; then
-          s=$(cat "$f" | head -n 1 | sed -e 's/\(\.[0-9]*\)\?[ \t]\+.*$//g')
+          s=$(head -n 1 "$f" | sed -e 's/\(\.[0-9]*\)\?[ \t]\+.*$//g')
           if (printf '%s\n' "$s" | grep -q -e '^[0-9]\+$'); then
-            if [ $s -ge 86400 ]; then
+            if [ "$s" -ge 86400 ]; then
               r="$((s / 86400))d$(((s % 86400) / 3600))h"
-            elif [ $s -ge 3600 ]; then
+            elif [ "$s" -ge 3600 ]; then
               r="$((s / 3600))h"
             else
               r="$((s / 60))m"
@@ -441,7 +447,7 @@ print_status_inner() {  #{{{1
           esac
         fi
       done
-      local r="$(format_int "$hz" 1)"
+      local r; r="$(format_int "$hz" 1)"
       printf '#[fg=brightcyan,bg=black]'
       printf '%s' "${r:-?}Hz"
       ;;
@@ -456,16 +462,16 @@ print_status_inner() {  #{{{1
       aF=$(format_bytes $((a * 1024)) 1)
       uF=$(format_bytes $((u * 1024)) 1)
       # pct: percent used; color: background color
-      local pct=$(scale_float "$((u * 100))" / "$t" '%1.0f') color=''
-      if [ $pct -ge 90 ]; then
+      local pct; pct=$(scale_float "$((u * 100))" / "$t" '%1.0f') color=''
+      if [ "$pct" -ge 90 ]; then
         color='brightred'
-      elif [ $pct -ge 75 ]; then
+      elif [ "$pct" -ge 75 ]; then
         color='brightyellow'
       else
         color='brightgreen'
       fi 
       # min: minimum threshold at which used is assumed to not be garbage
-      local min=$((16 * 1024))
+      local min; min=$((16 * 1024))
       printf '%s' "#[fg=$color,bg=black]"
       if [ $u -ge $min ]; then
         printf '%s' "$uF/#[bold]$aF#[nobold]/$tF"
@@ -488,7 +494,7 @@ convert_status_line() {  #{{{1
   local line="$1"; shift
   # TODO: generically replace item names in the first awk script
   for item in uptime temp load freq ram; do
-    local value="#('$(escape_arg "$0")' '/$(escape_arg "$TMUX_NAME")' __status '$(escape_arg "$item")')"
+    local value; value="#('$(escape_arg "$0")' '/$(escape_arg "$TMUX_NAME")' __status '$(escape_arg "$item")')"
     line=$(awk \
       -v line="$(printf '%s\n' "$line" | sed -e 's/\\/\\\\/g')" \
       -v item="$(printf '%s\n' "$item" | sed -e 's/[^a-zA-Z0-9_-]//g')" \
@@ -505,7 +511,7 @@ convert_status_line() {  #{{{1
 # Utilities  #{{{1
 
 tmux() {  #{{{2
-  if [ x"$no_tmux" != x"1" ]; then
+  if [ x"${no_tmux:-}" != x"1" ]; then
     command tmux "$@"
   fi
 }
@@ -569,7 +575,7 @@ format_bytes() {  #{{{2
     # Internal:  r: result, s: suffix
     local r="" s="B"
     for i in 1073741824,G 1048576,M 1024,K ; do
-      if [ $b -ge ${i%%,*} ]; then
+      if [ "$b" -ge "${i%%,*}" ]; then
         r=$(scale_float "$b" / "${i%%,*}" "%1.${d}f")
         s=${i##*,}
         break
@@ -587,7 +593,7 @@ format_int() {  #{{{2
     # Internal:  r: result, s: suffix
     local r="" s=""
     for i in 1000000000,G 1000000,M 1000,K ; do
-      if [ $(printf '%s\n' "$n" | sed -e 's/\.[0-9]*$//') -ge ${i%%,*} ]; then
+      if [ "$(printf '%s\n' "$n" | sed -e 's/\.[0-9]*$//')" -ge "${i%%,*}" ]; then
         r=$(scale_float "$n" / "${i%%,*}" "%1.${d}f")
         s=${i##*,}
         break
