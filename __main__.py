@@ -1,10 +1,7 @@
 import sys
 
-import __init__
+from . import main
 
-
-def main(argv):
-  return __init__.main(argv)
 
 if __name__ == "__main__":
   try:
