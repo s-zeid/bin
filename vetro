@@ -156,7 +156,8 @@ main__connect() {  #{{{1
 
     exec sh -c 'exec tmux -u -2 -S "$TMUX_SOCK" \
       new-session -n "" '"$tmux_args"' -s "$TMUX_NAME" "$@"' - \
-      "export TMUX_NAME='$(escape_arg "$TMUX_NAME")'; export TERM=xterm-256color;
+      "export TMUX_NAME='$(escape_arg "$TMUX_NAME")';
+        export TERM=xterm-256color; export _VETRO_TERM='$(escape_arg "$TERM")';
         '$(escape_arg "$0")' \"/\$TMUX_NAME\" __setup_tmux 1;
         $cmd"
   fi
@@ -266,6 +267,19 @@ setup_tmux() {  #{{{1
     set-option -g set-titles on
     set-option -g set-titles-string "#h#{?#{&&:#{!=:#T,},#{!=:#T,#h}}, – #T,#{?#{&&:#{!=:#W,},#{!=:#W,#h}}, – #W,}}"
 TMUX
+
+  # Enable support for extended keys (CSI u; modifyOtherKeys) for xterm.
+  # Notes:
+  # * tmux only supports mode 1 (but applications may think it supports mode 2);
+  #   see <https://github.com/tmux/tmux/issues/2705#issuecomment-841133549>.
+  # * Not all terminals support this.  For VTE-based (GTK) terminals,
+  #   see <https://gitlab.gnome.org/GNOME/vte/-/issues/2607>.
+  if printf '%s\n' "$_VETRO_TERM" | grep -q -e '^xterm'; then
+    tmux_script <<TMUX
+      set -s extended-keys on
+      set -as terminal-features 'xterm*:extkeys'
+TMUX
+  fi
 
   # Volume key settings (f_key_{mute,vol_down,vol_up})
   # Unsafe rationale:  the cmd_* variables come from the user's config file and
