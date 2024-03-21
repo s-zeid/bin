@@ -7,102 +7,107 @@ import subprocess
 import sys
 
 
-def main(argv):
- arg0 = argv[0]
- args = argv[1:]
- isatty = sys.stdout.isatty()
- 
- # git-{oneline-,1l[-]}[cn] short forms
- if "-oneline-" in arg0 or "-1l" in arg0:
-  suffix = re.sub(r"^git-1l[^-]", "git-1l-", arg0).split("-")[-1]
-  if "c" in suffix:
-   args += ["--color=always"]
-  if "n" in suffix:
-   args += ["--no-merges"]
- 
- # pagination
- git_pager = os.environ.get("GIT_PAGER", None)
- git_pager_in_use = os.environ.get("GIT_PAGER_IN_USE", None)
- 
- if git_pager_in_use or git_pager is not None and git_pager != "" and git_pager != "cat":
-  paginate = True
- elif git_pager == "" or git_pager == "cat":
-  paginate = False
- else:
-  paginate = isatty
- 
- if paginate:
-  pager = git_pager or os.environ.get("PAGER", "less")
- else:
-  pager = None
+def main(argv: list[str]) -> int:
+  arg0 = argv[0]
+  args = argv[1:]
+  isatty = sys.stdout.isatty()
 
- # colorization
- if "--color=always" in args or "--color" in args:
-  color = True
- elif "--color=never" in args:
-  color = False
- else:
-  color = isatty or git_pager_in_use
- 
- if color:
-  color_arg = "--color=always"
- else:
-  color_arg = "--color=never"
- 
- # read log
- tformat = r"%C(auto,white dim)%ai%Creset %C(auto,yellow)%h%Creset %s"
- p_git = subprocess.Popen(["git", "log", "--pretty=" + tformat] + args + [color_arg],
-                          stdout=subprocess.PIPE)
- 
- lines = []
- for line in p_git.stdout:
-  lines += [line.decode("utf-8", "surrogateescape").rstrip("\r\n")]
- 
- p_git.wait()
- 
- if not len(lines):
+  # git-{oneline-,1l[-]}[cn] short forms
+  if "-oneline-" in arg0 or "-1l" in arg0:
+    suffix = re.sub(r"^git-1l[^-]", "git-1l-", arg0).split("-")[-1]
+    if "c" in suffix:
+      args += ["--color=always"]
+    if "n" in suffix:
+      args += ["--no-merges"]
+
+  # pagination
+  git_pager = os.environ.get("GIT_PAGER", None)
+  git_pager_in_use = os.environ.get("GIT_PAGER_IN_USE", None)
+
+  if (
+    git_pager_in_use or
+    (git_pager is not None and git_pager != "" and git_pager != "cat")
+  ):
+    paginate = True
+  elif git_pager == "" or git_pager == "cat":
+    paginate = False
+  else:
+    paginate = isatty
+
+  if paginate:
+    pager = git_pager or os.environ.get("PAGER", "less")
+  else:
+    pager = None
+
+  # colorization
+  if "--color=always" in args or "--color" in args:
+    color = True
+  elif "--color=never" in args:
+    color = False
+  else:
+    color = isatty or git_pager_in_use
+
+  if color:
+    color_arg = "--color=always"
+  else:
+    color_arg = "--color=never"
+
+  # read log
+  tformat = r"%C(auto,white dim)%ai%Creset %C(auto,yellow)%h%Creset %s"
+  p_git = subprocess.Popen(
+    ["git", "log", "--pretty=" + tformat] + args + [color_arg],
+    stdout=subprocess.PIPE,
+  )
+
+  lines = []
+  for line in p_git.stdout:
+    lines += [line.decode("utf-8", "surrogateescape").rstrip("\r\n")]
+
+  p_git.wait()
+
+  if not len(lines):
+    return p_git.returncode
+
+  # output format
+  fmt = "{:>" + str(max(len(str(len(lines))) + 1, 4)) + "}"
+  if color:
+    fmt = "\x1b[2;33m" + fmt + "\x1b[0m"
+  fmt += " {}"
+
+  # output
+  encoding = sys.stdout.encoding if isinstance(sys.stdout, io.TextIOBase) else "utf-8"
+  linesep = os.linesep.encode(encoding)
+
+  if pager:
+    p_pager = subprocess.Popen([pager], stdin=subprocess.PIPE)
+    f = p_pager.stdin
+  elif isinstance(sys.stdout, io.TextIOBase):
+    f = sys.stdout.buffer
+  else:
+    f = sys.stdout
+
+  for n in range(len(lines)):
+    line = lines[n]
+    out = fmt.format(n + 1, line).encode(encoding, "surrogateescape")
+    try:
+      f.write(out)
+      f.write(linesep)
+      f.flush()
+    except BrokenPipeError:
+      if __name__ == "__main__":
+        os._exit(p_git.returncode)
+      else:
+        break
+
+  if pager and not git_pager_in_use:
+    f.close()
+    p_pager.wait()
+
   return p_git.returncode
- 
- # output format
- fmt = "{:>" + str(max(len(str(len(lines))) + 1, 4)) + "}"
- if color:
-  fmt = "\x1b[2;33m" + fmt + "\x1b[0m"
- fmt += " {}"
- 
- # output
- encoding = sys.stdout.encoding if isinstance(sys.stdout, io.TextIOBase) else "utf-8"
- linesep = os.linesep.encode(encoding)
- 
- if pager:
-  p_pager = subprocess.Popen([pager], stdin=subprocess.PIPE)
-  f = p_pager.stdin
- elif isinstance(sys.stdout, io.TextIOBase):
-  f = sys.stdout.buffer
- else:
-  f = sys.stdout
- 
- for n in range(len(lines)):
-  line = lines[n]
-  out = fmt.format(n+1, line).encode(encoding, "surrogateescape")
-  try:
-   f.write(out)
-   f.write(linesep)
-   f.flush()
-  except BrokenPipeError:
-   if __name__ == "__main__":
-    os._exit(p_git.returncode)
-   else:
-    break
- 
- if pager and not git_pager_in_use:
-  f.close()
-  p_pager.wait()
- 
- return p_git.returncode
 
 
 if __name__ == "__main__":
- try:
-  sys.exit(main(sys.argv))
- except (KeyboardInterrupt, BrokenPipeError):
-  pass
+  try:
+    sys.exit(main(sys.argv))
+  except (KeyboardInterrupt, BrokenPipeError):
+    pass
