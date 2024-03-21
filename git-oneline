@@ -55,7 +55,7 @@ def main(argv: list[str]) -> int:
   # read log
   tformat = r"%C(auto,white dim)%ai%Creset %C(auto,yellow)%h%Creset %s"
   p_git = subprocess.Popen(
-    ["git", "log", "--pretty=" + tformat] + args + [color_arg],
+    ["git", "log", "--pretty=" + tformat, color_arg, *args],
     stdout=subprocess.PIPE,
   )
 
