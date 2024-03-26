@@ -13,6 +13,7 @@ defaults() {
 
   status_bg='default'
   status_fg='#646464'
+  status_attrs='default'
   status_line="#(#uptime) #(#temp) #(#load) #(#freq) #(#ram)"
 
   # Previous window (Shift: previous pane; Ctrl+Shift: move left)
@@ -261,7 +262,7 @@ setup_tmux() {  #{{{1
     #                    config file and our defaults, which are trusted inputs.
     set-window-option -g pane-border-status bottom
     set-window-option -g pane-border-format " $(unsafe_escape_tmux_arg "$(convert_status_line "$status_line")") "
-    set-window-option -g pane-active-border-style "bg=${status_bg:-default},fg=${status_fg:-default}"
+    set-window-option -g pane-active-border-style "$status_attrs${status_attrs:+,}bg=${status_bg:-default},fg=${status_fg:-default}"
 
     # Window title
     set-option -g set-titles on
@@ -383,9 +384,9 @@ TMUX
 
 print_status() {  #{{{1
   local item="$1"; shift
-  printf '%s' '#[reverse]'
+  printf '%s' '#[bg=default,fg=default,none,reverse]'
   printf '%s' "$(print_status_inner "$item")"
-  printf '%s' "#[noreverse,nobold,bg=default,fg=default]"
+  printf '%s' "#[bg=default,fg=default,default]"
 }
 
 print_status_inner() {  #{{{1
